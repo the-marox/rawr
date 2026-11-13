@@ -46,7 +46,8 @@
 namespace rawrcam::camera {
 namespace {
 constexpr const char* kTag = "RawrCamCameraNDK";
-constexpr uint64_t kDngOnlyPixels = 100'000'000;  // 200 MP full-size stills: DNG only.
+// 200 MP stills now also save a JPEG (developed from a 50 MP binned copy): only larger ones stay DNG only.
+constexpr uint64_t kDngOnlyPixels = 300'000'000;
 #define CAMI(...) __android_log_print(ANDROID_LOG_INFO, kTag, __VA_ARGS__)
 #define CAME(...) __android_log_print(ANDROID_LOG_ERROR, kTag, __VA_ARGS__)
 

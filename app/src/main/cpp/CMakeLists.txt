@@ -439,4 +439,5 @@ set_source_files_properties(capture/persistence/BurstJob.cpp capture/persistence
 
 # Still block-CFA remosaic (header-only, inlined here): 200 MP passes over 400 MB of pixels.
 set_source_files_properties(capture/single/SingleShotSlot.cpp capture/single/SingleFrameCaptureAcquisition.cpp
+  capture/single/SingleFrameCaptureJob.cpp
   PROPERTIES COMPILE_OPTIONS "$<$<CONFIG:Debug>:-O2>")

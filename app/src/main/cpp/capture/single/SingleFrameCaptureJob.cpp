@@ -3,6 +3,10 @@
 #include <android/log.h>
 #include <unistd.h>
 
+#include <chrono>
+
+#include "capture/single/StillBinning.h"
+
 namespace rawrcam::capture {
 SingleFrameCaptureJob::SingleFrameCaptureJob(const vulkan::VulkanContext& vk, std::mutex& mutex, std::string filesDir,
                                              Diagnostic diagnostic)
@@ -77,9 +81,22 @@ void SingleFrameCaptureJob::startCapturedOutputs(SingleFrameSnapshot snapshot) {
     auto frame = std::const_pointer_cast<const imaging::RawSnapshot>(snapshot.frame);
     if (!frame) return;
     outputs_.prepare(*frame, snapshot.tonemapParams, snapshot.aePostGain, snapshot.filmEnabled);
-    if (const auto* jpeg = outputs_.jpegRequest())
-        develop_.start(frame, snapshot.tonemapParams, snapshot.aePostGain, snapshot.filmEnabled, snapshot.filmLook,
-                       *jpeg);
+    if (const auto* jpeg = outputs_.jpegRequest()) {
+        // 200 MP: the JPEG develops from a 50 MP binned copy; the DNG below keeps the full frame.
+        auto developFrame = frame;
+        if (jpegNeedsBinning(*frame)) {
+            const auto start = std::chrono::steady_clock::now();
+            developFrame = binBayerStill2x(*frame);
+            const long long ms =
+                std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
+            emit("STILL_JPEG_BINNED requestId=" + std::to_string(frame->requestId) + " raw=" +
+                 std::to_string(frame->width) + "x" + std::to_string(frame->height) + " jpeg=" +
+                 std::to_string(developFrame->width) + "x" + std::to_string(developFrame->height) +
+                 " ms=" + std::to_string(ms));
+        }
+        develop_.start(developFrame, snapshot.tonemapParams, snapshot.aePostGain, snapshot.filmEnabled,
+                       snapshot.filmLook, *jpeg);
+    }
     if (!outputs_.startDng(frame, journal_.resolvedRecipe())) acquisition_.releaseFrame();
 }
 void SingleFrameCaptureJob::advanceDng() {
