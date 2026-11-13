@@ -411,9 +411,9 @@
       },
       "vendorKeys": [
         {
-          "tag": "org.codeaurora.qcamera3.sensor_meta_data.current_mode",
-          "type": "int32",
-          "scope": "still",
+          "tag": "xiaomi.remosaic.enabled",
+          "type": "byte",
+          "scope": "request",
           "values": [
             0
           ],
