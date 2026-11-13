@@ -585,10 +585,12 @@ bool CameraDeviceSession::createSession(ANativeWindow* window, const std::option
     outputs.push_back({rawWindow_, physicalCameraId, recipe.rawStreamUseCase});
     const uint32_t rawWidth = selected ? selected->stream.width : 0, rawHeight = selected ? selected->stream.height : 0;
     profileCompanionTargeted_ = !selected || selected->companionTargeted;
-    stopViewfinderForPhotos_ = selected && selected->stopViewfinderForPhotos;
     // Block-CFA full-size stills (Xiaomi 200 MP): the sensor reads out full size, so the HAL cannot also fill the
     // binned RAW for that request; asking for it stalls the viewfinder for seconds. Still = photo + companion.
     stillSkipsViewfinderRaw_ = selected && selected->photoStream && selected->sensorLayoutBlock > 1;
+    // Without a restart of the repeating request after such a still, the binned RAW comes back as a flat fill
+    // (pink viewfinder): stop the viewfinder for the photo and let the completion path restore it.
+    stopViewfinderForPhotos_ = selected && (selected->stopViewfinderForPhotos || stillSkipsViewfinderRaw_);
     captureStillTemplate_ = recipe.captureStillTemplate;
     const bool companionStream = recipe.companion.has_value();
     const auto companionSize = recipe.companion ? recipe.companion->size : std::nullopt;
