@@ -115,16 +115,11 @@ private fun CompactStripStack(
         },
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // 17U: the look/PARAMS strip is folded away by default so the viewfinder keeps its height;
-        // the handle above the exposure row opens and closes it.
-        var expanded by rememberSaveable { mutableStateOf(false) }
         // Exactly one render owner is surfaced: Film Sim's preset/look strip
         // when ON, otherwise the regular tonemap profile/PARAMS strip. Both
         // share the same strip language and the same bottom slot geometry.
         // Video mode always shows the tonemap strip (film controls hidden).
-        if (!expanded) {
-            // folded: nothing above the handle
-        } else if (state.filmSimEnabled && filmQuick != null && !forceTonemapStrip) {
+        if (state.filmSimEnabled && filmQuick != null && !forceTonemapStrip) {
             FilmStrip(
                 quick = filmQuick,
                 onSelectPreset = { onFilmEvent(CaptureFilmEvent.SelectPreset(it)) },
@@ -151,8 +146,7 @@ private fun CompactStripStack(
             state = state,
             dispatch = dispatch,
             modifier = Modifier.fillMaxWidth(),
-            lookOpen = expanded,
-            onToggleLook = { expanded = !expanded }
+            oneLine = true
         )
     }
 }
@@ -187,16 +181,17 @@ internal fun CompactParamRow(
     state: CaptureUiState,
     dispatch: CaptureDispatch,
     modifier: Modifier = Modifier,
+    oneLine: Boolean = false,
     lookOpen: Boolean = false,
     onToggleLook: (() -> Unit)? = null
 ) {
     val weights = CaptureDimens.CompactParamColumnWeights
     // 17U: one thin line (values only) with the LOOK toggle as the last cell.
-    androidx.compose.runtime.CompositionLocalProvider(LocalCompactParamOneLine provides (onToggleLook != null)) {
+    androidx.compose.runtime.CompositionLocalProvider(LocalCompactParamOneLine provides oneLine) {
     Row(
         modifier
             .fillMaxWidth()
-            .height(if (onToggleLook != null) 36.dp else CaptureDimens.CompactParamTwoLineHeight)
+            .height(if (oneLine) 36.dp else CaptureDimens.CompactParamTwoLineHeight)
             .padding(horizontal = CaptureDimens.CompactParamRowEdgeInset)
             .testTag(CaptureTestTags.COMPACT_PARAM_ROW),
         horizontalArrangement = Arrangement.spacedBy(CaptureDimens.ControlGap)
