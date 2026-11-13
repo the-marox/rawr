@@ -1,0 +1,779 @@
+{
+  "id": "xiaomi_17_ultra",
+  "schema": 2,
+  "name": "Xiaomi 17 Ultra",
+  "version": 1,
+  "match": {
+    "models": [
+      "25128PNA1G"
+    ],
+    "verifiedModels": [
+      "25128PNA1G"
+    ]
+  },
+  "lenses": [
+    {
+      "id": "0.6 Normal",
+      "camera": {
+        "id": "3",
+        "physical": ""
+      },
+      "streams": {
+        "raw": {
+          "format": "RAW16",
+          "width": 0,
+          "height": 0
+        }
+      },
+      "image": {
+        "levels": {
+          "static": false,
+          "black": [
+            1024,
+            1024,
+            1024,
+            1024
+          ],
+          "white": 16383
+        }
+      }
+    },
+    {
+      "id": "0.6x 50MP",
+      "camera": {
+        "id": "3",
+        "physical": ""
+      },
+      "streams": {
+        "raw": {
+          "format": "RAW16",
+          "width": 4096,
+          "height": 3072
+        },
+        "photo": {
+          "format": "RAW16",
+          "width": 8192,
+          "height": 6144,
+          "useCase": 524547,
+          "buffers": {
+            "usage": "0x100003"
+          },
+          "mergeFrameLimit": 4
+        }
+      },
+      "vendorKeys": [
+        {
+          "tag": "org.codeaurora.qcamera3.sensor_meta_data.current_mode",
+          "type": "int32",
+          "scope": "still",
+          "values": [
+            0
+          ],
+          "enabled": true
+        },
+        {
+          "tag": "xiaomi.remosaic.enabled",
+          "type": "byte",
+          "scope": "still",
+          "values": [
+            1
+          ],
+          "enabled": true
+        }
+      ],
+      "image": {
+        "levels": {
+          "static": false,
+          "black": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "white": 0
+        }
+      }
+    },
+    {
+      "id": "0.6x DSG",
+      "camera": {
+        "id": "3",
+        "physical": ""
+      },
+      "streams": {
+        "raw": {
+          "format": "RAW16",
+          "width": 0,
+          "height": 0
+        }
+      },
+      "vendorKeys": [
+        {
+          "tag": "org.codeaurora.qcamera3.sensor_meta_data.current_mode",
+          "type": "int32",
+          "scope": "request",
+          "values": [
+            3
+          ],
+          "enabled": true
+        }
+      ],
+      "image": {
+        "levels": {
+          "static": false,
+          "black": [
+            1024,
+            1024,
+            1024,
+            1024
+          ],
+          "white": 16383
+        }
+      }
+    },
+    {
+      "id": "1x Normal",
+      "camera": {
+        "id": "2",
+        "physical": ""
+      },
+      "streams": {
+        "raw": {
+          "format": "RAW16",
+          "width": 0,
+          "height": 0
+        }
+      },
+      "vendorKeys": [
+        {
+          "tag": "org.codeaurora.qcamera3.sensor_meta_data.current_mode",
+          "type": "int32",
+          "scope": "request",
+          "values": [
+            2
+          ],
+          "enabled": false
+        }
+      ],
+      "image": {
+        "levels": {
+          "static": false,
+          "black": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "white": 0
+        }
+      }
+    },
+    {
+      "id": "1x DCG",
+      "camera": {
+        "id": "2",
+        "physical": ""
+      },
+      "streams": {
+        "raw": {
+          "format": "RAW16",
+          "width": 0,
+          "height": 0
+        }
+      },
+      "vendorKeys": [
+        {
+          "tag": "org.codeaurora.qcamera3.sensor_meta_data.current_mode",
+          "type": "int32",
+          "scope": "request",
+          "values": [
+            4
+          ],
+          "enabled": true
+        }
+      ],
+      "image": {
+        "levels": {
+          "static": true,
+          "black": [
+            1024,
+            1024,
+            1024,
+            1024
+          ],
+          "white": 16383
+        }
+      }
+    },
+    {
+      "id": "1x 50MP",
+      "camera": {
+        "id": "2",
+        "physical": ""
+      },
+      "streams": {
+        "raw": {
+          "format": "RAW16",
+          "width": 4096,
+          "height": 3072
+        },
+        "photo": {
+          "format": "RAW16",
+          "width": 8192,
+          "height": 6144,
+          "useCase": 524547,
+          "buffers": {
+            "usage": "0x100003"
+          },
+          "mergeFrameLimit": 4
+        }
+      },
+      "vendorKeys": [
+        {
+          "tag": "org.codeaurora.qcamera3.sensor_meta_data.current_mode",
+          "type": "int32",
+          "scope": "still",
+          "values": [
+            0
+          ],
+          "enabled": true
+        },
+        {
+          "tag": "xiaomi.remosaic.enabled",
+          "type": "byte",
+          "scope": "still",
+          "values": [
+            1
+          ],
+          "enabled": true
+        }
+      ],
+      "image": {
+        "levels": {
+          "static": false,
+          "black": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "white": 0
+        }
+      }
+    },
+    {
+      "id": "3.2x Normal",
+      "camera": {
+        "id": "4",
+        "physical": ""
+      },
+      "streams": {
+        "raw": {
+          "format": "RAW16",
+          "width": 0,
+          "height": 0
+        }
+      },
+      "image": {
+        "levels": {
+          "static": false,
+          "black": [
+            1024,
+            1024,
+            1024,
+            1024
+          ],
+          "white": 16383
+        }
+      }
+    },
+    {
+      "id": "3.2x DCG",
+      "camera": {
+        "id": "4",
+        "physical": ""
+      },
+      "streams": {
+        "raw": {
+          "format": "RAW16",
+          "width": 0,
+          "height": 0
+        }
+      },
+      "vendorKeys": [
+        {
+          "tag": "org.codeaurora.qcamera3.sensor_meta_data.current_mode",
+          "type": "int32",
+          "scope": "request",
+          "values": [
+            6
+          ],
+          "enabled": true
+        }
+      ],
+      "image": {
+        "levels": {
+          "static": true,
+          "black": [
+            1024,
+            1024,
+            1024,
+            1024
+          ],
+          "white": 16383
+        }
+      }
+    },
+    {
+      "id": "3.2x 50MP",
+      "camera": {
+        "id": "4",
+        "physical": ""
+      },
+      "streams": {
+        "raw": {
+          "format": "RAW16",
+          "width": 4080,
+          "height": 3072
+        },
+        "photo": {
+          "format": "RAW16",
+          "width": 8160,
+          "height": 6144,
+          "useCase": 524547,
+          "buffers": {
+            "usage": "0x100003"
+          },
+          "mergeFrameLimit": 4
+        }
+      },
+      "vendorKeys": [
+        {
+          "tag": "org.codeaurora.qcamera3.sensor_meta_data.current_mode",
+          "type": "int32",
+          "scope": "still",
+          "values": [
+            1
+          ],
+          "enabled": true
+        }
+      ],
+      "image": {
+        "levels": {
+          "static": false,
+          "black": [
+            64,
+            64,
+            64,
+            64
+          ],
+          "white": 1023
+        }
+      }
+    },
+    {
+      "id": "3.2x 200MP",
+      "camera": {
+        "id": "4",
+        "physical": ""
+      },
+      "streams": {
+        "raw": {
+          "format": "RAW10",
+          "width": 4080,
+          "height": 3072
+        },
+        "photo": {
+          "format": "RAW10",
+          "width": 16320,
+          "height": 12288,
+          "useCase": 524547,
+          "buffers": {
+            "usage": "0x100003"
+          },
+          "mergeFrameLimit": 1
+        },
+        "companion": {
+          "mode": "fixed",
+          "width": 1440,
+          "height": 1080,
+          "format": "private",
+          "targeted": true,
+          "detach": false,
+          "buffers": {
+            "usage": "0x100"
+          }
+        }
+      },
+      "session": {
+        "opMode": 36868,
+        "frameRate": 30
+      },
+      "vendorKeys": [
+        {
+          "tag": "org.codeaurora.qcamera3.sensor_meta_data.current_mode",
+          "type": "int32",
+          "scope": "still",
+          "values": [
+            0
+          ],
+          "enabled": true
+        },
+        {
+          "tag": "xiaomi.remosaic.enabled",
+          "type": "byte",
+          "scope": "still",
+          "values": [
+            1
+          ],
+          "enabled": true
+        }
+      ],
+      "image": {
+        "levels": {
+          "static": true,
+          "black": [
+            64,
+            64,
+            64,
+            64
+          ],
+          "white": 1023
+        }
+      }
+    },
+    {
+      "id": "3.2x ISZ",
+      "camera": {
+        "id": "4",
+        "physical": ""
+      },
+      "streams": {
+        "raw": {
+          "format": "RAW16",
+          "width": 0,
+          "height": 0
+        }
+      },
+      "vendorKeys": [
+        {
+          "tag": "org.codeaurora.qcamera3.sensor_meta_data.current_mode",
+          "type": "int32",
+          "scope": "request",
+          "values": [
+            9
+          ],
+          "enabled": true
+        }
+      ],
+      "image": {
+        "levels": {
+          "static": false,
+          "black": [
+            64,
+            64,
+            64,
+            64
+          ],
+          "white": 1023
+        },
+        "sensorLayout": {
+          "block": 2,
+          "liveRemosaic": "standard",
+          "photoRemosaic": "high"
+        }
+      }
+    },
+    {
+      "id": "4.3x Normal",
+      "camera": {
+        "id": "4",
+        "physical": ""
+      },
+      "streams": {
+        "raw": {
+          "format": "RAW16",
+          "width": 0,
+          "height": 0
+        }
+      },
+      "vendorKeys": [
+        {
+          "tag": "xiaomi.zoomRatio.debug.zoomRatioDebugEnable",
+          "type": "int32",
+          "scope": "request",
+          "values": [
+            1
+          ],
+          "enabled": true
+        },
+        {
+          "tag": "xiaomi.zoomRatio.debug.setZoomRatioCode",
+          "type": "float",
+          "scope": "request",
+          "values": [
+            4.3
+          ],
+          "enabled": true
+        }
+      ],
+      "image": {
+        "levels": {
+          "static": false,
+          "black": [
+            1024,
+            1024,
+            1024,
+            1024
+          ],
+          "white": 16383
+        }
+      }
+    },
+    {
+      "id": "4.3x DCG",
+      "camera": {
+        "id": "4",
+        "physical": ""
+      },
+      "streams": {
+        "raw": {
+          "format": "RAW16",
+          "width": 0,
+          "height": 0
+        }
+      },
+      "vendorKeys": [
+        {
+          "tag": "org.codeaurora.qcamera3.sensor_meta_data.current_mode",
+          "type": "int32",
+          "scope": "request",
+          "values": [
+            6
+          ],
+          "enabled": true
+        },
+        {
+          "tag": "xiaomi.zoomRatio.debug.zoomRatioDebugEnable",
+          "type": "int32",
+          "scope": "request",
+          "values": [
+            1
+          ],
+          "enabled": true
+        },
+        {
+          "tag": "xiaomi.zoomRatio.debug.setZoomRatioCode",
+          "type": "float",
+          "scope": "request",
+          "values": [
+            4.3
+          ],
+          "enabled": true
+        }
+      ],
+      "image": {
+        "levels": {
+          "static": true,
+          "black": [
+            1024,
+            1024,
+            1024,
+            1024
+          ],
+          "white": 16383
+        }
+      }
+    },
+    {
+      "id": "4.3x 50MP",
+      "camera": {
+        "id": "4",
+        "physical": ""
+      },
+      "streams": {
+        "raw": {
+          "format": "RAW16",
+          "width": 4080,
+          "height": 3072
+        },
+        "photo": {
+          "format": "RAW16",
+          "width": 8160,
+          "height": 6144,
+          "useCase": 524547,
+          "buffers": {
+            "usage": "0x100003"
+          },
+          "mergeFrameLimit": 4
+        }
+      },
+      "vendorKeys": [
+        {
+          "tag": "org.codeaurora.qcamera3.sensor_meta_data.current_mode",
+          "type": "int32",
+          "scope": "still",
+          "values": [
+            1
+          ],
+          "enabled": true
+        },
+        {
+          "tag": "xiaomi.zoomRatio.debug.zoomRatioDebugEnable",
+          "type": "int32",
+          "scope": "request",
+          "values": [
+            1
+          ],
+          "enabled": true
+        },
+        {
+          "tag": "xiaomi.zoomRatio.debug.setZoomRatioCode",
+          "type": "float",
+          "scope": "request",
+          "values": [
+            4.3
+          ],
+          "enabled": true
+        }
+      ],
+      "image": {
+        "levels": {
+          "static": false,
+          "black": [
+            64,
+            64,
+            64,
+            64
+          ],
+          "white": 1023
+        }
+      }
+    },
+    {
+      "id": "4.3x ISZ",
+      "camera": {
+        "id": "4",
+        "physical": ""
+      },
+      "streams": {
+        "raw": {
+          "format": "RAW16",
+          "width": 0,
+          "height": 0
+        }
+      },
+      "vendorKeys": [
+        {
+          "tag": "org.codeaurora.qcamera3.sensor_meta_data.current_mode",
+          "type": "int32",
+          "scope": "request",
+          "values": [
+            9
+          ],
+          "enabled": true
+        },
+        {
+          "tag": "xiaomi.zoomRatio.debug.zoomRatioDebugEnable",
+          "type": "int32",
+          "scope": "request",
+          "values": [
+            1
+          ],
+          "enabled": true
+        },
+        {
+          "tag": "xiaomi.zoomRatio.debug.setZoomRatioCode",
+          "type": "float",
+          "scope": "request",
+          "values": [
+            4.3
+          ],
+          "enabled": true
+        }
+      ],
+      "image": {
+        "levels": {
+          "static": false,
+          "black": [
+            64,
+            64,
+            64,
+            64
+          ],
+          "white": 1023
+        },
+        "sensorLayout": {
+          "block": 2,
+          "liveRemosaic": "standard",
+          "photoRemosaic": "high"
+        }
+      }
+    },
+    {
+      "id": "Front Normal",
+      "camera": {
+        "id": "1",
+        "physical": ""
+      },
+      "streams": {
+        "raw": {
+          "format": "RAW10",
+          "width": 0,
+          "height": 0
+        }
+      },
+      "image": {
+        "levels": {
+          "static": false,
+          "black": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "white": 0
+        },
+        "mirror": "vertical"
+      }
+    },
+    {
+      "id": "Front DAG",
+      "camera": {
+        "id": "1",
+        "physical": ""
+      },
+      "streams": {
+        "raw": {
+          "format": "RAW16",
+          "width": 4096,
+          "height": 2304
+        }
+      },
+      "vendorKeys": [
+        {
+          "tag": "org.codeaurora.qcamera3.sensor_meta_data.current_mode",
+          "type": "int32",
+          "scope": "request",
+          "values": [
+            3
+          ],
+          "enabled": true
+        }
+      ],
+      "image": {
+        "levels": {
+          "static": true,
+          "black": [
+            1024,
+            1024,
+            1024,
+            1024
+          ],
+          "white": 16383
+        },
+        "mirror": "vertical"
+      }
+    }
+  ]
+}
