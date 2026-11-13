@@ -48,47 +48,104 @@ inline void remosaicBlockCfaFast(uint16_t* raw, uint32_t w, uint32_t h, uint32_t
     const float range = white - black;
     const size_t nn = size_t(n) * n;
 
-    // 1. Intra-block gain per (block colour, position): sampled block rows, mid-tone blocks only.
-    std::vector<double> sum(3 * nn, 0.0);
-    std::vector<uint32_t> cnt(3 * nn, 0);
-    const uint32_t rowStep = std::max(1u, bh / 256u);
-    for (uint32_t by = 0; by < bh; by += rowStep)
-        for (uint32_t bx = 0; bx < bw; ++bx) {
-            float m = 0.0f, mx = 0.0f;
-            for (uint32_t iy = 0; iy < n; ++iy)
-                for (uint32_t ix = 0; ix < n; ++ix) {
-                    const float v = float(raw[size_t(by * n + iy) * w + bx * n + ix]);
-                    m += v;
-                    mx = std::max(mx, v);
-                }
-            m = m / float(nn) - black;
-            if (m < 0.05f * range || mx >= white - 1.0f) continue;
-            const int c = colourAt(order, by & 1u, bx & 1u);
-            for (uint32_t iy = 0; iy < n; ++iy)
-                for (uint32_t ix = 0; ix < n; ++ix) {
-                    const size_t k = size_t(c) * nn + iy * n + ix;
-                    sum[k] += (float(raw[size_t(by * n + iy) * w + bx * n + ix]) - black) / m;
-                    ++cnt[k];
+    // 1. Intra-block gain per (block colour, position), per tile of a TX x TY grid (the pattern drifts across
+    //    the field), mid-tone unclipped blocks only; interpolated between tile centres below.
+    constexpr uint32_t TX = 16, TY = 12;
+    const size_t tableSize = 3 * nn;
+    std::vector<double> sum(size_t(TX) * TY * tableSize, 0.0);
+    std::vector<double> msum(size_t(TX) * TY * tableSize, 0.0);
+    std::vector<uint32_t> cnt(size_t(TX) * TY * tableSize, 0);
+    parallelRows(TY, threads, [&](uint32_t ta, uint32_t tb) {
+        for (uint32_t ty = ta; ty < tb; ++ty) {
+            const uint32_t by0 = ty * bh / TY, by1 = (ty + 1) * bh / TY;
+            for (uint32_t by = by0; by < by1; ++by)
+                for (uint32_t bx = 0; bx < bw; ++bx) {
+                    const uint32_t tx = std::min(TX - 1, bx * TX / bw);
+                    float m = 0.0f, mx = 0.0f;
+                    for (uint32_t iy = 0; iy < n; ++iy)
+                        for (uint32_t ix = 0; ix < n; ++ix) {
+                            const float v = float(raw[size_t(by * n + iy) * w + bx * n + ix]);
+                            m += v;
+                            mx = std::max(mx, v);
+                        }
+                    m = m / float(nn) - black;
+                    // Ratio of sums (pixel sum / block-mean sum): dim channels (red under warm light) still count.
+                    if (m < 2.0f || mx >= white - 1.0f) continue;
+                    const int c = colourAt(order, by & 1u, bx & 1u);
+                    const size_t base = (size_t(ty) * TX + tx) * tableSize + size_t(c) * nn;
+                    for (uint32_t iy = 0; iy < n; ++iy)
+                        for (uint32_t ix = 0; ix < n; ++ix) {
+                            sum[base + iy * n + ix] += float(raw[size_t(by * n + iy) * w + bx * n + ix]) - black;
+                            msum[base + iy * n + ix] += m;
+                            ++cnt[base + iy * n + ix];
+                        }
                 }
         }
-    std::vector<float> invGain(3 * nn, 1.0f);
-    for (int c = 0; c < 3; ++c) {
-        double mean = 0.0;
+    });
+    // Per tile: normalise each colour's 16 gains to mean 1; thin tiles borrow the frame-wide table.
+    std::vector<double> gsum(tableSize, 0.0), gmsum(tableSize, 0.0);
+    std::vector<uint64_t> gcnt(tableSize, 0);
+    for (size_t t = 0; t < size_t(TX) * TY; ++t)
+        for (size_t k = 0; k < tableSize; ++k) {
+            gsum[k] += sum[t * tableSize + k];
+            gmsum[k] += msum[t * tableSize + k];
+            gcnt[k] += cnt[t * tableSize + k];
+        }
+    const auto buildTable = [&](const double* s, const double* ms, const auto* c, float* outInv, uint64_t minCount) {
         bool ok = true;
-        for (size_t i = 0; i < nn; ++i) {
-            const size_t k = size_t(c) * nn + i;
-            if (cnt[k] < 64) ok = false;
-            else mean += sum[k] / cnt[k];
+        for (int col = 0; col < 3; ++col) {
+            double mean = 0.0;
+            bool colOk = true;
+            for (size_t i = 0; i < nn; ++i) {
+                const size_t k = size_t(col) * nn + i;
+                if (uint64_t(c[k]) < minCount || ms[k] <= 0.0) colOk = false;
+                else mean += s[k] / ms[k];
+            }
+            if (!colOk || mean <= 0.0) {
+                ok = false;
+                continue;
+            }
+            mean /= double(nn);
+            for (size_t i = 0; i < nn; ++i) {
+                const size_t k = size_t(col) * nn + i;
+                const double g = (s[k] / ms[k]) / mean;
+                outInv[k] = (g > 0.5 && g < 2.0) ? float(1.0 / g) : 1.0f;
+            }
         }
-        if (!ok || mean <= 0.0) continue;
-        mean /= double(nn);
-        for (size_t i = 0; i < nn; ++i) {
-            const size_t k = size_t(c) * nn + i;
-            const double g = (sum[k] / cnt[k]) / mean;
-            if (g > 0.5 && g < 2.0) invGain[k] = float(1.0 / g);
-        }
+        return ok;
+    };
+    std::vector<float> globalInv(tableSize, 1.0f);
+    buildTable(gsum.data(), gmsum.data(), gcnt.data(), globalInv.data(), 64);
+    std::vector<float> tileInv(size_t(TX) * TY * tableSize, 1.0f);
+    for (size_t t = 0; t < size_t(TX) * TY; ++t) {
+        float* dst = tileInv.data() + t * tableSize;
+        std::copy(globalInv.begin(), globalInv.end(), dst);
+        std::vector<float> local(tableSize, 1.0f);
+        if (buildTable(sum.data() + t * tableSize, msum.data() + t * tableSize, cnt.data() + t * tableSize, local.data(), 256))
+            std::copy(local.begin(), local.end(), dst);
     }
-
+    // Tile-centre bilinear weights, per block row / column.
+    const auto tileAxis = [](uint32_t b, uint32_t blocks, uint32_t tiles, uint32_t& t0, float& f) {
+        const float s = (float(b) + 0.5f) * float(tiles) / float(blocks) - 0.5f;
+        const int i = std::clamp(int(std::floor(s)), 0, int(tiles) - 2);
+        t0 = uint32_t(i);
+        f = std::clamp(s - float(i), 0.0f, 1.0f);
+    };
+    std::vector<uint32_t> colTile(bw), rowTile(bh);
+    std::vector<float> colF(bw), rowF(bh);
+    for (uint32_t bx = 0; bx < bw; ++bx) tileAxis(bx, bw, TX, colTile[bx], colF[bx]);
+    for (uint32_t by = 0; by < bh; ++by) tileAxis(by, bh, TY, rowTile[by], rowF[by]);
+    const auto invGainAt = [&](uint32_t bx, uint32_t by, size_t k) {
+        const uint32_t tx0 = colTile[bx], ty0 = rowTile[by];
+        const float fxt = colF[bx], fyt = rowF[by];
+        const float* t00 = tileInv.data() + (size_t(ty0) * TX + tx0) * tableSize;
+        const float* t01 = t00 + tableSize;
+        const float* t10 = t00 + size_t(TX) * tableSize;
+        const float* t11 = t10 + tableSize;
+        const float top = t00[k] + (t01[k] - t00[k]) * fxt;
+        const float bot = t10[k] + (t11[k] - t10[k]) * fxt;
+        return top + (bot - top) * fyt;
+    };
     // 2. Flat-fielded block means and their bilinear demosaic.
     std::vector<float> means(size_t(bw) * bh);
     parallelRows(bh, threads, [&](uint32_t a, uint32_t b) {
@@ -99,7 +156,7 @@ inline void remosaicBlockCfaFast(uint16_t* raw, uint32_t w, uint32_t h, uint32_t
                 for (uint32_t iy = 0; iy < n; ++iy)
                     for (uint32_t ix = 0; ix < n; ++ix)
                         m += (float(raw[size_t(by * n + iy) * w + bx * n + ix]) - black) *
-                             invGain[size_t(c) * nn + iy * n + ix];
+                             invGainAt(bx, by, size_t(c) * nn + iy * n + ix);
                 means[size_t(by) * bw + bx] = std::max(0.0f, m / float(nn));
             }
     });
@@ -156,7 +213,7 @@ inline void remosaicBlockCfaFast(uint16_t* raw, uint32_t w, uint32_t h, uint32_t
                     const float bot = p[i00 + bw] + (p[i00 + bw + 1] - p[i00 + bw]) * fx[x];
                     return top + (bot - top) * fy;
                 };
-                const float f = std::max(0.0f, (v - black) * invGain[size_t(own) * nn + iy * n + ix]);
+                const float f = std::max(0.0f, (v - black) * invGainAt(bx, by, size_t(own) * nn + iy * n + ix));
                 const float out = own == want ? f : sample(want) * (f + e) / (sample(own) + e);
                 row[x] = uint16_t(std::clamp(out + black, 0.0f, 65535.0f));
             }
