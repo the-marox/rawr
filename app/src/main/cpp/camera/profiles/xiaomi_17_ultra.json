@@ -443,7 +443,7 @@
         "sensorLayout": {
           "block": 4,
           "liveRemosaic": "standard",
-          "photoRemosaic": "high"
+          "photoRemosaic": "standard"
         }
       }
     },

@@ -1,3 +1,4 @@
+#include <algorithm>
 #include "encoding/dng/DngGainMapOpcode.h"
 
 #include <cmath>
@@ -90,17 +91,23 @@ bool appendGainMapChannel(std::vector<uint8_t>& params, const DngGainMapArea& ar
 
 bool appendLensShadingGainMaps(TinyDngWriteParams& p, const rawrcam::metadata::FrameMetadataSnapshot& metadata,
                                const DngGainMapArea& area, std::string* error) {
-    const auto& ls = metadata.lensShadingMap;
+    std::vector<float> ls = metadata.lensShadingMap;
     const uint32_t cols = metadata.lensShadingMapWidth;
     const uint32_t rows = metadata.lensShadingMapHeight;
     const uint64_t points = uint64_t(cols) * uint64_t(rows);
     bool valid = cols >= 2 && rows >= 2 && points <= 65536u && ls.size() == size_t(points) * 4u;
+    float minGain = 1.0f;
     if (valid)
-        for (float v : ls)
-            if (!std::isfinite(v) || v < 1.0f) {
+        for (float v : ls) {
+            if (!std::isfinite(v) || v <= 0.0f) {
                 valid = false;
                 break;
             }
+            minGain = std::min(minGain, v);
+        }
+    // Some HAL modes (Xiaomi 200 MP) report gains below 1: keep the shape, rescale so the smallest is 1.
+    if (valid && minGain < 1.0f)
+        for (float& v : ls) v /= minGain;
     if (!valid) {
         if (error) *error = "lens shading: invalid gain map";
         return false;

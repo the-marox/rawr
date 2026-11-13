@@ -11,7 +11,18 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import com.rawr.camera.ui.icons.outlined.Iso
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Box
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
@@ -104,11 +115,16 @@ private fun CompactStripStack(
         },
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        // 17U: the look/PARAMS strip is folded away by default so the viewfinder keeps its height;
+        // the handle above the exposure row opens and closes it.
+        var expanded by rememberSaveable { mutableStateOf(false) }
         // Exactly one render owner is surfaced: Film Sim's preset/look strip
         // when ON, otherwise the regular tonemap profile/PARAMS strip. Both
         // share the same strip language and the same bottom slot geometry.
         // Video mode always shows the tonemap strip (film controls hidden).
-        if (state.filmSimEnabled && filmQuick != null && !forceTonemapStrip) {
+        if (!expanded) {
+            // folded: nothing above the handle
+        } else if (state.filmSimEnabled && filmQuick != null && !forceTonemapStrip) {
             FilmStrip(
                 quick = filmQuick,
                 onSelectPreset = { onFilmEvent(CaptureFilmEvent.SelectPreset(it)) },
@@ -131,10 +147,35 @@ private fun CompactStripStack(
                 modifier = Modifier.fillMaxWidth()
             )
         }
+        StripFoldHandle(expanded = expanded, onToggle = { expanded = !expanded })
         CompactParamRow(
             state = state,
             dispatch = dispatch,
             modifier = Modifier.fillMaxWidth()
+        )
+    }
+}
+
+/** Slim handle that opens/closes the look/PARAMS strip above the exposure row. */
+@Composable
+private fun StripFoldHandle(expanded: Boolean, onToggle: () -> Unit) {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(18.dp)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onToggle
+            )
+            .testTag("capture_strip_fold_handle"),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = if (expanded) "\u25BE  LOOK" else "\u25B4  LOOK",
+            color = Color.White.copy(alpha = 0.75f),
+            fontSize = 9.sp,
+            letterSpacing = 1.sp
         )
     }
 }
