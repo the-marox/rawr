@@ -408,8 +408,7 @@
       },
       "session": {
         "opMode": 36868,
-        "frameRate": 30,
-        "stopViewfinderForPhotos": true
+        "frameRate": 30
       },
       "vendorKeys": [
         {
