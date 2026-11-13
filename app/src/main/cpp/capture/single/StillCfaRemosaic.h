@@ -1,5 +1,6 @@
 #pragma once
 #include <android/log.h>
+#include <sys/system_properties.h>
 
 #include <algorithm>
 #include <chrono>
@@ -16,6 +17,14 @@ namespace rawrcam::capture {
 inline void remosaicBlockCfaStill(imaging::RawSnapshot& frame) {
     const auto& context = frame.metadata.cameraContext;
     if (!context || context->cfaBlock <= 1u) return;
+    // Debug: `adb shell setprop debug.rawr.keep_block_cfa 1` keeps the raw block mosaic in the DNG
+    // (looks pink in editors) so remosaic methods can be compared offline on real scenes.
+    char keep[PROP_VALUE_MAX] = {};
+    if (__system_property_get("debug.rawr.keep_block_cfa", keep) > 0 && keep[0] == '1') {
+        __android_log_print(ANDROID_LOG_WARN, "RawrCamNative", "STILL_CFA_REMOSAIC_SKIPPED requestId=%llu (debug.rawr.keep_block_cfa)",
+                            static_cast<unsigned long long>(frame.requestId));
+        return;
+    }
     const auto start = std::chrono::steady_clock::now();
     // All cores: 12 MP takes ~115 ms (Standard) / ~140-175 ms (High) at 8 threads on V2562.
     const uint32_t threads = std::clamp(std::thread::hardware_concurrency(), 1u, 8u);
