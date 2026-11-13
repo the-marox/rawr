@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <string>
 #include "encoding/dng/DngGainMapOpcode.h"
 
 #include <cmath>
@@ -99,6 +100,7 @@ bool appendLensShadingGainMaps(TinyDngWriteParams& p, const rawrcam::metadata::F
     // Xiaomi 200 MP reports some entries at 0 (or not finite): fill them with their channel's mean,
     // give up only when too many are missing.
     float minGain = 1.0f;
+    size_t badEntries = 0;
     if (valid) {
         size_t bad = 0;
         double chSum[4] = {0, 0, 0, 0};
@@ -112,6 +114,7 @@ bool appendLensShadingGainMaps(TinyDngWriteParams& p, const rawrcam::metadata::F
             }
         }
         if (bad * 4 > ls.size()) valid = false;
+        badEntries = bad;
         for (int c = 0; c < 4 && valid; ++c)
             if (chCount[c] == 0) valid = false;
         if (valid)
@@ -124,7 +127,18 @@ bool appendLensShadingGainMaps(TinyDngWriteParams& p, const rawrcam::metadata::F
     if (valid && minGain < 1.0f)
         for (float& v : ls) v /= minGain;
     if (!valid) {
-        if (error) *error = "lens shading: invalid gain map";
+        if (error) {
+            float lo = 0.0f, hi = 0.0f;
+            if (!ls.empty()) {
+                lo = hi = ls[0];
+                for (float v : ls) {
+                    lo = std::min(lo, v);
+                    hi = std::max(hi, v);
+                }
+            }
+            *error = "lens shading: invalid gain map cols=" + std::to_string(cols) + " rows=" + std::to_string(rows) +
+                     " bad=" + std::to_string(badEntries) + " min=" + std::to_string(lo) + " max=" + std::to_string(hi);
+        }
         return false;
     }
     for (int ch = 0; ch < 4; ++ch) {
