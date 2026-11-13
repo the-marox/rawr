@@ -27,6 +27,7 @@ import com.rawr.camera.ui.icons.outlined.Tune
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -334,6 +335,9 @@ internal fun ContrastIcon(icon: ImageVector, tint: Color, size: Dp, modifier: Mo
     }
 }
 
+/** 17U: exposure cells as one thin line (value only; ISO keeps its tag). */
+internal val LocalCompactParamOneLine = staticCompositionLocalOf { false }
+
 @Composable
 internal fun CompactParamShell(
     icon: ImageVector,
@@ -368,6 +372,43 @@ internal fun CompactParamShell(
             .semantics { contentDescription = semanticsDescription },
         contentAlignment = Alignment.Center
     ) {
+        if (LocalCompactParamOneLine.current) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+                modifier = Modifier.padding(horizontal = 3.dp)
+            ) {
+                if (title == "ISO") {
+                    Text(
+                        "ISO ",
+                        color = contentColor,
+                        fontFamily = CaptureMono,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 8.sp,
+                        maxLines = 1,
+                        style = ViewfinderTextStyle
+                    )
+                }
+                Text(
+                    valueText,
+                    color = valueColor,
+                    fontFamily = CaptureMono,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = ViewfinderTextStyle
+                )
+                if (locked) {
+                    Box(
+                        Modifier
+                            .padding(start = 3.dp)
+                            .size(4.dp)
+                            .background(CaptureColors.Accent, androidx.compose.foundation.shape.CircleShape)
+                    )
+                }
+            }
+        } else {
         // Two-line stacked cell: value above, icon + title below.
         // Never rotated: keeps its orientation in every device posture.
         Column(
@@ -412,6 +453,7 @@ internal fun CompactParamShell(
                     )
                 }
             }
+        }
         }
     }
 }

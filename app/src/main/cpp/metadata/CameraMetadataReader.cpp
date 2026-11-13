@@ -345,6 +345,15 @@ std::optional<FrameMetadataSnapshot> readFrameMetadataSnapshot(const ACameraMeta
             out.lensShadingMap = colorFallback->lensShadingMap;
         }
     }
+    // Xiaomi 200 MP stills report an all-zero shading map: borrow the viewfinder's (same field of view).
+    const auto usableShading = [](const std::vector<float>& m) {
+        return !m.empty() && std::any_of(m.begin(), m.end(), [](float v) { return std::isfinite(v) && v > 0.0f; });
+    };
+    if (!usableShading(out.lensShadingMap) && colorFallback && usableShading(colorFallback->lensShadingMap)) {
+        out.lensShadingMapWidth = colorFallback->lensShadingMapWidth;
+        out.lensShadingMapHeight = colorFallback->lensShadingMapHeight;
+        out.lensShadingMap = colorFallback->lensShadingMap;
+    }
     std::string validationError;
     if (!validate(out, &validationError)) {
         if (error) *error = validationError;

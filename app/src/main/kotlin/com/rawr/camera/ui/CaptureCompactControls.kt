@@ -14,8 +14,8 @@ import com.rawr.camera.ui.icons.outlined.Iso
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Text
+import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -147,46 +147,56 @@ private fun CompactStripStack(
                 modifier = Modifier.fillMaxWidth()
             )
         }
-        StripFoldHandle(expanded = expanded, onToggle = { expanded = !expanded })
         CompactParamRow(
             state = state,
             dispatch = dispatch,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            lookOpen = expanded,
+            onToggleLook = { expanded = !expanded }
         )
     }
 }
 
-/** Slim handle that opens/closes the look/PARAMS strip above the exposure row. */
+/** LOOK cell at the end of the exposure row: opens/closes the look/PARAMS strip above it. */
 @Composable
-private fun StripFoldHandle(expanded: Boolean, onToggle: () -> Unit) {
+private fun LookToggleCell(open: Boolean, onToggle: () -> Unit, modifier: Modifier) {
     Box(
-        Modifier
-            .fillMaxWidth()
-            .height(18.dp)
+        modifier
+            .viewfinderChip(active = open)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
                 onClick = onToggle
             )
-            .testTag("capture_strip_fold_handle"),
+            .testTag("capture_look_toggle"),
         contentAlignment = Alignment.Center
     ) {
-        // Grabber bar: brighter and wider while the strip is open.
-        Box(
-            Modifier
-                .size(width = if (expanded) 36.dp else 28.dp, height = 3.dp)
-                .background(Color.White.copy(alpha = if (expanded) 0.8f else 0.45f), RoundedCornerShape(2.dp))
+        Text(
+            text = if (open) "LOOK \u25BE" else "LOOK \u25B4",
+            color = if (open) CaptureColors.AccentSoft else Color.White.copy(alpha = 0.85f),
+            fontFamily = CaptureMono,
+            fontSize = 9.sp,
+            maxLines = 1,
+            style = ViewfinderTextStyle
         )
     }
 }
 
 @Composable
-internal fun CompactParamRow(state: CaptureUiState, dispatch: CaptureDispatch, modifier: Modifier = Modifier) {
+internal fun CompactParamRow(
+    state: CaptureUiState,
+    dispatch: CaptureDispatch,
+    modifier: Modifier = Modifier,
+    lookOpen: Boolean = false,
+    onToggleLook: (() -> Unit)? = null
+) {
     val weights = CaptureDimens.CompactParamColumnWeights
+    // 17U: one thin line (values only) with the LOOK toggle as the last cell.
+    androidx.compose.runtime.CompositionLocalProvider(LocalCompactParamOneLine provides (onToggleLook != null)) {
     Row(
         modifier
             .fillMaxWidth()
-            .height(CaptureDimens.CompactParamTwoLineHeight)
+            .height(if (onToggleLook != null) 36.dp else CaptureDimens.CompactParamTwoLineHeight)
             .padding(horizontal = CaptureDimens.CompactParamRowEdgeInset)
             .testTag(CaptureTestTags.COMPACT_PARAM_ROW),
         horizontalArrangement = Arrangement.spacedBy(CaptureDimens.ControlGap)
@@ -196,5 +206,7 @@ internal fun CompactParamRow(state: CaptureUiState, dispatch: CaptureDispatch, m
         CompactExposureButton(ExposureParameter.Ev, state, dispatch, Modifier.weight(weights[2]).fillMaxHeight())
         CompactWbButton(state, dispatch, Modifier.weight(weights[3]).fillMaxHeight())
         CompactFocusButton(state, dispatch, Modifier.weight(weights[4]).fillMaxHeight())
+        if (onToggleLook != null) LookToggleCell(lookOpen, onToggleLook, Modifier.weight(0.95f).fillMaxHeight())
+    }
     }
 }
