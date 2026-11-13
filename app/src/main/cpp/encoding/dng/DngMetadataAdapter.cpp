@@ -1,5 +1,9 @@
 #include "encoding/dng/DngMetadataAdapter.h"
 
+#ifdef __ANDROID__
+#include <android/log.h>
+#endif
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -411,7 +415,16 @@ std::optional<TinyDngWriteParams> makeTinyDngWriteParams(const rawrcam::imaging:
     if (!frame.metadata.lensShadingMap.empty()) {
         const DngGainMapArea area{gm->activeTop, gm->activeLeft, gm->activeBottom - gm->activeTop,
                                   gm->activeRight - gm->activeLeft, storedPattern};
-        if (!appendLensShadingGainMaps(p, frame.metadata, area, error)) return std::nullopt;
+        // A malformed map (Xiaomi 17 Ultra 200 MP stills carry one) only drops the shading opcode;
+        // the photo itself is still written, uncorrected for shading.
+        std::string shadingError;
+        if (!appendLensShadingGainMaps(p, frame.metadata, area, &shadingError)) {
+#ifdef __ANDROID__
+            __android_log_print(ANDROID_LOG_WARN, "RawrCamDng", "DNG_LENS_SHADING_SKIPPED %s map=%ux%u values=%zu",
+                                shadingError.c_str(), frame.metadata.lensShadingMapWidth,
+                                frame.metadata.lensShadingMapHeight, frame.metadata.lensShadingMap.size());
+#endif
+        }
     }
     // Lens profile distortion as WarpRectilinear (OpcodeList3), under the
     // same rule: written exactly when the app's render undistorts. A frame the
