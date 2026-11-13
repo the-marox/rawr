@@ -30,16 +30,33 @@ fun CaptureTheme(content: @Composable () -> Unit) {
                 background = CaptureColors.Background,
                 surface = CaptureColors.Surface,
                 primary = CaptureColors.Accent,
+                onPrimary = androidx.compose.ui.graphics.Color.White,
+                primaryContainer = CaptureColors.Accent,
+                onPrimaryContainer = androidx.compose.ui.graphics.Color.White,
                 secondary = CaptureColors.AccentSoft,
-                surfaceContainerLow =
-                    androidx.compose.ui.graphics
-                        .Color(0xFF111315),
+                onSecondary = androidx.compose.ui.graphics.Color.White,
+                secondaryContainer = CaptureColors.Chip,
+                onSecondaryContainer = androidx.compose.ui.graphics.Color.White,
+                tertiary = CaptureColors.AccentSoft,
+                onTertiary = androidx.compose.ui.graphics.Color.White,
+                tertiaryContainer = CaptureColors.Chip,
+                onTertiaryContainer = androidx.compose.ui.graphics.Color.White,
+                surfaceVariant = CaptureColors.Chip,
+                onSurfaceVariant = CaptureColors.TextSecondary,
+                surfaceContainerLowest = CaptureColors.Background,
+                surfaceContainerLow = CaptureColors.Panel,
                 surfaceContainer =
                     androidx.compose.ui.graphics
-                        .Color(0xFF151719),
-                outlineVariant =
+                        .Color(0xFF161616),
+                surfaceContainerHigh = CaptureColors.Chip,
+                surfaceContainerHighest =
                     androidx.compose.ui.graphics
-                        .Color(0xFF35383C),
+                        .Color(0xFF262626),
+                outline =
+                    androidx.compose.ui.graphics
+                        .Color(0xFF5A5A5A),
+                outlineVariant = CaptureColors.Outline,
+                error = CaptureColors.Danger,
                 onBackground =
                     androidx.compose.ui.graphics
                         .Color(0xFFF4F4F4),

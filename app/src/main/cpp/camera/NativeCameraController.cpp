@@ -32,6 +32,7 @@
 #include "camera/CameraResultProcessor.h"
 #include "camera/CameraStartLadder.h"
 #include "camera/CameraWhiteBalanceControls.h"
+#include "camera/LensOpticalGroup.h"
 #include "camera/FullSizeSequence.h"
 #include "camera/SessionRecipe.h"
 #include "camera/VendorGatePreset.h"
@@ -254,7 +255,11 @@ struct NativeCameraController::Impl final : CameraEventSink {
     void publishProfileLocked() {
         control.capabilities.cameraProfileId = profile.id;
         control.capabilities.profileLenses.clear();
-        for (const auto& lens : profile.lenses) control.capabilities.profileLenses.emplace_back(lens.lensId, lens.lensId);
+        control.capabilities.profileLensGroups.clear();
+        for (const auto& lens : profile.lenses) {
+            control.capabilities.profileLenses.emplace_back(lens.lensId, lens.lensId);
+            control.capabilities.profileLensGroups.push_back(lensOpticalGroup(lens.cameraId, lens.physicalCameraId));
+        }
     }
 
     // Replaces the lens profile. Restarts the camera only when the running

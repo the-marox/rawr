@@ -77,6 +77,8 @@ internal data class NativeCameraUiSnapshot(
     val whiteBalanceRequestId: Long = 0L,
     /** Lenses of the native camera profile as (lensId, focal label); empty before the first snapshot. */
     val profileLenses: List<Pair<String, String>> = emptyList(),
+    /** Optical group per lens id (same physical optics); missing ids have no group. */
+    val profileLensGroups: Map<String, String> = emptyMap(),
     /** RAW frames reach the GPU through the slower CPU-copy path on this device/stream. */
     val rawCpuIngress: Boolean = false,
     /** HDR+ Bracketed post-shutter brackets armed / finished (monotonic counters). */
@@ -213,6 +215,15 @@ internal data class NativeCameraUiSnapshot(
                         val lens = lenses.optJSONObject(index) ?: continue
                         val id = lens.optString("id", "")
                         if (id.isNotBlank()) add(id to lens.optString("label", ""))
+                    }
+                },
+                profileLensGroups = buildMap {
+                    val lenses = j.optJSONArray("profileLenses") ?: return@buildMap
+                    for (index in 0 until lenses.length()) {
+                        val lens = lenses.optJSONObject(index) ?: continue
+                        val id = lens.optString("id", "")
+                        val group = lens.optString("group", "")
+                        if (id.isNotBlank() && group.isNotBlank()) put(id, group)
                     }
                 }
             )

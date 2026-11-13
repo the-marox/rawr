@@ -79,6 +79,8 @@ struct CameraControlCapabilities {
     // Active camera profile and its UI lenses as (lensId, label).
     std::string cameraProfileId;
     std::vector<std::pair<std::string, std::string>> profileLenses;
+    // Optical group per profileLenses entry (same order): lenses on the same physical optics.
+    std::vector<std::string> profileLensGroups;
 
     int32_t sensitivityMin = 0;
     int32_t sensitivityMax = 0;

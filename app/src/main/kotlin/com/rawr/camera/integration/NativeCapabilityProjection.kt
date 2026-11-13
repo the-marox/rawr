@@ -126,7 +126,9 @@ internal object NativeCapabilityProjection {
                 .also { it.add(WhiteBalanceMode.Auto) }
         val caps =
             CameraCapabilities(
-                lenses = s.profileLenses.map { (id, label) -> LensCapability(id, label.ifBlank { id }) }.ifEmpty { pendingLenses },
+                lenses = s.profileLenses.map { (id, label) ->
+                    LensCapability(id, label.ifBlank { id }, s.profileLensGroups[id].orEmpty())
+                }.ifEmpty { pendingLenses },
                 supportedExposureModes = supportedModes,
                 shutter =
                     DiscreteExposureCapability(

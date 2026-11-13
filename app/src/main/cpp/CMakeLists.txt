@@ -85,9 +85,19 @@ set(IMAGE_SCOPES_VULKAN_LIB vulkan CACHE STRING "Rawr Vulkan dispatch placeholde
 set(FCC_VULKAN_LIB vulkan CACHE STRING "Rawr Vulkan dispatch placeholder" FORCE)
 set(MONITORING_OVERLAYS_VULKAN_LINK vulkan CACHE STRING "Rawr Vulkan dispatch placeholder" FORCE)
 add_compile_definitions(VK_NO_PROTOTYPES)
-if(DEFINED RAWR_VERSION_NAME)
-  add_compile_definitions(RAWR_VERSION_NAME="${RAWR_VERSION_NAME}")
+# The version lives in a generated header, not a global -D: only the files that include
+# encoding/SoftwareName.h rebuild when it changes (and ccache keeps hitting for the rest).
+if(DEFINED RAWR_VERSION_FILE AND EXISTS "${RAWR_VERSION_FILE}")
+  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${RAWR_VERSION_FILE}")
+  file(READ "${RAWR_VERSION_FILE}" RAWR_VERSION_NAME)
+  string(STRIP "${RAWR_VERSION_NAME}" RAWR_VERSION_NAME)
 endif()
+if(NOT DEFINED RAWR_VERSION_NAME)
+  set(RAWR_VERSION_NAME "dev")
+endif()
+file(CONFIGURE OUTPUT "${CMAKE_BINARY_DIR}/generated/RawrVersion.h"
+     CONTENT "#pragma once\n#define RAWR_VERSION_NAME \"${RAWR_VERSION_NAME}\"\n" @ONLY)
+include_directories("${CMAKE_BINARY_DIR}/generated")
 add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:-include${CMAKE_CURRENT_SOURCE_DIR}/vulkan/VulkanDispatch.h>)
 
 find_library(ANDROID_LIB android REQUIRED)

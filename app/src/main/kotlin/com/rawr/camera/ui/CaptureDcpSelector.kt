@@ -26,11 +26,15 @@ internal fun LensAndDcpSelector(
     dcp: DcpQuickState?,
     onSelectDcp: (String?) -> Unit,
     enabled: Boolean = true,
-    onOpenLensSettings: (String) -> Unit = {}
+    onOpenLensSettings: (String) -> Unit = {},
+    /** Tele-Zoom-style lens buttons grouped by physical lens (compact layout); taller than 32 dp. */
+    grouped: Boolean = false
 ) {
-    Row(modifier.height(32.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(if (grouped) modifier.heightIn(min = 32.dp) else modifier.height(32.dp),
+        verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.weight(1f, fill = false)) {
-            LensSelector(state, dispatch, Modifier, enabled, onOpenLensSettings)
+            if (grouped) LensGroupSelector(state, dispatch, Modifier, enabled, onOpenLensSettings)
+            else LensSelector(state, dispatch, Modifier, enabled, onOpenLensSettings)
         }
         if (dcp != null && dcp.profiles.isNotEmpty()) {
             Box(Modifier.widthIn(max = 136.dp)) {

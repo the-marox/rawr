@@ -53,18 +53,18 @@ internal fun ViewfinderFixture(modifier: Modifier) {
             Brush.linearGradient(
                 colors =
                     listOf(
-                        Color(0xFF111820),
-                        Color(0xFF24313B),
-                        Color(0xFF56616A),
-                        Color(0xFF20282E),
-                        Color(0xFF101317)
+                        Color(0xFF141414),
+                        Color(0xFF2A2A2A),
+                        Color(0xFF5E5E5E),
+                        Color(0xFF222222),
+                        Color(0xFF111111)
                     ),
                 start = Offset.Zero,
                 end = Offset(size.width, size.height)
             )
         )
         drawCircle(
-            color = Color(0xFF59636C),
+            color = Color(0xFF616161),
             radius = size.minDimension * .10f,
             center = Offset(size.width * .68f, size.height * .28f)
         )

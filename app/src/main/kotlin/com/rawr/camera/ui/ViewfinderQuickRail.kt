@@ -152,11 +152,13 @@ private fun RailLayout(modifier: Modifier, content: @Composable () -> Unit) {
         val loose = constraints.copy(minWidth = 0, minHeight = 0, maxHeight = Constraints.Infinity)
         val placeables = measurables.map { it.measure(loose) }
         val ranks = measurables.mapIndexed { i, m -> (m.parentData as? RailRank)?.rank ?: i }
+        // Same gap as between the exposure columns, between chips and under the rail.
+        val gap = CaptureDimens.ControlGap.roundToPx()
         val shown = BooleanArray(placeables.size)
         var height = 0
         for (i in placeables.indices.sortedBy { ranks[it] }) {
-            if (height + placeables[i].height > constraints.maxHeight) break
-            height += placeables[i].height
+            if (height + placeables[i].height + gap > constraints.maxHeight) break
+            height += placeables[i].height + gap
             shown[i] = true
         }
         val width = placeables.filterIndexed { i, _ -> shown[i] }.maxOfOrNull { it.width } ?: 0
@@ -164,7 +166,7 @@ private fun RailLayout(modifier: Modifier, content: @Composable () -> Unit) {
             var y = height
             for (i in placeables.indices.reversed()) {
                 if (!shown[i]) continue
-                y -= placeables[i].height
+                y -= placeables[i].height + gap
                 placeables[i].place(width - placeables[i].width, y)
             }
         }
@@ -190,6 +192,7 @@ private fun RailChip(
             .height(StripDimens.ParamRowHeight)
             .alpha(if (enabled) 1f else .4f)
             .testTag(tag)
+            .viewfinderChip()
             .captureClickable(shape = CaptureTextRippleShape, enabled = enabled, role = Role.Button) {
                 haptics.selection()
                 onClick()

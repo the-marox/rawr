@@ -135,6 +135,8 @@ internal fun CompactExposureButton(
         locked = locked && !isManualMeter,
         testTag = testTag,
         semanticsDescription = compactExposureDescription(title, valueText, locked, isManualMeter),
+        scaleLabels = capability.candidates.map { it.displayLabel },
+        scaleIndex = if (dragging) gestureIndex else seedIndex,
         modifier = modifier
             .then(
                 if (isEv && zeroEvId != null && zeroEvIndex != null && !isManualMeter) {

@@ -53,7 +53,8 @@ std::string serializeCameraControlState(const CameraControlState& st) {
       << ",\"profileLenses\":[";
     for (size_t i = 0; i < c.profileLenses.size(); ++i)
         s << (i ? "," : "") << "{\"id\":" << quoted(c.profileLenses[i].first)
-          << ",\"label\":" << quoted(c.profileLenses[i].second) << '}';
+          << ",\"label\":" << quoted(c.profileLenses[i].second) << ",\"group\":"
+          << quoted(i < c.profileLensGroups.size() ? c.profileLensGroups[i] : std::string()) << '}';
     s << ']'
       << ",\"sensitivityMin\":" << c.sensitivityMin << ",\"sensitivityMax\":" << c.sensitivityMax
       << ",\"exposureTimeMinNs\":" << c.exposureTimeMinNs << ",\"exposureTimeMaxNs\":" << c.exposureTimeMaxNs

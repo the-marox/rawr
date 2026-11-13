@@ -148,17 +148,24 @@ private fun FilmCollapsedRow(
     onOpenParams: () -> Unit
 ) {
     val haptics = LocalCaptureHaptics.current
-    Row(
+    // Same five-column grid as the exposure row below: the look sits over WB, PARAMS over AF.
+    BoxWithConstraints(
         Modifier
             .fillMaxWidth()
-            .padding(bottom = 2.dp, end = StripDimens.TrailingInset),
-        horizontalArrangement = Arrangement.spacedBy(28.dp, Alignment.End),
+            .padding(horizontal = CaptureDimens.CompactParamRowEdgeInset)
+            .padding(bottom = CaptureDimens.ControlGap)
+    ) {
+    val cells = paramsCellWidths(maxWidth)
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(CaptureDimens.ControlGap, Alignment.End),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
             Modifier
-                .widthIn(max = 180.dp)
-                .height(CaptureDimens.CompactParamRowHeight)
+                .width(cells[3])
+                .height(StripDimens.ParamRowHeight)
+                .viewfinderChip()
                 .testTag(CaptureTestTags.FILM_STRIP_PROFILE)
                 .captureClickable(shape = CaptureTextRippleShape) {
                     haptics.selection()
@@ -171,20 +178,16 @@ private fun FilmCollapsedRow(
                         true
                     }
                 },
-            contentAlignment = Alignment.CenterEnd
+            contentAlignment = Alignment.Center
         ) {
-            Text(
-                if (modified) "$presetName •" else presetName,
-                color = if (modified) CaptureColors.AccentSoft else Color.White.copy(alpha = .95f),
-                fontFamily = CaptureMono,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 10.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                style = ViewfinderTextStyle
+            StripTwoLineItem(
+                valueText = if (modified) "$presetName •" else presetName,
+                valueColor = if (modified) CaptureColors.AccentSoft else Color.White.copy(alpha = .95f),
+                labelText = "FILM"
             )
         }
-        StripParamsEntry(onOpenParams)
+        StripParamsEntry(onOpenParams, Modifier.width(cells[4]).height(StripDimens.ParamRowHeight))
+    }
     }
 }
 
@@ -209,6 +212,7 @@ private fun FilmProfilesRow(
                 Box(
                     Modifier
                         .height(CaptureDimens.CompactParamRowHeight)
+                        .viewfinderChip(active = isSelected)
                         .testTag(CaptureTestTags.filmPreset(preset.id))
                         .captureClickable(shape = CaptureTextRippleShape) {
                             haptics.selection()
@@ -223,7 +227,7 @@ private fun FilmProfilesRow(
                                 onSelect(preset.id)
                                 true
                             }
-                        },
+                        }.padding(horizontal = 10.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
@@ -396,6 +400,7 @@ internal fun FilmConfigBlock(
                     Box(
                         Modifier
                             .height(CaptureDimens.CompactParamRowHeight)
+                            .viewfinderChip(active = active)
                             .testTag(CaptureTestTags.filmSubsection(section.key, sub.key))
                             .captureClickable(shape = CaptureTextRippleShape) {
                                 haptics.selection()
@@ -410,7 +415,7 @@ internal fun FilmConfigBlock(
                                     onSubsection(sub.key)
                                     true
                                 }
-                            },
+                            }.padding(horizontal = 10.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
@@ -449,6 +454,7 @@ internal fun FilmConfigBlock(
                     Box(
                         Modifier
                             .height(CaptureDimens.CompactParamRowHeight)
+                            .viewfinderChip(active = active)
                             .testTag(CaptureTestTags.filmSection(item.key))
                             .captureClickable(shape = CaptureTextRippleShape) {
                                 haptics.selection()
@@ -463,7 +469,7 @@ internal fun FilmConfigBlock(
                                     onSection(item.key)
                                     true
                                 }
-                            },
+                            }.padding(horizontal = 10.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
@@ -484,6 +490,7 @@ internal fun FilmConfigBlock(
                 Modifier
                     .widthIn(max = 120.dp)
                     .height(CaptureDimens.CompactParamRowHeight)
+                    .viewfinderChip()
                     .captureClickable(shape = CaptureTextRippleShape) {
                         haptics.selection()
                         onOpenProfiles()
@@ -494,7 +501,7 @@ internal fun FilmConfigBlock(
                             onOpenProfiles()
                             true
                         }
-                    },
+                    }.padding(horizontal = 8.dp),
                 contentAlignment = Alignment.CenterEnd
             ) {
                 Text(
@@ -543,6 +550,7 @@ private fun FilmFlagItem(
         modifier
             .widthIn(min = StripDimens.ParamMinWidth)
             .height(StripDimens.ParamRowHeight)
+            .viewfinderChip()
             .testTag(CaptureTestTags.filmParam(key))
             .systemGestureExclusion()
             .captureClickable(shape = CaptureTextRippleShape) {
@@ -586,6 +594,7 @@ private fun FilmDiscreteItem(
         modifier
             .widthIn(min = StripDimens.ParamMinWidth)
             .height(StripDimens.ParamRowHeight)
+            .viewfinderChip()
             .testTag(CaptureTestTags.filmParam(key))
             .captureClickable(shape = CaptureTextRippleShape) {
                 haptics.selection()
@@ -635,6 +644,7 @@ private fun FilmDiscreteOptionsRow(
                 Box(
                     Modifier
                         .height(StripDimens.ParamRowHeight)
+                        .viewfinderChip(active = isSelected)
                         .testTag(CaptureTestTags.filmDiscreteOption(dropdownKey, index))
                         .captureClickable(shape = CaptureTextRippleShape) {
                             haptics.selection()
@@ -648,7 +658,7 @@ private fun FilmDiscreteOptionsRow(
                                 onSelect(index)
                                 true
                             }
-                        },
+                        }.padding(horizontal = 10.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(

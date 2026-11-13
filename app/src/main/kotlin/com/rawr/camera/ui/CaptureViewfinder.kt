@@ -55,7 +55,7 @@ internal fun CaptureViewfinder(
     val haptics = LocalCaptureHaptics.current
     Box(
         modifier
-            .background(Color(0xFF263039))
+            .background(Color(0xFF1E1E1E))
             .testTag(CaptureTestTags.VIEWFINDER)
             .semantics { contentDescription = "Camera viewfinder" },
         contentAlignment = Alignment.Center
@@ -203,6 +203,7 @@ internal fun CaptureViewfinder(
             )
             // One status pill for every capture wait, in one place: moving it
             // while it fades out left an empty pill behind.
+            ScrubReadoutOverlay(Modifier.align(Alignment.TopCenter).padding(top = 72.dp))
             CaptureStatusNotice(
                 longExposure = state.longExposure,
                 holdActive = state.bracketHoldActive,

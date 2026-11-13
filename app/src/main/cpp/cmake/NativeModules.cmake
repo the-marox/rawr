@@ -126,6 +126,7 @@ rawrcam_module(camera
   SOURCES
     camera/CameraControlSurface.cpp
     camera/NativeCameraController.cpp
+    camera/LensOpticalGroup.cpp
     camera/CameraDeviceSession.cpp
     camera/CameraCallbacks.cpp
     camera/CameraRequestPipeline.cpp

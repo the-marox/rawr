@@ -26,6 +26,9 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
@@ -150,17 +153,23 @@ private fun TonemapCollapsedRow(
     onOpenParams: () -> Unit
 ) {
     val haptics = LocalCaptureHaptics.current
-    Row(
+    // Same five-column grid as the exposure row below: the look sits over WB, PARAMS over AF.
+    BoxWithConstraints(
         Modifier
             .fillMaxWidth()
-            .padding(bottom = 2.dp, end = StripDimens.TrailingInset),
-        horizontalArrangement = Arrangement.spacedBy(28.dp, Alignment.End),
+            .padding(horizontal = CaptureDimens.CompactParamRowEdgeInset)
+            .padding(bottom = CaptureDimens.ControlGap)
+    ) {
+    val cells = paramsCellWidths(maxWidth)
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(CaptureDimens.ControlGap, Alignment.End),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
             Modifier
-                .widthIn(max = 180.dp)
-                .height(CaptureDimens.CompactParamRowHeight)
+                .width(cells[3])
+                .height(StripDimens.ParamRowHeight)
                 .testTag(CaptureTestTags.TONEMAP_STRIP_PROFILE)
                 .captureClickable(shape = CaptureTextRippleShape) {
                     haptics.selection()
@@ -172,21 +181,20 @@ private fun TonemapCollapsedRow(
                         onOpenProfiles()
                         true
                     }
-                },
-            contentAlignment = Alignment.CenterEnd
+                }
+                .viewfinderChip(),
+            contentAlignment = Alignment.Center
         ) {
-            Text(
-                if (modified) "$profileLabel •" else profileLabel,
-                color = if (modified) CaptureColors.AccentSoft else Color.White.copy(alpha = .95f),
-                fontFamily = CaptureMono,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 10.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                style = ViewfinderTextStyle
+            StripTwoLineItem(
+                valueText = if (modified) "$profileLabel •" else profileLabel,
+                valueColor = if (modified) CaptureColors.AccentSoft else Color.White.copy(alpha = .95f),
+                labelText = "LOOK"
             )
         }
-        if (paramsEnabled) StripParamsEntry(onOpenParams)
+        if (paramsEnabled) {
+            StripParamsEntry(onOpenParams, Modifier.width(cells[4]).height(StripDimens.ParamRowHeight))
+        }
+    }
     }
 }
 
@@ -211,6 +219,7 @@ private fun TonemapProfilesRow(
                 Box(
                     Modifier
                         .height(CaptureDimens.CompactParamRowHeight)
+                        .viewfinderChip(active = isSelected)
                         .testTag(CaptureTestTags.renderProfile(option.id.key))
                         .captureClickable(shape = CaptureTextRippleShape, enabled = !profiles.locked) {
                             haptics.selection()
@@ -226,7 +235,7 @@ private fun TonemapProfilesRow(
                                 onSelect(option.id)
                                 true
                             }
-                        },
+                        }.padding(horizontal = 10.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
@@ -259,10 +268,11 @@ private fun TonemapParamsRow(
         Modifier
             .fillMaxWidth()
             .padding(horizontal = CaptureDimens.CompactParamRowEdgeInset)
-            .padding(bottom = 2.dp)
+            .padding(bottom = CaptureDimens.ControlGap)
     ) {
         val widths = paramsCellWidths(maxWidth)
         val sliderWidths = widths.subList(1, 4)
+        val gapPx = with(LocalDensity.current) { CaptureDimens.ControlGap.toPx() }
         Row(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(CaptureDimens.ControlGap),
@@ -278,33 +288,36 @@ private fun TonemapParamsRow(
                 horizontalArrangement = Arrangement.spacedBy(CaptureDimens.ControlGap)
             ) {
                 itemsIndexed(TonemapCatalog.all, key = { _, item -> item.jsonKey }) { index, descriptor ->
-                    val cellModifier = Modifier.width(sliderWidths[index % sliderWidths.size])
-                    // Divider where the controls move to another stage of the render.
+                    // Divider where the controls move to another stage of the render, drawn in the gap so
+                    // the cells stay on the exposure row's columns.
                     val startsGroup = index > 0 && TonemapCatalog.all[index - 1].group != descriptor.group
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(CaptureDimens.ControlGap)
-                    ) {
-                        if (startsGroup) {
-                            Box(
+                    val cellModifier = Modifier
+                        .width(sliderWidths[index % sliderWidths.size])
+                        .then(
+                            if (startsGroup) {
+                                Modifier.drawBehind {
+                                    drawLine(
+                                        Color.White.copy(alpha = .35f),
+                                        Offset(-gapPx / 2f, size.height * .25f),
+                                        Offset(-gapPx / 2f, size.height * .75f),
+                                        strokeWidth = 1.dp.toPx()
+                                    )
+                                }
+                            } else {
                                 Modifier
-                                    .width(1.dp)
-                                    .height(StripDimens.ParamRowHeight / 2)
-                                    .background(Color.White.copy(alpha = .25f))
-                            )
-                        }
-                        if (descriptor.param == null) {
-                            RenderExposureParamItem(descriptor, state, dispatch, cellModifier)
-                        } else {
-                            TonemapParamItem(descriptor, state, dispatch, cellModifier)
-                        }
+                            }
+                        )
+                    if (descriptor.param == null) {
+                        RenderExposureParamItem(descriptor, state, dispatch, cellModifier)
+                    } else {
+                        TonemapParamItem(descriptor, state, dispatch, cellModifier)
                     }
                 }
             }
             Box(
                 Modifier
                     .width(widths[4])
-                    .height(CaptureDimens.CompactParamRowHeight)
+                    .height(StripDimens.ParamRowHeight)
                     .captureClickable(shape = CaptureTextRippleShape) {
                         haptics.selection()
                         onOpenProfiles()
@@ -315,18 +328,14 @@ private fun TonemapParamsRow(
                             onOpenProfiles()
                             true
                         }
-                    },
+                    }
+                    .viewfinderChip(),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    if (modified) "$profileLabel •" else profileLabel,
-                    color = if (modified) CaptureColors.AccentSoft else Color.White.copy(alpha = .95f),
-                    fontFamily = CaptureMono,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 10.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    style = ViewfinderTextStyle
+                StripTwoLineItem(
+                    valueText = if (modified) "$profileLabel •" else profileLabel,
+                    valueColor = if (modified) CaptureColors.AccentSoft else Color.White.copy(alpha = .95f),
+                    labelText = "LOOK"
                 )
             }
         }

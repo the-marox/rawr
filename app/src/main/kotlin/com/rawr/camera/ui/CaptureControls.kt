@@ -112,14 +112,15 @@ internal fun CaptureControls(
             LensAndDcpSelector(
                 dcp = dcp,
                 onSelectDcp = onSelectDcp,
+                grouped = true,
                 state = state,
                 dispatch = dispatch,
                 onOpenLensSettings = onOpenLensSettings,
                 enabled = !recordingLock,
-                modifier = Modifier.padding(top = 2.dp)
+                modifier = Modifier.padding(top = 10.dp)
             )
             Row(
-                Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 4.dp),
+                Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
@@ -211,7 +212,7 @@ private fun PhotoLookToggles(
     onOpenMultiframeSettings: () -> Unit
 ) {
     Row(
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         CompactSidePill(
@@ -258,20 +259,42 @@ internal fun LensSelector(
     dispatch: CaptureDispatch,
     modifier: Modifier,
     enabled: Boolean = true,
-    onOpenLensSettings: (String) -> Unit = {}
+    onOpenLensSettings: (String) -> Unit = {},
+    /** Boxed two-line buttons (Tele Zoom style); false keeps the bare text row (classic layout). */
+    buttons: Boolean = false
 ) {
     val haptics = LocalCaptureHaptics.current
     // Scrolls sideways when a long lens list exceeds the screen width.
     Row(
         modifier.horizontalScroll(androidx.compose.foundation.rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(3.dp)
+        horizontalArrangement = Arrangement.spacedBy(if (buttons) 6.dp else 3.dp)
     ) {
         state.capabilities.lenses.forEach { lens ->
             val lensSelected = state.selectedLensId == lens.id
+            val buttonShape = RoundedCornerShape(10.dp)
             Box(
                 Modifier
-                    .widthIn(min = 32.dp)
-                    .height(28.dp)
+                    .widthIn(min = if (buttons) 44.dp else 32.dp)
+                    .height(if (buttons) 44.dp else 28.dp)
+                    .then(
+                        if (buttons) {
+                            Modifier
+                                .background(
+                                    if (lensSelected) {
+                                        CaptureColors.Accent.copy(alpha = if (enabled) 1f else .45f)
+                                    } else {
+                                        Color(0xFF141414)
+                                    },
+                                    buttonShape
+                                ).border(
+                                    1.dp,
+                                    if (lensSelected) Color.Transparent else Color(0xFF262626),
+                                    buttonShape
+                                )
+                        } else {
+                            Modifier
+                        }
+                    )
                     .testTag(CaptureTestTags.lens(lens.id))
                     .then(
                         if (enabled) {
@@ -297,9 +320,41 @@ internal fun LensSelector(
                         role = Role.RadioButton
                         selected = lensSelected
                         if (!enabled) disabled()
-                    },
+                    }.then(if (buttons) Modifier.padding(horizontal = 8.dp) else Modifier),
                 contentAlignment = Alignment.Center
             ) {
+                if (buttons) {
+                    // "3.2x 50MP": the zoom on top, the rest below in small mono.
+                    val name = lens.displayName.trim()
+                    val split = name.indexOf(' ')
+                    val top = if (split > 0) name.substring(0, split) else name
+                    val bottom = if (split > 0) name.substring(split + 1).trim() else ""
+                    val dim = if (enabled) 1f else .5f
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.uprightInLandscape(state.orientation)
+                    ) {
+                        Text(
+                            top,
+                            color = (if (lensSelected) Color.White else Color.White.copy(alpha = .9f)).copy(alpha = dim),
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp,
+                            lineHeight = 16.sp,
+                            maxLines = 1
+                        )
+                        if (bottom.isNotEmpty()) {
+                            Text(
+                                bottom,
+                                color = (if (lensSelected) Color(0xFFFFD6DB) else Color(0xFF8C8C8C)).copy(alpha = dim),
+                                fontFamily = CaptureMono,
+                                fontSize = 9.sp,
+                                lineHeight = 11.sp,
+                                letterSpacing = .5.sp,
+                                maxLines = 1
+                            )
+                        }
+                    }
+                } else {
                 Text(
                     lens.displayName,
                     color =
@@ -315,6 +370,7 @@ internal fun LensSelector(
                     fontSize = 10.sp,
                     modifier = Modifier.uprightInLandscape(state.orientation)
                 )
+                }
             }
         }
     }
@@ -564,7 +620,7 @@ internal fun Thumbnail(state: CaptureUiState, imageUri: Uri?, onClick: () -> Uni
                 .fillMaxSize()
                 .testTag(CaptureTestTags.THUMBNAIL)
                 .clip(shape)
-                .background(Color(0xFF65717A), shape)
+                .background(Color(0xFF6E6E6E), shape)
                 .border(width = borderWidth, color = borderColor, shape = shape)
                 .captureCombinedClickable(shape = shape, onClick = { if (imageUri != null) onClick() }, onLongClickLabel = "Open Renderer", onLongClick = onLongClick)
                 .semantics {

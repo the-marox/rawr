@@ -4,20 +4,25 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 
+// Leica palette (matches Tele Zoom): pure black, neutral greys, Leica red as the only accent.
 internal object CaptureColors {
-    val Background = Color(0xFF020202)
+    val Background = Color(0xFF000000)
     val Surface = Color(0xFF080808)
-    val Panel = Color(0xFF101010)
-    val Accent = Color(0xFFE06A61)
-    val AccentSoft = Color(0xFFF2C7AA)
+    val Panel = Color(0xFF111111)
+    val Accent = Color(0xFFE2001A)
+    // Values changed from default / selected: a lighter Leica red that stays readable as small text on black.
+    val AccentSoft = Color(0xFFFF4D5E)
+    val Chip = Color(0xFF1E1E1E)
+    val Outline = Color(0xFF2A2A2A)
+    val TextSecondary = Color(0xFFA6A6A6)
     val Danger = Color(0xFFFF6961)
     val Success = Color(0xFF65D17A)
 
-    val GlassTop = Color(0xFF171A1C).copy(alpha = .42f)
-    val GlassMiddle = Color(0xFF090B0D).copy(alpha = .76f)
-    val GlassBottom = Color(0xFF020304).copy(alpha = .88f)
+    val GlassTop = Color(0xFF181818).copy(alpha = .42f)
+    val GlassMiddle = Color(0xFF0A0A0A).copy(alpha = .76f)
+    val GlassBottom = Color(0xFF030303).copy(alpha = .88f)
     val GlassBorderActive = Accent.copy(alpha = .30f)
-    val ViewfinderPanel = Color(0xFF07090B).copy(alpha = .66f)
+    val ViewfinderPanel = Color(0xFF080808).copy(alpha = .66f)
 
     val Line = Color.White.copy(alpha = .085f)
     val StrongLine = Color.White.copy(alpha = .14f)

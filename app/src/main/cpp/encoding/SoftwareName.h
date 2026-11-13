@@ -1,7 +1,10 @@
 #pragma once
 
 // EXIF/TIFF Software tag shared by capture and Renderer outputs. The
-// version comes from Gradle's versionName via CMake.
+// version comes from Gradle's versionName via CMake (generated RawrVersion.h).
+#if __has_include("RawrVersion.h")
+#include "RawrVersion.h"
+#endif
 #ifndef RAWR_VERSION_NAME
 #define RAWR_VERSION_NAME "dev"
 #endif

@@ -1,6 +1,7 @@
 package com.rawr.camera.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.Orientation as GestureOrientation
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
@@ -71,7 +72,8 @@ internal fun StripParamsEntry(onOpen: () -> Unit, modifier: Modifier = Modifier)
                     true
                 }
             }
-            .padding(horizontal = 4.dp),
+            .viewfinderChip()
+            .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center
     ) {
@@ -113,6 +115,7 @@ internal fun StripBackButton(onBack: () -> Unit, modifier: Modifier = Modifier) 
     Box(
         modifier
             .size(width = 32.dp, height = CaptureDimens.CompactParamRowHeight)
+            .viewfinderChip()
             .testTag(CaptureTestTags.FILM_STRIP_BACK)
             .captureClickable(shape = CaptureTextRippleShape) {
                 haptics.selection()
@@ -236,6 +239,20 @@ internal fun StripNumericItem(
         isDefault
     }
     val valueColor = if (!shownDefault) CaptureColors.AccentSoft else Color.White.copy(alpha = .95f)
+    if (dragging) {
+        androidx.compose.runtime.SideEffect {
+            // Scale ticks ~1/8 of the range apart (whole steps), clamped to the range.
+            val span = (kotlin.math.round(((max - min) / 8f) / step) * step).coerceAtLeast(step)
+            val labels = (-3..3).mapNotNull { k ->
+                val v = gestureValue + k * span
+                if (v < min - step / 2f || v > max + step / 2f) null else k to format(v.coerceIn(min, max))
+            }
+            ScrubReadout.publish(
+                testTag, shortLabel, shownDisplay,
+                labels.map { it.second }, labels.indexOfFirst { it.first == 0 }
+            )
+        }
+    }
 
     val dragState = rememberDraggableState { delta ->
         // Vertical orientation reports down-positive; invert so up increases.
@@ -259,6 +276,7 @@ internal fun StripNumericItem(
         modifier
             .widthIn(min = StripDimens.ParamMinWidth)
             .height(StripDimens.ParamRowHeight)
+            .viewfinderChip(active = dragging)
             .testTag(testTag)
             .systemGestureExclusion()
             .captureCombinedClickable(
@@ -281,6 +299,7 @@ internal fun StripNumericItem(
                 },
                 onDragStopped = {
                     dragging = false
+                    if (ScrubReadout.activeTag == testTag) ScrubReadout.activeTag = null
                     latestOnDragStopped()
                 }
             ).semantics {
@@ -323,10 +342,19 @@ internal fun CompactParamShell(
     locked: Boolean,
     testTag: String,
     semanticsDescription: String,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    scaleLabels: List<String> = emptyList(),
+    scaleIndex: Int = -1
 ) {
     val contentColor = if (locked) CaptureColors.Accent else Color.White.copy(alpha = .62f)
     val valueColor = if (locked) CaptureColors.AccentSoft else Color.White.copy(alpha = .95f)
+    val scrubbing = ScrubReadout.activeTag == testTag
+    if (scrubbing) {
+        androidx.compose.runtime.SideEffect {
+            val (slice, at) = scaleAround(scaleLabels, scaleIndex)
+            ScrubReadout.publish(testTag, title, valueText, slice, at)
+        }
+    }
     // Bare instrument styling (mirrors LensSelector): no card, no border —
     // icon + text only, accent carries the locked state.
     // Gesture exclusion keeps edge columns (ISO left, Focus right) scrubbing
@@ -335,6 +363,8 @@ internal fun CompactParamShell(
         modifier
             .testTag(testTag)
             .systemGestureExclusion()
+            .observeScrub(testTag)
+            .viewfinderChip(active = scrubbing)
             .semantics { contentDescription = semanticsDescription },
         contentAlignment = Alignment.Center
     ) {
@@ -399,13 +429,15 @@ internal fun CompactSidePill(
     onLongClickLabel: String? = null
 ) {
     val haptics = LocalCaptureHaptics.current
-    val contentColor = if (active) CaptureColors.Accent else Color.White.copy(alpha = .55f)
-    // Bare toggle styling (mirrors LensSelector): icon + label only, no card.
-    // Generous invisible touch target retained.
+    val contentColor = if (active) Color.White else Color.White.copy(alpha = .7f)
+    // Boxed toggle (matches the lens buttons): dark when off, solid Leica red when on.
+    val shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp)
     Box(
         modifier
-            .widthIn(min = CaptureDimens.CompactPillMinWidth)
-            .height(CaptureDimens.CompactPillHeight)
+            .widthIn(min = 52.dp)
+            .height(52.dp)
+            .background(if (active) CaptureColors.Accent else Color(0xFF141414), shape)
+            .border(1.dp, if (active) CaptureColors.Accent else Color(0xFF262626), shape)
             .testTag(testTag)
             .captureCombinedClickable(
                 shape = CapturePillRippleShape,
@@ -445,7 +477,7 @@ internal fun CompactSidePill(
                 color = contentColor,
                 fontFamily = CaptureMono,
                 fontWeight = FontWeight.Bold,
-                fontSize = 7.sp,
+                fontSize = 8.sp,
                 letterSpacing = .5.sp,
                 maxLines = 1
             )

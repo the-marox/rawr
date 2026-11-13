@@ -2,7 +2,20 @@
   <img src="docs/assets/rawr-logo.png" alt="Rawr logo" width="200">
 </p>
 
-# Rawr
+# Rawr 17U
+
+> **Rawr 17U - unofficial modified version of Rawr.**
+> Based on Rawr 0.5.1 by adityawarmanfw (GPL-3.0-only, see `NOTICE` and `LICENSE`):
+> [github.com/adityawarmanfw/rawr](https://github.com/adityawarmanfw/rawr)
+>
+> Modified by Paulo Gonçalves ([@utalpt](https://github.com/utalpt)), November 2026. Not affiliated with
+> or endorsed by the original author. Changes in this version:
+> - 50 MP RAW on the Xiaomi 17 Ultra main, tele and ultra-wide (binned viewfinder with AF, full-size stills),
+>   via a stream use case set from the NDK - see [`docs/xiaomi-17u-50mp.md`](docs/xiaomi-17u-50mp.md).
+> - Xiaomi HAL workarounds (lost companion buffers on stills, late viewfinder results).
+> - Lens buttons grouped by physical lens with a variant picker; translucent viewfinder controls with a scrub
+>   readout; Leica-style palette.
+> - Release build installs as `x17u.rawr.camera` ("Rawr 17U") next to the official app.
 
 An Android RAW based camera application with GPU image processing, film simulation, JPEG/DNG
 capture, video recording, and DNG renderer.

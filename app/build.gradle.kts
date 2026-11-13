@@ -13,6 +13,15 @@ val debugCommit = providers.exec {
 }.standardOutput.asText.map { it.trim() }
 val debugVersionName = debugCommit.map { "debug-$it" }
 
+// The debug native build reads its version from this file instead of a -D argument: a per-commit
+// cmake argument changes AGP's .cxx configuration hash and every compile command, so ccache never
+// hits. Rewritten only when the commit changes; CMake re-reads it (CMAKE_CONFIGURE_DEPENDS).
+val debugNativeVersionFile = layout.buildDirectory.file("rawr-native-version/debug.txt").get().asFile
+debugNativeVersionFile.parentFile.mkdirs()
+debugVersionName.get().let { name ->
+    if (!debugNativeVersionFile.exists() || debugNativeVersionFile.readText() != name) debugNativeVersionFile.writeText(name)
+}
+
 // The native asset is the canonical input; package it without a second tracked copy.
 abstract class FilmAssetsTask : DefaultTask() {
     @get:InputFile abstract val sourceFile: RegularFileProperty
@@ -28,9 +37,16 @@ val filmAssets = tasks.register<FilmAssetsTask>("generateFilmAssets") {
     sourceFile.set(rootProject.layout.projectDirectory.file("native/spektrafilm/assets/SpektraHanatos2025Spectra.f32"))
     outputDirectory.set(layout.buildDirectory.dir("generated/filmAssets"))
 }
+// Rawr 17U: the release build installs as its own app, next to the official Rawr (com.rawr.camera,
+// signed by its author) and Rawr Debug. Code and namespace stay com.rawr.camera.
+val releaseApplicationId = "x17u.rawr.camera"
+
 androidComponents {
     onVariants(selector().withBuildType("debug")) { variant ->
         variant.outputs.forEach { it.versionName.set(debugVersionName) }
+    }
+    onVariants(selector().withBuildType("release")) { variant ->
+        variant.applicationId.set(releaseApplicationId)
     }
     onVariants { variant ->
         variant.sources.assets?.addGeneratedSourceDirectory(filmAssets, FilmAssetsTask::outputDirectory)
@@ -107,15 +123,28 @@ android {
         }
     }
 
+    // Fixed debug key (root debug.keystore, standard debug credentials): every CI
+    // runner would otherwise sign with a fresh key and block installing updates.
+    if (rootProject.file("debug.keystore").exists()) {
+        signingConfigs.getByName("debug") {
+            storeFile = rootProject.file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
         debug {
             applicationIdSuffix = ".debug"
             resValue("string", "app_name", "Rawr Debug")
             // Native EXIF Software tag; must match BuildConfig.VERSION_NAME.
-            externalNativeBuild { cmake { arguments += "-DRAWR_VERSION_NAME=${debugVersionName.get()}" } }
+            externalNativeBuild { cmake { arguments += "-DRAWR_VERSION_FILE=${debugNativeVersionFile.absolutePath}" } }
         }
         release {
-            externalNativeBuild { cmake { arguments += "-DRAWR_VERSION_NAME=${defaultConfig.versionName}" } }
+            resValue("string", "app_name", "Rawr 17U")
+            versionNameSuffix = "-17u"
+            externalNativeBuild { cmake { arguments += "-DRAWR_VERSION_NAME=${defaultConfig.versionName}-17u" } }
             isDebuggable = false
             isMinifyEnabled = true
             isShrinkResources = true

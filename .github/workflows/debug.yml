@@ -20,6 +20,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The NDK download (~1 GB) dominates setup: keep it between runs.
+      - uses: actions/cache@v4
+        with:
+          path: /usr/local/lib/android/sdk/ndk/29.0.14206865
+          key: ndk-29.0.14206865
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -36,11 +42,29 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Unit tests
-        run: ./gradlew :app:testDebugUnitTest
+      # Compiler cache for the native code: unchanged C++ files are not rebuilt.
+      - uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: native-arm64
+          max-size: 2G
 
-      - name: Assemble debug APK
-        run: ./gradlew :app:assembleDebug
+      # One Gradle run for both (shared configuration). Add [skip tests] to the
+      # commit message to only assemble.
+      - name: Unit tests + assemble debug APK
+        env:
+          CMAKE_C_COMPILER_LAUNCHER: ccache
+          CMAKE_CXX_COMPILER_LAUNCHER: ccache
+          # Hash the compiler by content (the NDK comes from a cache) and paths relative to the checkout.
+          CCACHE_COMPILERCHECK: content
+          CCACHE_BASEDIR: ${{ github.workspace }}
+          CCACHE_NOHASHDIR: "true"
+          SKIP_TESTS: ${{ contains(github.event.head_commit.message, '[skip tests]') }}
+        run: |
+          if [ "$SKIP_TESTS" = "true" ]; then
+            ./gradlew :app:assembleDebug
+          else
+            ./gradlew :app:testDebugUnitTest :app:assembleDebug
+          fi
 
       - uses: actions/upload-artifact@v4
         with:

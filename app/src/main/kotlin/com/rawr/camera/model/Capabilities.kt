@@ -1,6 +1,7 @@
 package com.rawr.camera.model
 
-data class LensCapability(val id: String, val displayName: String) {
+/** [group]: lenses on the same physical optics share it (blank: ungrouped). */
+data class LensCapability(val id: String, val displayName: String, val group: String = "") {
     init {
         require(id.isNotBlank()) { "Lens id must not be blank" }
         require(displayName.isNotBlank()) { "Lens display name must not be blank" }
