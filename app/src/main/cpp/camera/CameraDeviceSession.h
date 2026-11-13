@@ -142,6 +142,7 @@ class CameraDeviceSession final {
     bool profileCompanionTargeted_ = true;
     bool captureStillTemplate_ = true;
     bool stopViewfinderForPhotos_ = false;
+    bool stillSkipsViewfinderRaw_ = false;
     AImageReader* auxJpegReader_ = nullptr;
     bool auxJpegConfigured_ = false;
     ACameraMetadata* characteristics_ = nullptr;

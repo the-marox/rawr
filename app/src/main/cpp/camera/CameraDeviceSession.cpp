@@ -586,6 +586,9 @@ bool CameraDeviceSession::createSession(ANativeWindow* window, const std::option
     const uint32_t rawWidth = selected ? selected->stream.width : 0, rawHeight = selected ? selected->stream.height : 0;
     profileCompanionTargeted_ = !selected || selected->companionTargeted;
     stopViewfinderForPhotos_ = selected && selected->stopViewfinderForPhotos;
+    // Block-CFA full-size stills (Xiaomi 200 MP): the sensor reads out full size, so the HAL cannot also fill the
+    // binned RAW for that request; asking for it stalls the viewfinder for seconds. Still = photo + companion.
+    stillSkipsViewfinderRaw_ = selected && selected->photoStream && selected->sensorLayoutBlock > 1;
     captureStillTemplate_ = recipe.captureStillTemplate;
     const bool companionStream = recipe.companion.has_value();
     const auto companionSize = recipe.companion ? recipe.companion->size : std::nullopt;
@@ -959,7 +962,7 @@ bool CameraDeviceSession::captureFullSize(CameraRequestPipeline& pipeline, const
     CameraRequest* const base = owned.get();
     if (!ok(created) || !base) return false;
     if (control.capabilities.frameRate > 0 && !ok(pipeline.applySessionCadence(base, control))) return false;
-    if (!ok(base->addTarget(rawWindow_))) return false;
+    if (!stillSkipsViewfinderRaw_ && !ok(base->addTarget(rawWindow_))) return false;
     // A profile companion rides on every request of its mode, stills included.
     if (companionFromProfile_ && profileCompanionTargeted_ && companionWindow_ && !ok(base->addTarget(companionWindow_)))
         return false;
