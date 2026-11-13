@@ -436,3 +436,7 @@ set_source_files_properties(encoding/jpeg/JpegCaptureWriter.cpp PROPERTIES COMPI
 # allocation/copy/serialization paths in device Debug builds too.
 set_source_files_properties(capture/persistence/BurstJob.cpp capture/persistence/CaptureJob.cpp
   PROPERTIES COMPILE_OPTIONS "$<$<CONFIG:Debug>:-O2>")
+
+# Still block-CFA remosaic (header-only, inlined here): 200 MP passes over 400 MB of pixels.
+set_source_files_properties(capture/single/SingleShotSlot.cpp capture/single/SingleFrameCaptureAcquisition.cpp
+  PROPERTIES COMPILE_OPTIONS "$<$<CONFIG:Debug>:-O2>")
