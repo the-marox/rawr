@@ -1,4 +1,5 @@
 #include "capture/multiframe/mfsr/MfsrCaptureJob.h"
+#include "diagnostics/timing/CaptureStageTimer.h"
 
 #include <android/log.h>
 #include <unistd.h>
@@ -16,7 +17,7 @@
 #include <thread>
 #include <utility>
 
-#include "capture/multiframe/BracketExposure.h"
+#include "capture/multiframe/MergeExposure.h"
 #include "capture/multiframe/MergeArenaEstimate.h"
 #include "capture/multiframe/MultiframeDescription.h"
 #include "capture/multiframe/MultiframeQueueHelpers.h"
@@ -59,9 +60,10 @@ namespace rawrcam::capture::multiframe {
 namespace {
 constexpr const char* kTag = "RawrCamNative";
 // Whole-frame merge window. The arena is laid out for the window, so this
-// threshold bounds the per-window arena (~3.40 GiB HDR+ / ~5.59 GiB Wronski at
+// threshold bounds the per-window arena (~3.40 GiB HDR+ / ~3.4 GiB Rexture at
 // 56 MP, ~0.77 / ~1.26 GiB at 12.5 MP). It is not a memory budget by itself.
 constexpr std::uint64_t kStripMergePixels = 56'000'000;
+static_assert(kRextureMaxPixels >= kStripMergePixels, "a strip window must fit a Rexture merge");
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, kTag, __VA_ARGS__)
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, kTag, __VA_ARGS__)
 
@@ -85,6 +87,7 @@ std::uint64_t readMemAvailableBytes() {
 
 void MfsrCaptureJob::run() noexcept {
     const std::uint64_t requestId = work_->requestId;
+    diagnostics::CaptureStageTimer jobTiming("burst_process_and_outputs", requestId);
     const std::string baseName = work_->baseDng.displayName, mergedName = work_->mergedDng.displayName,
                       jpegName = work_->mergedJpeg.output.displayName;
     const bool wantBase = work_->baseDng.outputFd.valid(), wantMerged = work_->mergedDng.outputFd.valid(),
@@ -116,6 +119,14 @@ void MfsrCaptureJob::runStages(Published& published) {
     auto& work = work_;
     const std::uint64_t requestId = work->requestId;
     auto job = std::move(work->capture);
+    // Merging on the live frames while the journal is written: the capture (and its ring pins) must outlive the
+    // journal writer, so wait for it on every exit path, before `job` goes.
+    struct DurableGuard {
+        std::function<void()> wait;
+        ~DurableGuard() {
+            if (wait) wait();
+        }
+    } durableGuard{work->awaitDurable};
     auto baseDng = std::move(work->baseDng);
     auto mergedDng = std::move(work->mergedDng);
     auto mergedJpeg = std::move(work->mergedJpeg);
@@ -126,16 +137,19 @@ void MfsrCaptureJob::runStages(Published& published) {
                                                  : std::vector<StripWindow>{};
     const bool stripMode = strips.size() > 1;
     const bool jpegRequested = work->jpegRequested && !stripMode;
+    // Rexture JPEG from its own RGB (setting "JPEG demosaic: Rexture native"); the DNG is the mosaic either way.
+    const bool nativeRgb = work->tuning.mergeAlgorithm == kMergeAlgorithmRexture && jpegRequested &&
+                           mergedJpeg.develop.multiframeNativeRgb;
     const bool dumpRzslRequested = work->dumpRzslRequested;
     {
         // Pre-merge footprint: the arena grows with the window geometry, and
-        // HDR+ Quality/Bracketed keep every journaled frame resident (Wronski
+        // HDR+ Quality keeps every journaled frame resident (Rexture
         // and HDR+ stream one companion). Logged so a device trace shows which
         // side of the limit a failed burst ran on.
         const std::uint32_t mergeRows = stripMode ? strips.front().rows : ctx.rawHeight;
-        const std::uint64_t arenaEstimate = estimateMergeArenaBytes(ctx.rawWidth, mergeRows);
+        const std::uint64_t arenaEstimate = estimateMergeArenaBytes(ctx.rawWidth, mergeRows, work->tuning.mergeAlgorithm);
         const std::uint64_t frameBytes = std::uint64_t(ctx.rawWidth) * mergeRows * sizeof(std::uint16_t);
-        const std::size_t residentFrames = work->tuning.mergeAlgorithm == 2u || work->tuning.mergeAlgorithm == 3u
+        const std::size_t residentFrames = work->tuning.mergeAlgorithm == 2u
                                                ? job->frames.size()
                                                : std::min<std::size_t>(2u, job->frames.size());
         const std::uint64_t avail = readMemAvailableBytes();
@@ -145,47 +159,13 @@ void MfsrCaptureJob::runStages(Published& published) {
              double(arenaEstimate) / (1024.0 * 1024.0),
              double(frameBytes * residentFrames) / (1024.0 * 1024.0), double(avail) / (1024.0 * 1024.0));
     }
+    // Both merges work on the RAW grid.
     const auto tuning = [&] {
-        // Super-resolution output must stay within the GPU's 2D image limit
-        // (large sensors at the 1.386x maximum would exceed it).
         auto t = work->tuning;
-        const float maxDimension = static_cast<float>(geometry::RawGeometryLimits{}.maxDimension);
-        const float largestSide = static_cast<float>(std::max(ctx.rawWidth, ctx.rawHeight));
-        if (largestSide > 0.0f)
-            t.outputScale = std::clamp(t.outputScale, 1.0f, std::max(1.0f, maxDimension / largestSide));
-        // HDR+ (both modes) merges on the RAW grid (the coordinator enforces 1x too).
-        if (t.mergeAlgorithm != 0u) t.outputScale = 1.0f;
+        t.outputScale = 1.0f;
         return t;
     }();
-    // Bracketed bursts merge onto their darkest frame and are lifted back.
-    // Underexposed-ZSL captures (bracketCapture 1) carry the lift in the
-    // frozen AE post-gain already, like the viewfinder; only the DNGs need it
-    // as BaselineExposure. Older dark-frame captures lift the render too.
-    const bool bracketed = tuning.mergeAlgorithm == kMergeAlgorithmHdrPlusBracketed && job &&
-                           job->metadata.size() == job->frames.size() && job->referenceIndex < job->metadata.size();
-    const bool headroomCapture = bracketed && tuning.bracketCapture == 1u;
-    const float dngLiftEv = !bracketed ? 0.0f
-                            : headroomCapture
-                                ? headroomLiftEv(tuning.aeLinearExposure, job->metadata[job->referenceIndex])
-                            : isExposureBracketed(job->metadata) ? bracketLiftEv(job->metadata, job->referenceIndex)
-                                                                 : 0.0f;
-    const float liftEv = headroomCapture ? 0.0f : dngLiftEv;
     auto frozenTonemap = work->frozenTonemap;
-    frozenTonemap.exposureEV += liftEv;
-    if (liftEv > 0.0f) {
-        // Older dark-frame captures lift the render through exposureEV, which
-        // DNG re-renders do not read: fold it into the recipe's post-gain.
-        const float liftedGain = std::min(tonemap::kMaxAePostGain, frozenTonemap.aePostGain * std::exp2(liftEv));
-        mergedDng.resolvedRecipe =
-            persistence::resolvedRecipe(work->frozenTonemap, liftedGain, work->filmEnabled, work->filmLook);
-        baseDng.resolvedRecipe = mergedDng.resolvedRecipe;
-    }
-    if (dngLiftEv > 0.0f) {
-        mergedDng.baselineExposureEV = mergedDng.baselineExposureEV.value_or(0.0f) + dngLiftEv;
-        baseDng.baselineExposureEV = baseDng.baselineExposureEV.value_or(0.0f) + dngLiftEv;  // base = dark reference
-        LOGI("MULTIFRAME_BRACKET lift=%.2fEV render=%.2fEV reference=%u capture=%u", dngLiftEv, liftEv,
-             job->referenceIndex, tuning.bracketCapture);
-    }
     const auto baseFrameMode = work->baseFrameMode;
     const auto sharpnessScores = work->sharpnessScores;
     const double sharpnessMs = work->sharpnessMs;
@@ -196,38 +176,13 @@ void MfsrCaptureJob::runStages(Published& published) {
     // Shared EXIF inputs (capture settings; timings attach per file horizon).
     MultiframeTuningView tuningView{};
     tuningView.outputScale = tuning.outputScale;
-    tuningView.lkIterations = tuning.lkIterations;
-    tuningView.hessianEpsilon = tuning.hessianEpsilon;
-    tuningView.kDetail = tuning.kDetail;
-    tuningView.kDenoise = tuning.kDenoise;
-    tuningView.dThreshold = tuning.dThreshold;
-    tuningView.dTransition = tuning.dTransition;
-    tuningView.kStretch = tuning.kStretch;
-    tuningView.kShrink = tuning.kShrink;
-    tuningView.flatSigma = tuning.flatSigma;
-    tuningView.detailFloorSigma = tuning.detailFloorSigma;
-    tuningView.scaleBandwidthGain = tuning.scaleBandwidthGain;
-    tuningView.coverageNeffLo = tuning.coverageNeffLo;
-    tuningView.coverageNeffHi = tuning.coverageNeffHi;
-    tuningView.coverageMassLo = tuning.coverageMassLo;
-    tuningView.coverageMassHi = tuning.coverageMassHi;
-    tuningView.robustnessT = tuning.robustnessT;
-    tuningView.robustnessS1 = tuning.robustnessS1;
-    tuningView.robustnessS2 = tuning.robustnessS2;
-    tuningView.motionThreshold = tuning.motionThreshold;
-    tuningView.fallbackChromaGain = tuning.fallbackChromaGain;
-    tuningView.fallbackLumaGain = tuning.fallbackLumaGain;
     tuningView.mergeAlgorithm = tuning.mergeAlgorithm;
     tuningView.hdrplusStrength = tuning.hdrplusStrength;
     tuningView.hdrplusTileSize = tuning.hdrplusTileSize;
-    tuningView.bracketEv = tuning.bracketEv;
-    tuningView.bracketFrames = tuning.bracketFrames;
-    tuningView.bracketLiftEv = dngLiftEv;
-    tuningView.bracketCapture = tuning.bracketCapture;
-    tuningView.longFrameEv = tuning.longFrameEv;
     tuningView.baseFrameMode = baseFrameMode;
     MultiframeOutputInfo outputInfo{};
     outputInfo.noiseProfile = "Burst (fitted per capture)";
+    if (nativeRgb) outputInfo.jpegInput = "merged RGB (Rexture native, no re-demosaic)";
     outputInfo.demosaicLabel = "n/a";
     outputInfo.dualLabel = "n/a";
     outputInfo.fccSteps = mergedJpeg.develop.fccSteps;
@@ -243,6 +198,8 @@ void MfsrCaptureJob::runStages(Published& published) {
         rawrcam::encoding::jpeg::toneParametersFrom(frozenTonemap, mergedJpeg.develop.colorRenderProfile);
     MultiframeStageTimings mfStages{};
     mfStages.sharpnessMs = sharpnessMs;
+    mfStages.baseSelectMs = work->baseSelectMs;
+    mfStages.baseSelectFrames = work->baseSelectFrames;
     using rawr::raw_multiframe_output::MultiframeOutputAdapter;
     using rawrcam::develop::rendered::RenderedStillCompletion;
     using rawrcam::develop::rendered::RenderedStillContext;
@@ -334,14 +291,10 @@ void MfsrCaptureJob::runStages(Published& published) {
     bool rzslDumpAttempted = false;
     // Noise is fitted from the burst at merge time; offline replay re-fits it
     // (--noise-source burst), so the replay record carries the legacy model.
-    rawr::raw_merge_wronski_gpu::Config resolvedNoise{};
+    rawr::raw_merge_common::Config resolvedNoise{};
     std::ostringstream replayMetadata;
     replayMetadata << rawr::raw_gpu_pipeline::serializeReplayNoise(resolvedNoise) << "rawrReferenceIndex\t"
                    << job->referenceIndex << '\n';
-    // HDR+ Bracketed: the Camera2 AE exposure the burst was underexposed from,
-    // so offline replays lift the merged DNG like the app.
-    if (tuning.bracketCapture == 1u && tuning.aeLinearExposure > 0.0f)
-        replayMetadata << std::setprecision(9) << "rawrAeLinearExposure\t" << tuning.aeLinearExposure << '\n';
     auto dumpRzsl = [&]() {
         if (!dumpRzslRequested || rzslDumpAttempted) return;
         rzslDumpAttempted = true;
@@ -378,6 +331,7 @@ void MfsrCaptureJob::runStages(Published& published) {
             baseDng.imageDescription = std::string(rawrcam::encoding::kCapturedWith) + "\nMultiframe base frame\n";
             auto context = std::move(baseDng);
             rawrcam::capture::persistence::attachFrameRecipes(context, *baseFrame);
+            if (work->awaitDurable) work->awaitDurable();  // publishing: the journal must be durable first
             baseStarted = baseWriter.start(baseFrame, std::move(context));
             if (!baseStarted) {
                 failDng(baseDisplayName, "base_dng_start_rejected");
@@ -426,6 +380,9 @@ void MfsrCaptureJob::runStages(Published& published) {
             const auto hotPixels = job->referenceMetadata.hotPixelMap;
             rawr::raw_gpu_pipeline::BurstStageTimings total{};
             for (const auto& window : strips) {
+                diagnostics::CaptureStageTimer stripTiming("merge_strip", requestId, window.y0);
+                CAPTURE_DEBUG_LOG("MERGE_STRIP_BEGIN requestId=%llu y0=%u rows=%u frames=%zu algorithm=%u",
+                     static_cast<unsigned long long>(requestId), window.y0, window.rows, job->frames.size(), tuning.mergeAlgorithm);
                 job->setRowWindow(window.y0, window.rows);
                 auto& stripHot = job->referenceMetadata.hotPixelMap;
                 stripHot.clear();
@@ -434,8 +391,11 @@ void MfsrCaptureJob::runStages(Published& published) {
                         stripHot.push_back(hotPixels[i]);
                         stripHot.push_back(hotPixels[i + 1] - int32_t(window.y0));
                     }
+                diagnostics::CaptureStageTimer mergeTiming("merge_strip_compute_and_load", requestId, window.y0);
                 auto merged = MergeProcessor::run(ctx.vulkan, coordinator, *job, ctx.rawWidth, window.rows, ctx.cfa,
                                                   tuning, false, queueSubmit, mergeSubmit);
+                mergeTiming.finish();
+                diagnostics::CaptureStageTimer projectionTiming("merge_strip_project_and_stitch", requestId, window.y0);
                 if (!outputAdapterReady) {
                     outputAdapter.initialize(ctx.vulkan.physicalDevice(), ctx.vulkan.device(),
                                              ctx.vulkan.queueFamily(), mergeSubmit, ctx.rawWidth, window.rows);
@@ -445,7 +405,12 @@ void MfsrCaptureJob::runStages(Published& published) {
                 const auto packed = projectMerged(merged);
                 projectMs += wallMs(projectBegin);
                 writeStrip(full, ctx.rawWidth, window, reinterpret_cast<const std::uint16_t*>(packed.pixels.data()));
+                projectionTiming.finish();
                 const auto& t = merged.timings;
+                CAPTURE_DEBUG_LOG("MERGE_STRIP_STAGES requestId=%llu y0=%u initMs=%.3f noiseMs=%.3f refMs=%.3f prepMs=%.3f alignMs=%.3f kernelMs=%.3f robustMs=%.3f accumMs=%.3f finalizeMs=%.3f totalMs=%.3f",
+                     static_cast<unsigned long long>(requestId), window.y0, t.initializeMs, t.noiseEstimateMs,
+                     t.referencePrepareMs + t.referenceStatsMs, t.companionPrepareMs, t.alignmentMs,
+                     t.kernelStatsMs, t.robustnessMs, t.accumulationMs, t.finalizeMs, t.totalMs);
                 total.initializeMs += t.initializeMs;
                 total.noiseEstimateMs += t.noiseEstimateMs;
                 total.referencePrepareMs += t.referencePrepareMs;
@@ -468,9 +433,11 @@ void MfsrCaptureJob::runStages(Published& published) {
             stitched = std::move(packed);
             LOGI("MULTIFRAME_STRIPS count=%zu totalMs=%.1f", strips.size(), wallMs(stripsBegin));
         } else {
+            diagnostics::CaptureStageTimer mergeTiming("merge_whole_compute_and_load", requestId);
             mergeResult = MergeProcessor::run(ctx.vulkan, coordinator, *job, ctx.rawWidth, ctx.rawHeight, ctx.cfa,
                                               tuning, dumpRzslRequested, queueSubmit, mergeSubmit);
         }
+        if (work->awaitDurable) work->awaitDurable();  // outputs follow: the journal must be durable first
         // Merge timings feed both horizons (merged DNG and JPEG). Populate
         // here — not inside the merged-DNG gate below — so JPEG-only captures
         // (no merged DNG requested) still report the merge/alignment stages
@@ -500,6 +467,16 @@ void MfsrCaptureJob::runStages(Published& published) {
                 .25f * (n.offsetBySite[0] + n.offsetBySite[1] + n.offsetBySite[2] + n.offsetBySite[3]),
                 double(mergeResult->physicalImageBytes) / (1024.0 * 1024.0),
                 double(mergeResult->physicalBufferBytes) / (1024.0 * 1024.0));
+            // Wall time versus the GPU-timestamp stages above: chunks = submissions, gpu = summed GPU intervals, wait =
+            // host blocked on the fence (GPU work plus queue latency), rec/sub = host recording and queue submit,
+            // between = host time outside any submission.
+            LOGI("MULTIFRAME_MERGE_WALL chunks=%u wallMs=%.1f chunkWallMs=%.1f gpuMs=%.1f waitMs=%.1f recMs=%.1f "
+                 "subMs=%.1f betweenMs=%.1f idleMs=%.1f",
+                 t.chunkCount, t.totalMs, t.chunkWallMs, t.chunkGpuMs, t.chunkWaitMs, t.chunkRecordMs, t.chunkSubmitMs,
+                 t.totalMs - t.chunkWallMs, t.chunkWaitMs - t.chunkGpuMs);
+            mfStages.mergeWallMs = t.totalMs;
+            mfStages.mergeGpuMs = t.chunkGpuMs;
+            mfStages.mergeWaitMs = t.chunkWaitMs;
             mfStages.initNote = mergeResult->resourcesReused
                                     ? "pipelines warm"
                                     : (mergeResult->pipelineCacheReused ? "pipeline cache reused" : "cold");
@@ -510,7 +487,8 @@ void MfsrCaptureJob::runStages(Published& published) {
         // here on early exit paths that skip prepareRgb).
         bool referenceReleased = false;
         auto releaseReference = [&]() {
-            if (!dumpRzslRequested && !referenceReleased && job->snapshot) {
+            if (!dumpRzslRequested && !referenceReleased && job->snapshot &&
+                (!job->pinsMayRelease || job->pinsMayRelease())) {
                 job->snapshot->release(job->frames[job->referenceIndex].raw.ref.frameId);
                 referenceReleased = true;
             }
@@ -543,11 +521,10 @@ void MfsrCaptureJob::runStages(Published& published) {
                 mergedFrame->metadata.effectiveWhiteLevel *= projection.codeScale;
                 LOGI("MULTIFRAME_DNG_16BIT scale=%.3f white=%.0f source=%s", projection.codeScale,
                      mergedFrame->metadata.effectiveWhiteLevel, projection.sourceIsCfaR32f ? "r32f" : "rgba16f");
-                mergedDng.reconstructedGeometry = tuning.outputScale > 1.0001f;
-                // HDR+ merges are an exposure-weighted mean on the raw grid;
-                // Wronski's kernel merge has no closed-form noise, keep the
-                // reference profile there.
-                if (tuning.mergeAlgorithm != 0u && job->metadata.size() == job->frames.size()) {
+                mergedDng.reconstructedGeometry = false;
+                // HDR+ Quality is an exposure-weighted mean on the raw grid; Rexture (per-pixel weights) has no
+                // closed-form noise, keep the reference profile there.
+                if (tuning.mergeAlgorithm != kMergeAlgorithmRexture && job->metadata.size() == job->frames.size()) {
                     mergedDng.noiseVarianceScale = mergedNoiseVarianceScale(job->metadata, job->referenceIndex);
                     LOGI("MULTIFRAME_DNG_NOISE shot=%.4f read=%.4f", (*mergedDng.noiseVarianceScale)[0],
                          (*mergedDng.noiseVarianceScale)[1]);
@@ -567,7 +544,8 @@ void MfsrCaptureJob::runStages(Published& published) {
                                              mergeResult->frameCount, mergeResult->outputExtent.width,
                                              mergeResult->outputExtent.height) +
                         buildSharpnessSection(baseFrameMode, sharpnessScores, job->referenceIndex,
-                                              static_cast<std::uint32_t>(job->frames.size())) +
+                                              static_cast<std::uint32_t>(job->frames.size()),
+                                              tuning.mergeAlgorithm == kMergeAlgorithmRexture) +
                         "\nTIMINGS (through CFA projection): " +
                         rawrcam::encoding::jpeg::formatMs1(
                             dngSubtotalMs(baseReadMs, mfStages.multiframeTotalMs(), projectMs)) +
@@ -611,6 +589,23 @@ void MfsrCaptureJob::runStages(Published& published) {
             try {
                 const auto lsc = rawrcam::develop::highlight::LensShadingMapSnapshot::fromMetadata(
                     job->referenceMetadata, mergedJpeg.develop.lensShadingCorrectionEnabled);
+                {
+                    const auto& g = job->referenceMetadata.lensShadingMap;
+                    float lo = 0.0f, hi = 0.0f;
+                    std::size_t bad = 0, finite = 0;
+                    for (const float v : g) {
+                        if (!std::isfinite(v)) {
+                            ++bad;
+                            continue;
+                        }
+                        lo = (finite == 0 || v < lo) ? v : lo;
+                        hi = (finite == 0 || v > hi) ? v : hi;
+                        ++finite;
+                    }
+                    LOGI("MULTIFRAME_LSC_MAP enabled=%d map=%ux%u values=%zu min=%.3f max=%.3f nonfinite=%zu used=%d",
+                         mergedJpeg.develop.lensShadingCorrectionEnabled ? 1 : 0, job->referenceMetadata.lensShadingMapWidth,
+                         job->referenceMetadata.lensShadingMapHeight, g.size(), lo, hi, bad, lsc.valid() ? 1 : 0);
+                }
                 outputAdapter.releaseDngResources();
                 // 1A sensor OR: reference RAW (R16U, pre-LSC/WB) supplies
                 // per-phase truth that merge dilution can hide. Applied only
@@ -628,7 +623,10 @@ void MfsrCaptureJob::runStages(Published& published) {
                     sensorClip.clipThreshold = 0.995f;
                 }
                 const auto rgbPrepBegin = std::chrono::steady_clock::now();
-                outputAdapter.preparePackedCfa(mergeResult->outputView, lsc.width, lsc.height, lsc.gains, sensorClip);
+                if (nativeRgb)
+                    outputAdapter.prepareRgb(mergeResult->outputView, lsc.width, lsc.height, lsc.gains, sensorClip);
+                else
+                    outputAdapter.preparePackedCfa(mergeResult->outputView, lsc.width, lsc.height, lsc.gains, sensorClip);
                 rgbPrepMs = wallMs(rgbPrepBegin);
                 sensorClipOrApplied = outputAdapter.sensorClipOrApplied();
                 LOGI("MULTIFRAME_SENSOR_CLIP applied=%d ref=%ux%u out=%ux%u", sensorClipOrApplied ? 1 : 0,
@@ -716,8 +714,7 @@ void MfsrCaptureJob::runStages(Published& published) {
                 const std::uint32_t mergedW = mergeResult->outputExtent.width;
                 const std::uint32_t mergedH = mergeResult->outputExtent.height;
                 const auto demosaicBegin = std::chrono::steady_clock::now();
-                const auto geometry = tuning.outputScale > 1.0001f ? develop::StillDemosaicGeometry::ReconstructedCfa
-                                                                   : develop::StillDemosaicGeometry::SensorNative;
+                const auto geometry = develop::StillDemosaicGeometry::SensorNative;
                 VkQueue demosaicQueue = useMfQueue ? mfQueue : VK_NULL_HANDLE;
                 std::mutex* demosaicMutex = useMfQueue ? &ctx.vulkan.mfSubmitMutex() : nullptr;
                 std::optional<develop::demosaic::StillCompletion> demosaicDone;
@@ -735,7 +732,15 @@ void MfsrCaptureJob::runStages(Published& published) {
                     demosaicedView = processor.outputView();
                 };
                 const auto algorithm = mergedJpeg.develop.demosaicAlgorithm;
-                if (algorithm == develop::DemosaicAlgorithm::Amaze) {
+                if (nativeRgb) {
+                    // The merged RGB (LSC applied, clamped) is already the render input.
+                    demosaicDone.emplace();
+                    demosaicDone->success = true;
+                    demosaicedImage = outputAdapter.rgbImage();
+                    demosaicedView = outputAdapter.rgbView();
+                    outputInfo.demosaicLabel = "none (Rexture merged RGB)";
+                    outputInfo.dualLabel = "n/a";
+                } else if (algorithm == develop::DemosaicAlgorithm::Amaze) {
                     mergedAmaze.configure(ctx.vulkan, ctx.queue0Mutex, camera.cameraContextGeneration,
                                           camera.cameraId, mergedW, mergedH, ctx.cfa, geometry, demosaicQueue,
                                           demosaicMutex, /*externalPackedInput=*/true);
@@ -808,8 +813,6 @@ void MfsrCaptureJob::runStages(Published& published) {
                 renderedContext.filmTiled = uint64_t(renderedContext.width) * renderedContext.height >= 12000000u &&
                                             (!work->filmLook.grainEnabled || work->filmLook.grainModel != 2);
                 renderedContext.filmLook = work->filmLook;
-                // Bracket lift is exposure normalization, not a creative film lift (uncapped).
-                renderedContext.filmLook.filmExposureEv += liftEv;
                 renderedContext.sensorToLinearSrgb = job->referenceColor.cameraToLinearSrgbRowMajor;
                 develop::applyDevelopSettings(renderedContext, mergedJpeg.develop);
                 // The single-frame denoisers (Image > Denoise: wavelet) never
@@ -832,6 +835,9 @@ void MfsrCaptureJob::runStages(Published& published) {
                         renderedContext.denoiseDetail = 1.0f;
                         renderedContext.denoiseForceY = 0.0f;
                         renderedContext.denoiseMaxScale = 7;
+                        // The default edge-stop averages across any colour step under ~20 noise sigmas, which
+                        // smears blue/yellow edges (equal-luma ones most). 0.5 keeps them with no loss of denoise.
+                        renderedContext.denoiseEdgeK = 0.5f;
                         renderedContext.denoiseNoiseA = a;
                         renderedContext.denoiseNoiseB = b;
                         outputInfo.chromaDenoiseLabel =
@@ -954,7 +960,8 @@ void MfsrCaptureJob::runStages(Published& published) {
                                                  mergeResult->frameCount, mergeResult->outputExtent.width,
                                                  mergeResult->outputExtent.height) +
                             buildSharpnessSection(baseFrameMode, sharpnessScores, job->referenceIndex,
-                                                  static_cast<std::uint32_t>(job->frames.size()));
+                                                  static_cast<std::uint32_t>(job->frames.size()),
+                                                  tuning.mergeAlgorithm == kMergeAlgorithmRexture);
                         // mergeResult is engaged here (a run failure jumps to the
                         // outer catch); guard anyway so a future early-exit path
                         // can never emit an all-zero multiframe block.
@@ -964,7 +971,8 @@ void MfsrCaptureJob::runStages(Published& published) {
                         mergedJpeg.output.mfBaseReadMs = baseReadMs;
                         mergedJpeg.output.mfProjectMs = projectMs;
                         mergedJpeg.output.mfRgbPrepMs = rgbPrepMs;
-                        mergedJpeg.output.mfDirectRgb = false;
+                        mergedJpeg.output.mfDirectRgb = nativeRgb;
+                        mergedJpeg.output.acceptedAt = work->acceptedAt;
                     }
                     JpegCaptureWriter jpegWriter;
                     auto jpegContext = std::move(mergedJpeg);

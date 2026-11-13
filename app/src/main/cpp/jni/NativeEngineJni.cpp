@@ -96,9 +96,9 @@ rawrcam::capture::multiframe::MultiframeTuning multiframeTuning(JNIEnv* env, jfl
         return {};
     if (!inRange(out.fallbackChromaGain, 0.0f, 8.0f) || !inRange(out.fallbackLumaGain, 0.0f, 8.0f)) return {};
     if (count >= 25) {
-        std::array<jfloat, 6> merge{0.0f, 13.0f, 32.0f, -2.0f, 2.0f, 0.0f};
+        std::array<jfloat, 6> merge{4.0f, 13.0f, 32.0f, -2.0f, 2.0f, 0.0f};
         env->GetFloatArrayRegion(values, 23, std::min<jsize>(count - 23, jsize(merge.size())), merge.data());
-        if (!(merge[0] == 0.0f || merge[0] == 1.0f || merge[0] == 2.0f || merge[0] == 3.0f) ||
+        if (!(merge[0] == 2.0f || merge[0] == 4.0f) ||
             !inRange(merge[1], 1.0f, 22.0f) || !(merge[2] == 16.0f || merge[2] == 32.0f) ||
             !inRange(merge[3], -4.0f, -1.0f) || !inRange(merge[4], 0.0f, 16.0f) || !inRange(merge[5], 0.0f, 3.0f))
             return {};
@@ -326,6 +326,33 @@ Java_com_rawr_camera_integration_NativePreviewEngine_builtInCameraProfile(JNIEnv
     const auto& profile = rawrcam::camera::deviceBuiltInCameraProfile();
     return env->NewStringUTF(rawrcam::camera::serializeCameraProfile(profile).c_str());
 }
+// Flat records: id, display name, description, default flag, lens document.
+extern "C" JNIEXPORT jobjectArray JNICALL
+Java_com_rawr_camera_integration_NativePreviewEngine_deviceCameraProfiles(JNIEnv* env, jobject) {
+    const auto profiles = rawrcam::camera::matchingBuiltInProfiles([](const std::string& name) {
+        char value[PROP_VALUE_MAX] = {};
+        __system_property_get(name.c_str(), value);
+        return std::string(value);
+    });
+    const auto selected = rawrcam::camera::matchBuiltInProfile([](const std::string& name) {
+        char value[PROP_VALUE_MAX] = {};
+        __system_property_get(name.c_str(), value);
+        return std::string(value);
+    });
+    auto result = env->NewObjectArray(profiles.size() * 5, env->FindClass("java/lang/String"), nullptr);
+    jsize index = 0;
+    for (const auto* p : profiles) {
+        for (const auto& value : {p->profile.id, p->name, p->description,
+                                 std::string(p->profile.id == selected.profileId ? "true" : "false"),
+                                 rawrcam::camera::serializeCameraProfile(p->profile)}) {
+            auto text = env->NewStringUTF(value.c_str());
+            env->SetObjectArrayElement(result, index++, text);
+            env->DeleteLocalRef(text);
+        }
+    }
+    return result;
+}
+
 // [error, name, summary] for a lens camera profile (.dcp) file; error is empty
 // when the app can use it. DCP names are free-form bytes: ASCII only, so
 // NewStringUTF never sees invalid modified UTF-8.
@@ -380,9 +407,9 @@ Java_com_rawr_camera_integration_NativePreviewEngine_setPersistZslRingEnabled(JN
     rawrcam::session::setPersistZslRingEnabled(handle(h), v == JNI_TRUE);
 }
 extern "C" JNIEXPORT jint JNICALL Java_com_rawr_camera_integration_NativePreviewEngine_prepareExperimentalMultiframe(
-    JNIEnv*, jobject, jlong h, jint maxFrames, jint longFrames) {
+    JNIEnv*, jobject, jlong h, jint maxFrames) {
     return static_cast<jint>(rawrcam::session::prepareExperimentalMultiframe(
-        handle(h), static_cast<uint32_t>(std::clamp(maxFrames, 2, 30)), static_cast<uint32_t>(std::clamp(longFrames, 0, 28))));
+        handle(h), static_cast<uint32_t>(std::clamp(maxFrames, 2, 30))));
 }
 extern "C" JNIEXPORT void JNICALL
 Java_com_rawr_camera_integration_NativePreviewEngine_cancelPreparedMultiframeCapture(JNIEnv*, jobject, jlong h) {
@@ -442,10 +469,6 @@ Java_com_rawr_camera_integration_NativePreviewEngine_setExperimentalZeroCopy(JNI
 extern "C" JNIEXPORT void JNICALL Java_com_rawr_camera_integration_NativePreviewEngine_setExperimentalMultiframeEnabled(
     JNIEnv*, jobject, jlong h, jboolean v) {
     rawrcam::session::setExperimentalMultiframeEnabled(handle(h), v == JNI_TRUE);
-}
-extern "C" JNIEXPORT void JNICALL Java_com_rawr_camera_integration_NativePreviewEngine_setHdrPlusHeadroomMaxEv(
-    JNIEnv*, jobject, jlong h, jfloat v) {
-    rawrcam::session::setHdrPlusHeadroomMaxEv(handle(h), v);
 }
 extern "C" JNIEXPORT void JNICALL
 Java_com_rawr_camera_integration_NativePreviewEngine_setPersistentEngineEnabled(JNIEnv*, jobject, jlong h, jboolean v) {
@@ -682,6 +705,7 @@ static void fillCaptureSharpening(JNIEnv* env, rawrcam::capture::JpegCaptureRequ
         return;
     }
     jpeg.develop.captureSharpenIterations = rawrcam::jni::captureSharpenIterations(recipe);
+    jpeg.develop.multiframeNativeRgb = recipe.flag("rextureNativeRgb", false);
 }
 static std::optional<tinydng_gps> captureGps(JNIEnv* env, jobject value) {
     const auto gps = rawrcam::jni::readCaptureGps(env, value);

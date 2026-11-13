@@ -51,8 +51,7 @@ int main() {
     assert(dngSubtotalMs(24.8, stages.multiframeTotalMs(), 31.2) == 24.8 + stages.multiframeTotalMs() + 31.2);
 
     MultiframeTuningView tuning{};
-    tuning.outputScale = 1.264911f;
-    tuning.kDetail = 0.08f;
+    tuning.mergeAlgorithm = 4;
     MultiframeOutputInfo output{};
     TonemapUiValues tone{};
     const std::string params =
@@ -61,8 +60,7 @@ int main() {
     assert(contains(params, "Multiframe Reconstruction inputs:"));
     assert(contains(params, "JPEG output parameters:"));
     assert(contains(params, "Tonemap parameters:"));
-    assert(contains(params, "Coverage Neff:"));
-    assert(contains(params, "kDetail: 0.080"));
+    assert(contains(params, "Merge: Rexture"));
     assert(!contains(params, "Stock: C200"));
     const std::string filmParams =
         buildParametersBlock(tuning, output, tone, "Film\nStock: C200\n", true, 22, 5088, 3816);
@@ -70,23 +68,15 @@ int main() {
     assert(!contains(filmParams, "Tonemap parameters:"));
     MultiframeTuningView defaults{};
     const std::string defaultParams = buildParametersBlock(defaults, output, tone, "", false, 30, 4096, 3072);
-    MultiframeTuningView bracketed = defaults;
-    bracketed.mergeAlgorithm = 3;
-    bracketed.bracketEv = -2.5f;
-    bracketed.bracketFrames = 3;
-    bracketed.bracketLiftEv = 2.5f;
-    const std::string bracketParams = buildParametersBlock(bracketed, output, tone, "", false, 19, 4096, 3072);
-    assert(contains(bracketParams, "HDR+ bracketed"));
-    assert(contains(bracketParams, "Bracket: 3 x -2.500 EV"));
-    assert(contains(bracketParams, "Bracket lift: 2.500 EV"));
-    bracketed.bracketLiftEv = 0.0f;
-    assert(contains(buildParametersBlock(bracketed, output, tone, "", false, 16, 4096, 3072), "none (no dark frames)"));
-    bracketed.bracketCapture = 1;
-    bracketed.bracketLiftEv = 1.5f;
-    const std::string headroomParams = buildParametersBlock(bracketed, output, tone, "", false, 19, 4096, 3072);
-    assert(contains(headroomParams, "Highlight headroom: up to -2.500 EV, lifted 1.500 EV"));
-    assert(contains(headroomParams, "Long frames: 3 x AE\n"));
-    assert(contains(defaultParams, "Coverage Neff:"));
+    MultiframeTuningView quality = defaults;
+    quality.mergeAlgorithm = 2;
+    quality.hdrplusStrength = 18.0f;
+    quality.hdrplusTileSize = 16;
+    const std::string qualityParams = buildParametersBlock(quality, output, tone, "", false, 19, 4096, 3072);
+    assert(contains(qualityParams, "HDR+ frequency"));
+    assert(contains(qualityParams, "HDR+ strength: 18.000"));
+    assert(contains(qualityParams, "HDR+ tile size: 16"));
+    assert(contains(defaultParams, "Rexture"));
     assert(!contains(defaultParams, "Low support rescue"));
 
     const std::string middle = buildSharpnessSection(MultiframeBaseFrameMode::Middle, {}, 1, 4);
@@ -111,6 +101,19 @@ int main() {
     }
     const std::string timingsMiddle = formatMultiframeTimings(stages, MultiframeBaseFrameMode::Middle);
     assert(contains(timingsMiddle, "skipped (middle)"));
+    // Rexture: press-time scoring is reported (not "skipped"), and the merge wall time is split from its GPU stages.
+    auto rexture = stages;
+    rexture.sharpnessMs = 0.0;
+    rexture.baseSelectMs = 41.5;
+    rexture.baseSelectFrames = 8;
+    rexture.mergeWallMs = 2249.6;
+    rexture.mergeGpuMs = 1440.7;
+    rexture.mergeWaitMs = 2174.5;
+    const std::string timingsRexture = formatMultiframeTimings(rexture, MultiframeBaseFrameMode::Middle);
+    assert(!contains(timingsRexture, "skipped (middle)"));
+    assert(contains(timingsRexture, "Base selection: 41.5 ms (press-time scoring of 8 frames"));
+    assert(contains(timingsRexture, "Merge wall time: 2249.6 ms (GPU 1440.7, queue/GPU idle 733.8, host 75.1;"));
+    assert(!contains(timings, "Merge wall time"));
 
     const std::string imageProc =
         formatImageProcessing(true, 0.0, 96.4, 6400.0, 210.7, false, 1, 88.3, 342.9, 906.8, false, 12.5,

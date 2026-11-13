@@ -86,7 +86,9 @@ class NativeCaptureScreenController(
         scope.launch {
             while (isActive) {
                 captureQueue.poll { capturePresentation.completed(pollStillCompletion()) }
-                delay(100)
+                // A finished capture is only published when this loop sees it: poll fast while one is in flight
+                // (the 100 ms idle period added 50 ms on average to every capture), slowly otherwise.
+                delay(if (state.value.pendingCaptures.any { !it.terminal }) 15 else 100)
             }
         }
     }
@@ -438,7 +440,7 @@ class NativeCaptureScreenController(
         val format = CaptureOutputFormat.from(state.value.dngEnabled, state.value.jpegEnabled,
                                               state.value.capabilities.dngOnly)
         // Hold starts at the press; the capture serial hands ownership to native when submission begins.
-        if (state.value.hdrPlusBracketedActive || state.value.fullSizeCapture) update { it.copy(bracketHoldPresses = it.bracketHoldPresses + 1, fullSizePressSerial = it.fullSizeCaptureSerial) }
+        if (state.value.fullSizeCapture) update { it.copy(bracketHoldPresses = it.bracketHoldPresses + 1, fullSizePressSerial = it.fullSizeCaptureSerial) }
         capturePresentation.pressed()
         captureQueue.enqueue(format) { foregroundToken() === token }
     }

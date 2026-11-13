@@ -218,10 +218,8 @@ private fun PhotoLookToggles(
         CompactSidePill(
             icon = Icons.Outlined.BurstMode,
             label = when (state.multiframeAlgorithm) {
-                com.rawr.camera.settings.model.MultiframeMergeAlgorithm.Wronski -> "MFSR"
-                com.rawr.camera.settings.model.MultiframeMergeAlgorithm.HdrPlus -> "HDR+"
                 com.rawr.camera.settings.model.MultiframeMergeAlgorithm.HdrPlusQuality -> "HDR+ Q"
-                com.rawr.camera.settings.model.MultiframeMergeAlgorithm.HdrPlusBracketed -> "HDR+ B"
+                com.rawr.camera.settings.model.MultiframeMergeAlgorithm.Rexture -> "REXTURE"
             },
             active = state.experimentalMultiframeEnabled,
             testTag = CaptureTestTags.COMPACT_MULTIFRAME,

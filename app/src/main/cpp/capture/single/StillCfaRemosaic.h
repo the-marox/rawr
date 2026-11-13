@@ -8,7 +8,7 @@
 
 #include "imaging/CfaRemosaic.h"
 #include "imaging/CfaRemosaicFast.h"
-#include "imaging/Raw16CpuSnapshot.h"
+#include "imaging/RawSnapshot.h"
 
 namespace rawrcam::capture {
 // A block-CFA lens (CameraContextMetadata::cfaBlock > 1) hands stills over as

@@ -2,7 +2,7 @@ name: Debug build
 
 on:
   push:
-    branches: [main, 17u-port]
+    branches: [main, 17u-port, 17u-upstream-merge]
   pull_request:
   workflow_dispatch:
 

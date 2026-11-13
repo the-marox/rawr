@@ -245,10 +245,10 @@ std::optional<LensRoute> CameraDeviceSession::select(const LensRoute& requested,
     parsed->rawBufferTestFirst = route.rawBufferTestFirst;
     parsed->rawBufferFallBack = route.rawBufferFallBack;
     parsed->photoBufferUsage = route.photoBufferUsage;
+    parsed->photoBufferCount = route.photoBufferCount;
     parsed->guardStillExposure = requiresStillExposureGuard(route);
-    // With a full-size photo stream the viewfinder is the binned Bayer stream: the layout is the photo stream's.
-    parsed->cfaBlock = route.photoStream ? 1u : route.sensorLayoutBlock;
-    parsed->photoCfaBlock = route.photoStream ? route.sensorLayoutBlock : 1u;
+    parsed->cfaBlock = route.sensorLayoutBlock;
+    parsed->photoCfaBlock = route.photoSensorLayoutBlock;
     parsed->cfaLiveQuality = route.liveRemosaic;
     parsed->cfaPhotoQuality = route.photoRemosaic;
     parsed->profileDistortion = route.distortion;
@@ -585,13 +585,9 @@ bool CameraDeviceSession::createSession(ANativeWindow* window, const std::option
     outputs.push_back({rawWindow_, physicalCameraId, recipe.rawStreamUseCase});
     const uint32_t rawWidth = selected ? selected->stream.width : 0, rawHeight = selected ? selected->stream.height : 0;
     profileCompanionTargeted_ = !selected || selected->companionTargeted;
-    // Block-CFA full-size stills (Xiaomi 200 MP): the sensor reads out full size, so the HAL cannot also fill the
-    // binned RAW for that request; asking for it stalls the viewfinder for seconds. Still = photo + companion.
-    stillSkipsViewfinderRaw_ = selected && selected->photoStream && selected->sensorLayoutBlock > 1;
-    // Without a restart of the repeating request after such a still, the binned RAW comes back as a flat fill
-    // (pink viewfinder): stop the viewfinder for the photo and let the completion path restore it.
-    stopViewfinderForPhotos_ = selected && (selected->stopViewfinderForPhotos || stillSkipsViewfinderRaw_);
+    stopViewfinderForPhotos_ = selected && selected->stopViewfinderForPhotos;
     captureStillTemplate_ = recipe.captureStillTemplate;
+    photoIncludePreview_ = recipe.photoIncludePreview;
     const bool companionStream = recipe.companion.has_value();
     const auto companionSize = recipe.companion ? recipe.companion->size : std::nullopt;
     // The companion follows the route's physical camera unless the recipe says otherwise.
@@ -964,7 +960,7 @@ bool CameraDeviceSession::captureFullSize(CameraRequestPipeline& pipeline, const
     CameraRequest* const base = owned.get();
     if (!ok(created) || !base) return false;
     if (control.capabilities.frameRate > 0 && !ok(pipeline.applySessionCadence(base, control))) return false;
-    if (!stillSkipsViewfinderRaw_ && !ok(base->addTarget(rawWindow_))) return false;
+    if (photoIncludePreview_ && !ok(base->addTarget(rawWindow_))) return false;
     // A profile companion rides on every request of its mode, stills included.
     if (companionFromProfile_ && profileCompanionTargeted_ && companionWindow_ && !ok(base->addTarget(companionWindow_)))
         return false;
@@ -984,6 +980,16 @@ bool CameraDeviceSession::captureFullSize(CameraRequestPipeline& pipeline, const
         const uint8_t intent = captureStillTemplate_ ? ACAMERA_CONTROL_CAPTURE_INTENT_STILL_CAPTURE
                                                      : ACAMERA_CONTROL_CAPTURE_INTENT_PREVIEW;
         (void)request->setU8(ACAMERA_CONTROL_CAPTURE_INTENT, 1, &intent);
+        // Keep the preview's OIS mode on the fresh still template: its implicit
+        // default can move the optical framing when the full-size mode returns.
+        RequestEntry ois{};
+        if (request_->get(ACAMERA_LENS_OPTICAL_STABILIZATION_MODE, &ois) == ACAMERA_OK &&
+            ois.count == 1 && ois.data.u8) {
+            const auto status = request->setU8(ACAMERA_LENS_OPTICAL_STABILIZATION_MODE, 1, ois.data.u8);
+            // Optional control: retain the previous template behaviour if this
+            // camera rejects it, rather than refusing an otherwise valid photo.
+            if (!ok(status)) diag("CAMERA_STILL_OIS_COPY_FAILED status=" + statusText(status));
+        }
         // Preserve the actual preview AF mode and retained tap region. Changing
         // AUTO/CONTINUOUS to OFF for one still resets AF and can move the lens.
         // Copy only these focus keys onto the fresh template: cloning the whole
@@ -1019,6 +1025,9 @@ bool CameraDeviceSession::captureFullSize(CameraRequestPipeline& pipeline, const
         // Every entry the session, the viewfinder and the first still carry
         // (diagnostics: comparing full-size stills with a known-good request).
         if (!keysLogged) {
+            diag("CAMERA_STILL_TARGETS raw=" + std::to_string(photoIncludePreview_) +
+                 " capture=1 companion=" +
+                 std::to_string(companionFromProfile_ && profileCompanionTargeted_ && companionWindow_));
             dumpCaptureRequest(sessionParameters_.get(), "session", diag);
             dumpCaptureRequest(request_.get(), "repeating", diag);
             dumpCaptureRequest(request, "still", diag);

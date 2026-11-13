@@ -391,7 +391,8 @@
           "buffers": {
             "usage": "0x100003"
           },
-          "mergeFrameLimit": 1
+          "mergeFrameLimit": 1,
+          "includePreview": false
         },
         "companion": {
           "mode": "fixed",
@@ -407,7 +408,8 @@
       },
       "session": {
         "opMode": 36868,
-        "frameRate": 30
+        "frameRate": 30,
+        "stopViewfinderForPhotos": true
       },
       "vendorKeys": [
         {
@@ -441,8 +443,7 @@
           "white": 1023
         },
         "sensorLayout": {
-          "block": 4,
-          "liveRemosaic": "standard",
+          "photoBlock": 4,
           "photoRemosaic": "standard"
         }
       }

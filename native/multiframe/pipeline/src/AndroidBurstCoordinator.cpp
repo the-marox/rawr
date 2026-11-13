@@ -1,7 +1,7 @@
 #include <rawr/raw_gpu_pipeline/AndroidBurstCoordinator.h>
 #include <rawr/raw_gpu_pipeline/BurstNoiseEstimate.h>
 #include <rawr/raw_gpu_pipeline/HdrPlusRecorder.h>
-#include <rawr/raw_gpu_pipeline/MergeMath.h>
+#include <rawr/raw_gpu_pipeline/RextureRecorder.h>
 
 #include <algorithm>
 #include <array>
@@ -10,6 +10,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <map>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -93,6 +94,9 @@ void AndroidBurstCoordinator::warmPipelines(VkPhysicalDevice physical, VkDevice 
 void AndroidBurstCoordinator::warmAll(VkPhysicalDevice physical, VkDevice device, std::uint32_t qf, std::uint32_t w,
                                       std::uint32_t h) {
     if (!physical || !device || !w || !h) throw std::invalid_argument("multiframe burst: invalid warmup handles");
+    // A burst already merging owns the arena; the burst itself leaves it ready, so there is nothing to warm.
+    std::unique_lock<std::mutex> runLock(runMutex_, std::try_to_lock);
+    if (!runLock.owns_lock()) return;
     std::lock_guard<std::mutex> lock(initMutex_);
     if (!(executionReady_ && device_ == device && queueFamily_ == qf)) {
         resetLocked();
@@ -100,13 +104,9 @@ void AndroidBurstCoordinator::warmAll(VkPhysicalDevice physical, VkDevice device
     ensureExecutionInfra(physical, device, qf);
     algorithm_ = lastAlgorithm_;
     hdrplus_ = lastHdrPlus_;
-    const float scale = algorithm_ != MergeAlgorithm::Wronski ? 1.0f : lastScale_;
-    if (arenaReady_ && width_ == w && height_ == h && std::abs(outputScale_ - scale) <= 1.0e-6f &&
-        arenaMatchesSelection())
-        return;
+    if (arenaReady_ && width_ == w && height_ == h && arenaMatchesSelection()) return;
     width_ = w;
     height_ = h;
-    outputScale_ = scale;
     initializeArenaLocked(physical, device);
     arenaReady_ = true;
     layoutsInitialized_ = false;
@@ -172,52 +172,35 @@ void AndroidBurstCoordinator::ensureExecutionInfra(VkPhysicalDevice physical, Vk
 }
 
 bool AndroidBurstCoordinator::arenaMatchesSelection() const noexcept {
-    // Frequency and bracketed merges share one layout.
-    if (arenaAlgorithm_ != algorithm_ && !(usesFrequencyMerge(arenaAlgorithm_) && usesFrequencyMerge(algorithm_)))
-        return false;
-    return algorithm_ == MergeAlgorithm::Wronski || (arenaHdrPlus_.tileSize == hdrplus_.tileSize &&
-                                                     arenaHdrPlus_.searchDistance == hdrplus_.searchDistance);
+    if (arenaAlgorithm_ != algorithm_) return false;
+    if (algorithm_ == MergeAlgorithm::Rexture) return arenaRextureDebug_ == rextureDebug_;
+    return arenaHdrPlus_.tileSize == hdrplus_.tileSize && arenaHdrPlus_.searchDistance == hdrplus_.searchDistance;
 }
 void AndroidBurstCoordinator::initializeArenaLocked(VkPhysicalDevice physical, VkDevice device) {
-    if (algorithm_ == MergeAlgorithm::HdrPlusSpatial) {
-        arena_.initialize(physical, device,
-                          makeHdrPlusScratchLayout(rawr::raw_merge_hdrplus_gpu::makeGeometry(width_, height_, hdrplus_)));
-        arenaHdrPlus_ = hdrplus_;
-    } else if (usesFrequencyMerge(algorithm_)) {
+    if (algorithm_ == MergeAlgorithm::Rexture) {
+        arena_.initialize(physical, device, makeRextureScratchLayout(makeMultiframeGeometry(width_, height_, 1.0f), rextureDebug_));
+        arenaRextureDebug_ = rextureDebug_;
+    } else {
         arena_.initialize(physical, device,
                           makeHdrPlusFrequencyScratchLayout(
                               rawr::raw_merge_hdrplus_gpu::makeFrequencyGeometry(width_, height_, hdrplus_), width_, height_));
         arenaHdrPlus_ = hdrplus_;
-    } else {
-        arena_.initialize(physical, device, makeMultiframeScratchLayout(makeMultiframeGeometry(width_, height_, outputScale_)));
     }
     arenaAlgorithm_ = algorithm_;
 }
 void AndroidBurstCoordinator::initialize(VkPhysicalDevice physical, VkDevice device, std::uint32_t qf, Submit submit,
-                                         std::uint32_t w, std::uint32_t h, float scale, StageSink stageSink,
-                                         rawr::raw_alignment_gpu::Config alignment,
-                                         rawr::raw_merge_wronski_gpu::Config merge, MergeAlgorithm algorithm,
+                                         std::uint32_t w, std::uint32_t h, StageSink stageSink,
+                                         rawr::raw_merge_common::Config merge, MergeAlgorithm algorithm,
                                          rawr::raw_merge_hdrplus_gpu::Config hdrplus) {
     if (!physical || !device || !submit || !w || !h)
         throw std::invalid_argument("multiframe burst: invalid initialize");
-    // HDR+ merges on the RAW grid only.
-    if (algorithm != MergeAlgorithm::Wronski) {
-        scale = 1.0f;
-        if (!rawr::raw_merge_hdrplus_gpu::valid(hdrplus))
-            throw std::invalid_argument("multiframe burst: invalid HDR+ tuning");
-    }
-    merge.outputScale = scale;
-    if (!rawr::raw_alignment_gpu::valid(alignment) ||
-        !(std::isfinite(alignment.hessianEpsilon) && alignment.hessianEpsilon > 0.0f) ||
-        !rawr::raw_merge_wronski_gpu::valid(merge))
-        throw std::invalid_argument("multiframe burst: invalid tuning");
+    if (!rawr::raw_merge_hdrplus_gpu::valid(hdrplus))
+        throw std::invalid_argument("multiframe burst: invalid HDR+ tuning");
+    if (!rawr::raw_merge_common::valid(merge)) throw std::invalid_argument("multiframe burst: invalid tuning");
     std::lock_guard<std::mutex> lock(initMutex_);
-    if (algorithm == MergeAlgorithm::Wronski) lastScale_ = scale;
     lastAlgorithm_ = algorithm;
     lastHdrPlus_ = hdrplus;
-    if (device_ == device && physical_ == physical && queueFamily_ == qf && width_ == w && height_ == h &&
-        std::abs(outputScale_ - scale) <= 1.0e-6f) {
-        alignment_ = alignment;
+    if (device_ == device && physical_ == physical && queueFamily_ == qf && width_ == w && height_ == h) {
         merge_ = merge;
         algorithm_ = algorithm;
         hdrplus_ = hdrplus;
@@ -266,7 +249,6 @@ void AndroidBurstCoordinator::initialize(VkPhysicalDevice physical, VkDevice dev
     submit_ = {};
     stageSink_ = {};
     const auto initializeBegin = std::chrono::steady_clock::now();
-    alignment_ = alignment;
     merge_ = merge;
     algorithm_ = algorithm;
     hdrplus_ = hdrplus;
@@ -274,7 +256,6 @@ void AndroidBurstCoordinator::initialize(VkPhysicalDevice physical, VkDevice dev
     stageSink_ = std::move(stageSink);
     width_ = w;
     height_ = h;
-    outputScale_ = scale;
     if (stageSink_) stageSink_(Stage::ArenaInitializeBegin, 0, 0);
     ensureExecutionInfra(physical, device, qf);
     initializeArenaLocked(physical, device);
@@ -292,6 +273,7 @@ AndroidBurstCoordinator::ChunkTiming AndroidBurstCoordinator::executeChunk(std::
     if (queryCount == 0u || queryCount > kTimestampQueryCapacity) throw std::invalid_argument("multiframe timestamp query count");
     using Clock = std::chrono::steady_clock;
     const auto begin = Clock::now();
+    Clock::time_point submitBegin = begin, waitBegin = begin;
     if (stageSink_) stageSink_(Stage::ChunkBegin, chunkCode, frameIndex);
     try {
         if (submissionInFlight_) {
@@ -328,8 +310,10 @@ AndroidBurstCoordinator::ChunkTiming AndroidBurstCoordinator::executeChunk(std::
         }
         check(vkResetFences(device_, 1, &fence_), "multiframe reset fence");
         if (stageSink_) stageSink_(Stage::SubmitBegin, arena_.physicalImageBytes(), arena_.physicalBufferBytes());
+        submitBegin = Clock::now();
         submit_(si, fence_);
         submissionInFlight_ = true;
+        waitBegin = Clock::now();
         if (stageSink_) stageSink_(Stage::SubmitEnd, arena_.physicalImageBytes(), arena_.physicalBufferBytes());
         if (stageSink_)
             stageSink_(Stage::FenceWaitBegin, arena_.physicalImageBytes(), arena_.physicalBufferBytes());
@@ -353,45 +337,28 @@ AndroidBurstCoordinator::ChunkTiming AndroidBurstCoordinator::executeChunk(std::
             gpuIntervals.push_back(double(values[i] - values[i - 1u]) * double(timestampPeriodNs_) / 1.0e6);
         }
     }
-    const double wall = std::chrono::duration<double, std::milli>(Clock::now() - begin).count();
+    const auto end = Clock::now();
+    const auto ms = [](Clock::duration d) { return std::chrono::duration<double, std::milli>(d).count(); };
+    const double wall = ms(end - begin);
+    ++chunkStats_.chunkCount;
+    chunkStats_.chunkWallMs += wall;
+    chunkStats_.chunkRecordMs += ms(submitBegin - begin);
+    chunkStats_.chunkSubmitMs += ms(waitBegin - submitBegin);
+    chunkStats_.chunkWaitMs += ms(end - waitBegin);
+    for (const double g : gpuIntervals) chunkStats_.chunkGpuMs += g;
     return std::pair<double, std::vector<double>>(wall, std::move(gpuIntervals));
 }
 void AndroidBurstCoordinator::recordTimestamp(std::uint32_t query) {
     if (timestampsSupported_)
         vkCmdWriteTimestamp(command_, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, timestampPool_, query);
 }
-BurstRunResult AndroidBurstCoordinator::run(const std::vector<BurstFrame>& frames, std::uint32_t ref,
-                                            FrameConsumed frameConsumed, FrameLoad frameLoad) {
-    if (!device_ || !arenaReady_ || frames.size() < 2 || ref >= frames.size())
-        throw std::invalid_argument("multiframe burst: invalid run");
-    if (frames[ref].raw.ref.width != width_ || frames[ref].raw.ref.height != height_)
-        throw std::invalid_argument("multiframe burst: RAW geometry mismatch");
-    // Chunk codes are stable trace ABI for device diagnostics. Companion work
-    // deliberately remains split at scheduling boundaries so preview submits can
-    // interleave on the shared graphics queue. Alignment is additionally split
-    // per coarse-to-fine level (chunk 11 repeats): a whole companion's
-    // alignment holds the GPU for ~35ms, starving 30/60fps preview, while a
-    // single level holds it for ~1-20ms. Recorded commands are unchanged.
-    // 1=reference, 11=prepare/alignment, 12=kernel/stats,
-    // 13=robustness, 14=accumulate, 20=finalize.
-    using Clock = std::chrono::steady_clock;
-    const auto runBegin = Clock::now();
-    BurstStageTimings timings{};
-    timings.initializeMs = pendingInitializeMs_;
+// Burst noise estimation: fits the noise profile from the reference and a neighbouring frame (flat static blocks). Sets
+// merge_.sensorNoiseProfile on success; the caller restores merge_ afterwards. Returns whether a fit was used.
+bool AndroidBurstCoordinator::estimateNoiseFromBurst(const std::vector<BurstFrame>& frames, std::uint32_t ref,
+                                                     const FrameLoad& frameLoad, BurstStageTimings& timings) {
     const auto timestamp = [&](std::uint32_t query) { recordTimestamp(query); };
-    if (algorithm_ == MergeAlgorithm::HdrPlusSpatial) return runHdrPlus(frames, ref, frameConsumed, frameLoad);
-    if (usesFrequencyMerge(algorithm_)) return runHdrPlusFrequency(frames, ref, frameConsumed, frameLoad);
-    if (frameLoad) frameLoad(ref);
-    // Burst noise estimation: the profile it fits drives everything below
-    // (robustness LUT, kernel GAT, aperture gate), so it runs first. The
-    // configured profile is restored after the run (also on failure).
-    struct RestoreMerge {
-        rawr::raw_merge_wronski_gpu::Config& target;
-        rawr::raw_merge_wronski_gpu::Config saved;
-        ~RestoreMerge() { target = saved; }
-    } restoreMerge{merge_, merge_};
     bool noiseEstimated = false;
-    if (merge_.estimateNoiseFromBurst) {
+    if (merge_.estimateNoiseFromBurst && frames.size() >= 2) {
         const std::uint32_t neighbour = ref + 1u < frames.size() ? ref + 1u : ref - 1u;
         if (frameLoad) frameLoad(neighbour);
         const std::uint32_t blocksX = (width_ + kNoiseBlockSize - 1u) / kNoiseBlockSize;
@@ -430,277 +397,223 @@ BurstRunResult AndroidBurstCoordinator::run(const std::vector<BurstFrame>& frame
             noiseEstimated = true;
         }
     }
-    std::array<float, 3u * 1001u> stdc{}, diffc{};
-    auto siteVariance = [&](std::uint32_t site, float x) {
-        if (!merge_.sensorNoiseProfile) return merge_.noiseAlpha * x + merge_.noiseBeta;
-        const auto* profile = &*merge_.sensorNoiseProfile;
-        if (merge_.highSignalNoiseProfile && merge_.noiseKneeBySite[site] > 0.0f && x >= merge_.noiseKneeBySite[site])
-            profile = &*merge_.highSignalNoiseProfile;
-        return profile->slopeBySite[site] * x + profile->offsetBySite[site];
-    };
-    std::array<std::uint32_t, 4> physical{{0u, 1u, 2u, 3u}};
-    if (merge_.sensorNoiseProfile) {
-        switch (merge_.cfa) {
-            case rawr::raw_merge_wronski_gpu::CfaPattern::RGGB:
-                physical = {0u, 1u, 2u, 3u};
-                break;
-            case rawr::raw_merge_wronski_gpu::CfaPattern::GRBG:
-                physical = {1u, 0u, 3u, 2u};
-                break;
-            case rawr::raw_merge_wronski_gpu::CfaPattern::GBRG:
-                physical = {2u, 3u, 0u, 1u};
-                break;
-            case rawr::raw_merge_wronski_gpu::CfaPattern::BGGR:
-                physical = {3u, 2u, 1u, 0u};
-                break;
-        }
-    }
-    for (std::size_t i = 0; i < 1001u; ++i) {
-        const float x = float(i) / 1000.f;
-        const std::array<float, 3> variance{{siteVariance(physical[0], x),
-                                             .25f * (siteVariance(physical[1], x) + siteVariance(physical[2], x)),
-                                             siteVariance(physical[3], x)}};
-        const float sqrtBrightness = std::sqrt(x);
-        const auto noise = mergemath::aggregateRobustnessNoise(
-            mergemath::sqrtDomainNoiseVariance(sqrtBrightness, variance[0]),
-            mergemath::sqrtDomainNoiseVariance(sqrtBrightness, variance[1]),
-            mergemath::sqrtDomainNoiseVariance(sqrtBrightness, variance[2]));
-        // Aggregate brightness-indexed LUT contract. Only the first plane is
-        // consumed; repeating it keeps the fixed descriptor/buffer layout.
-        for (std::size_t c = 0; c < 3; ++c) {
-            stdc[c * 1001u + i] = noise.sigmaSquared;
-            diffc[c * 1001u + i] = noise.distanceSquared;
-        }
-    }
-    // The merge path owns a full-height output accumulator. At 1x this happened
-    // to equal the RAW height; scaled output must use the reconstructed extent or
-    // the recorder incorrectly classifies the full allocation as a stripe.
-    const std::uint32_t reconstructionHeight = arena_.image("linear_output").extent.height;
-    MultiframeRecorder recorder(arena_, executor_, alignment_, merge_, reconstructionHeight);
-    {
-        // Sensor hot-pixel list, shared by every frame of the burst (one
-        // sensor, one map). Capped defensively; Camera2 maps are small.
-        const std::size_t pairs = std::min<std::size_t>(merge_.hotPixels.size() / 2u, 1u << 20);
-        if (pairs > 0u) {
-            ensureHostBuffer(hotPixels_, VkDeviceSize(pairs) * 2u * sizeof(std::int32_t));
-            std::memcpy(hotPixels_.mapped, merge_.hotPixels.data(), pairs * 2u * sizeof(std::int32_t));
-            recorder.setHotPixels(hotPixels_.buffer, std::uint32_t(pairs));
-        }
-    }
-    const bool initializeLayouts = !layoutsInitialized_;
-    const auto referenceTiming = executeChunk(1u, ref, 3u, [&] {
-        timestamp(0u);
-        if (initializeLayouts) arena_.recordInitializeLayouts(command_);
-        arena_.recordClearBurstState(command_);
-        recorder.recordUploadNoiseCurves(command_, stdc.data(), diffc.data());
-        recorder.recordReferencePrepare(command_, frames[ref].raw.view, frames[ref].parameters);
-        timestamp(1u);
-        recorder.recordReferenceStats(command_, frames[ref].parameters);
-        timestamp(2u);
-    });
-    if (initializeLayouts) layoutsInitialized_ = true;
-    if (referenceTiming.second.size() == 2u) {
-        timings.referencePrepareMs = referenceTiming.second[0];
-        timings.referenceStatsMs = referenceTiming.second[1];
-    } else {
-        timings.referencePrepareMs = referenceTiming.first;
-    }
-    std::uint32_t companions = 0;
-    for (std::uint32_t i = 0; i < frames.size(); ++i) {
-        if (i == ref) continue;
-        if (frames[i].raw.ref.width != width_ || frames[i].raw.ref.height != height_)
-            throw std::invalid_argument("multiframe burst: RAW geometry mismatch");
-        if (frameLoad) frameLoad(i);
-        const auto prepareTiming = executeChunk(11u, i, 2u, [&] {
-            timestamp(0u);
-            recorder.recordCompanionPrepare(command_, frames[i].raw.view, frames[i].parameters);
-            timestamp(1u);
-        });
-        if (prepareTiming.second.size() == 1u) {
-            timings.companionPrepareMs += prepareTiming.second.front();
-        } else {
-            timings.companionPrepareMs += prepareTiming.first;
-        }
-        for (std::uint32_t l = 0; l < 4; ++l) {
-            const auto levelTiming = executeChunk(11u, i, 2u, [&] {
-                timestamp(0u);
-                recorder.recordCompanionAlignmentLevel(command_, l);
-                timestamp(1u);
-            });
-            if (levelTiming.second.size() == 1u) {
-                timings.alignmentMs += levelTiming.second.front();
-            } else {
-                timings.alignmentMs += levelTiming.first;
-            }
-        }
-        const auto statsTiming = executeChunk(12u, i, 2u, [&] {
-            timestamp(0u);
-            recorder.recordCompanionStats(command_, frames[i].parameters);
-            timestamp(1u);
-        });
-        timings.kernelStatsMs += statsTiming.second.empty() ? statsTiming.first : statsTiming.second.front();
-        const auto robustnessTiming = executeChunk(13u, i, 2u, [&] {
-            timestamp(0u);
-            recorder.recordCompanionRobustness(command_);
-            timestamp(1u);
-        });
-        timings.robustnessMs +=
-            robustnessTiming.second.empty() ? robustnessTiming.first : robustnessTiming.second.front();
-        const auto accumulationTiming = executeChunk(14u, i, 2u, [&] {
-            timestamp(0u);
-            recorder.recordCompanionAccumulate(command_);
-            timestamp(1u);
-        });
-        timings.accumulationMs +=
-            accumulationTiming.second.empty() ? accumulationTiming.first : accumulationTiming.second.front();
-        ++companions;
-        if (frameConsumed) frameConsumed(i);
-    }
-    const auto finalizeTiming = executeChunk(20u, ref, 2u, [&] {
-        timestamp(0u);
-        recorder.recordFinalize(command_, companions);
-        timestamp(1u);
-    });
-    timings.finalizeMs = finalizeTiming.second.empty() ? finalizeTiming.first : finalizeTiming.second.front();
-    timings.totalMs = std::chrono::duration<double, std::milli>(Clock::now() - runBegin).count();
-    const auto& out = arena_.image("linear_output");
-    BurstRunResult result{ref,
-            std::uint32_t(frames.size()),
-            out.image,
-            out.view,
-            out.format,
-            out.extent,
-            arena_.physicalImageBytes(),
-            arena_.physicalBufferBytes(),
-            static_cast<std::uint32_t>(2u + companions * 8u),
-            resourcesReused_,
-            pipelineCacheReused_,
-            timings};
-    result.noiseEstimated = noiseEstimated;
-    if (noiseEstimated) result.estimatedNoise = *merge_.sensorNoiseProfile;
-    return result;
+    return noiseEstimated;
 }
-BurstRunResult AndroidBurstCoordinator::runHdrPlus(const std::vector<BurstFrame>& frames, std::uint32_t ref,
+BurstRunResult AndroidBurstCoordinator::run(const std::vector<BurstFrame>& frames, std::uint32_t ref,
+                                            FrameConsumed frameConsumed, FrameLoad frameLoad) {
+    std::lock_guard<std::mutex> runLock(runMutex_);
+    if (!device_ || !arenaReady_ || frames.size() < 2 || ref >= frames.size())
+        throw std::invalid_argument("multiframe burst: invalid run");
+    if (frames[ref].raw.ref.width != width_ || frames[ref].raw.ref.height != height_)
+        throw std::invalid_argument("multiframe burst: RAW geometry mismatch");
+    // Chunk codes are stable trace ABI for device diagnostics. Companion work
+    // deliberately remains split at scheduling boundaries so preview submits can
+    // interleave on the shared graphics queue. Alignment is additionally split
+    // per coarse-to-fine level (chunk 11 repeats): a whole companion's
+    // alignment holds the GPU for ~35ms, starving 30/60fps preview, while a
+    // single level holds it for ~1-20ms. Recorded commands are unchanged.
+    // 1=reference, 11=prepare/alignment, 12=kernel/stats,
+    // 13=robustness, 14=accumulate, 20=finalize.
+    chunkStats_ = {};
+    if (algorithm_ == MergeAlgorithm::Rexture) return runRexture(frames, ref, frameConsumed, frameLoad);
+    return runHdrPlusFrequency(frames, ref, frameConsumed, frameLoad);
+}
+BurstRunResult AndroidBurstCoordinator::runRexture(const std::vector<BurstFrame>& frames, std::uint32_t ref,
                                                    const FrameConsumed& frameConsumed, const FrameLoad& frameLoad) {
     if (frameLoad) frameLoad(ref);
-    // Chunks reuse the Wronski trace codes: 1=reference, 11=prepare and
-    // alignment (two submissions), 14=merge/accumulate, 20=finalize. Splitting
-    // each companion lets preview work interleave on a shared queue.
     using Clock = std::chrono::steady_clock;
     const auto runBegin = Clock::now();
     BurstStageTimings timings{};
     timings.initializeMs = pendingInitializeMs_;
     const auto gpuOrWall = [](const ChunkTiming& t) { return t.second.empty() ? t.first : t.second.front(); };
-    const auto geometry = rawr::raw_merge_hdrplus_gpu::makeGeometry(width_, height_, hdrplus_);
-    HdrPlusRecorder recorder(arena_, executor_, hdrplus_, geometry);
-    const std::size_t pairs = std::min<std::size_t>(merge_.hotPixels.size() / 2u, 1u << 20);
-    if (pairs > 0u) {
-        ensureHostBuffer(hotPixels_, VkDeviceSize(pairs) * 2u * sizeof(std::int32_t));
-        std::memcpy(hotPixels_.mapped, merge_.hotPixels.data(), pairs * 2u * sizeof(std::int32_t));
-        recorder.setHotPixels(hotPixels_.buffer, std::uint32_t(pairs));
+    // The burst-fitted noise profile (when it fits) replaces the configured one for this run only.
+    struct RestoreMerge {
+        rawr::raw_merge_common::Config& target;
+        rawr::raw_merge_common::Config saved;
+        ~RestoreMerge() { target = saved; }
+    } restoreMerge{merge_, merge_};
+    const bool noiseFitted = estimateNoiseFromBurst(frames, ref, frameLoad, timings);
+    // Scalar noise model: the mean of the four CFA-site pairs (the alignment convention), else the configured pair.
+    rawr::raw_merge_rexture_gpu::Config config{};
+    config.cfa = static_cast<rawr::raw_merge_rexture_gpu::CfaPattern>(static_cast<std::uint32_t>(merge_.cfa));
+    config.noiseAlpha = merge_.noiseAlpha;
+    config.noiseBeta = merge_.noiseBeta;
+    if (merge_.sensorNoiseProfile) {
+        const auto& n = *merge_.sensorNoiseProfile;
+        config.noiseAlpha = .25f * (n.slopeBySite[0] + n.slopeBySite[1] + n.slopeBySite[2] + n.slopeBySite[3]);
+        config.noiseBeta = .25f * (n.offsetBySite[0] + n.offsetBySite[1] + n.offsetBySite[2] + n.offsetBySite[3]);
     }
-    const auto frameCount = std::uint32_t(frames.size());
+    config.whiteBalance = frames[ref].parameters.whiteBalance;
+    RextureRecorder recorder(arena_, executor_, config);
+    // RAWR_REXTURE_PROFILE: GPU time per dispatch group (timestamps after each group), per-chunk wall time and the host time
+    // between chunks, printed at the end. Never set in production.
+    const bool profile = std::getenv("RAWR_REXTURE_PROFILE") != nullptr;
+    std::map<std::string, double> profGpu;
+    double wallInChunks = 0.0, gpuInChunks = 0.0, hostLoad = 0.0;
+    std::uint32_t chunkCount = 0;
+    const auto profiled = [&](std::uint32_t code, std::uint32_t frame, std::uint32_t marks, const std::function<void()>& rec) {
+        ++chunkCount;
+        if (!profile) return gpuOrWall(executeChunk(code, frame, 2u, [&] {
+            recordTimestamp(0u);
+            rec();
+            recordTimestamp(1u);
+        }));
+        std::vector<const char*> names;
+        std::uint32_t q = 0;
+        recorder.setMark([&](const char* n) {
+            names.push_back(n);
+            recordTimestamp(++q);
+        });
+        const auto t = executeChunk(code, frame, marks + 1u, [&] {
+            recordTimestamp(0u);
+            rec();
+        });
+        recorder.setMark({});
+        double gpu = 0.0;
+        for (std::size_t k = 0; k < t.second.size() && k < names.size(); ++k) {
+            profGpu[names[k]] += t.second[k];
+            gpu += t.second[k];
+        }
+        wallInChunks += t.first;
+        gpuInChunks += gpu;
+        return gpu > 0.0 ? gpu : t.first;
+    };
     const bool initializeLayouts = !layoutsInitialized_;
-    timings.referencePrepareMs = gpuOrWall(executeChunk(1u, ref, 2u, [&] {
-        recordTimestamp(0u);
+    timings.referencePrepareMs = profiled(1u, ref, 3u, [&] {
         if (initializeLayouts) arena_.recordInitializeLayouts(command_);
-        recorder.recordReference(command_, frames[ref].raw.view, frames[ref].parameters.normalization, frameCount);
-        recordTimestamp(1u);
-    }));
+        recorder.recordBurstClear(command_);
+        recorder.recordPrepare(command_, true, frames[ref].raw.view, frames[ref].parameters);
+    });
     if (initializeLayouts) layoutsInitialized_ = true;
+    if (rextureObserver_) rextureObserver_("base_prepare", ref, arena_);
+    timings.referenceStatsMs = profiled(2u, ref, rextureDebug_ ? 5u : 4u, [&] {
+        recorder.recordBaseKernel(command_, rextureDebug_);
+        recorder.recordBaseTiles(command_);
+    });
+    if (rextureObserver_) rextureObserver_("base_kernel", ref, arena_);
+    // Fallback demosaic of the base: production runs it strip by strip inside the final pass; the verification build runs it
+    // once on the whole frame here so that it can be dumped.
+    if (rextureDebug_) {
+        timings.referenceStatsMs += profiled(3u, ref, 6u, [&] {
+            recorder.recordBaseDemosaic(command_, frames[ref].raw.view, frames[ref].parameters);
+        });
+        if (rextureObserver_) rextureObserver_("base_demosaic", ref, arena_);
+    }
+    bool samePairLevels = true;  // pair accumulation needs one black / white level set for the burst
+    for (const auto& fr : frames)
+        samePairLevels = samePairLevels && fr.parameters.normalization.whiteLevel == frames[ref].parameters.normalization.whiteLevel &&
+                         fr.parameters.normalization.blackByPhase == frames[ref].parameters.normalization.blackByPhase;
+    // AE may still be settling while the ZSL ring fills: every companion is scaled to the base's exposure, as in the HDR+ path.
+    const auto gainOf = [&](std::uint32_t i) { return exposureGain(frames, ref, i); };
+    int pending = -1;  // first frame of a pair waiting for its partner (production path)
     std::uint32_t companions = 0;
-    for (std::uint32_t i = 0; i < frameCount; ++i) {
+    for (std::uint32_t i = 0; i < frames.size(); ++i) {
         if (i == ref) continue;
         if (frames[i].raw.ref.width != width_ || frames[i].raw.ref.height != height_)
             throw std::invalid_argument("multiframe burst: RAW geometry mismatch");
-        // Keep the expensive finest level in its own submission so preview
-        // can interleave. Preparation and the much smaller coarse levels share
-        // one submission instead of a fence round-trip for every level.
+        const auto loadBegin = Clock::now();
         if (frameLoad) frameLoad(i);
-        const bool profile = std::getenv("RAWR_HDRP_PROFILE") != nullptr;
-        const std::uint32_t coarseLevels = recorder.levelCount() - 1u;
-        recorder.setCompanionGain(exposureGain(frames, ref, i));
-        const auto prepareTiming = executeChunk(11u, i, profile ? 2u + 3u * coarseLevels : 3u, [&] {
-            recordTimestamp(0u);
-            recorder.recordCompanionPrepare(command_, frames[i].raw.view, frames[i].parameters.normalization);
-            recordTimestamp(1u);
-            for (std::uint32_t level = recorder.levelCount(); --level > 0u;) {
-                const std::uint32_t start = 1u + 3u * (coarseLevels - level);
-                recorder.recordCompanionAlignLevel(command_, level, [&](std::uint32_t k) {
-                    if (profile) recordTimestamp(start + k);
+        hostLoad += std::chrono::duration<double, std::milli>(Clock::now() - loadBegin).count();
+        if (rextureObserver_) {
+            // Verification build: one submission per stage group so every stage can be dumped.
+            timings.companionPrepareMs += profiled(11u, i, 3u, [&] {
+                recorder.recordPrepare(command_, false, frames[i].raw.view, frames[i].parameters, gainOf(i));
+            });
+            rextureObserver_("companion_prepare", i, arena_);
+            for (std::uint32_t level = 0; level < 4u; ++level)
+                timings.alignmentMs += profiled(11u, i, RextureRecorder::alignmentMarks(level), [&] {
+                    recorder.recordAlignmentLevel(command_, level, rextureDebug_);
                 });
-                if (profile) recordTimestamp(start + 3u);
-            }
-            if (!profile) recordTimestamp(2u);
-        });
-        if (prepareTiming.second.empty()) {
-            timings.companionPrepareMs += prepareTiming.first;
+            rextureObserver_("companion_align", i, arena_);
+            timings.robustnessMs += profiled(13u, i, 1u, [&] { recorder.recordRobustness(command_, rextureDebug_); });
+            rextureObserver_("companion_robust", i, arena_);
+            timings.accumulationMs += profiled(14u, i, 1u, [&] {
+                recorder.recordAccumulate(command_, frames[i].raw.view, frames[i].parameters, rextureDebug_, gainOf(i));
+            });
+        } else if (!samePairLevels) {
+            timings.companionPrepareMs += profiled(11u, i, 3u + 4u + 3u + 3u, [&] {
+                recorder.recordPrepare(command_, false, frames[i].raw.view, frames[i].parameters, gainOf(i));
+                for (std::uint32_t level = 0; level < 3u; ++level) recorder.recordAlignmentLevel(command_, level, false);
+            });
+            timings.alignmentMs += profiled(11u, i, 3u + 1u, [&] {
+                recorder.recordAlignmentLevel(command_, 3u, false);
+                recorder.recordRobustness(command_, false);
+            });
+            timings.accumulationMs += profiled(14u, i, 1u, [&] {
+                recorder.recordAccumulate(command_, frames[i].raw.view, frames[i].parameters, false, gainOf(i));
+            });
         } else {
-            timings.companionPrepareMs += prepareTiming.second.front();
-            for (std::size_t k = 1; k < prepareTiming.second.size(); ++k)
-                timings.alignmentMs += prepareTiming.second[k];
-            if (profile) {
-                for (std::uint32_t n = 0; n < coarseLevels; ++n) {
-                    const auto k = 1u + 3u * n;
-                    std::fprintf(stderr, "hdrp_profile frame=%u level=%u correct=%.3f cost=%.3f best=%.3f\n", i,
-                                 coarseLevels - n, prepareTiming.second[k], prepareTiming.second[k + 1u],
-                                 prepareTiming.second[k + 2u]);
-                }
+            // Three submissions per companion (a submission costs ~1.4 ms of GPU idle on Adreno, and the preview needs a gap
+            // at least every ~25 ms): prepare + coarse alignment (~15 ms), finest level + robustness (~20 ms), accumulate
+            // (~24 ms, one dispatch).
+            // Companions are accumulated in pairs: the per-pixel state is read and written once per two frames. The first
+            // of a pair waits (its raw stays pinned) while the second is prepared and aligned.
+            const std::uint32_t slot = pending < 0 ? 0u : 1u;  // pairing is only used when every frame shares the levels
+            constexpr std::uint32_t kMarks1 = 3u + 4u + 3u + 3u;
+            timings.companionPrepareMs += profiled(11u, i, kMarks1, [&] {
+                recorder.recordPrepare(command_, false, frames[i].raw.view, frames[i].parameters, gainOf(i));
+                for (std::uint32_t level = 0; level < 3u; ++level) recorder.recordAlignmentLevel(command_, level, false);
+            });
+            timings.alignmentMs += profiled(11u, i, 3u + 1u, [&] {
+                recorder.recordAlignmentLevel(command_, 3u, false, slot);
+                recorder.recordRobustness(command_, false, slot);
+            });
+            if (pending < 0) {
+                pending = static_cast<int>(i);
+                continue;
             }
+            timings.accumulationMs += profiled(14u, i, 1u, [&] {
+                recorder.recordAccumulatePair(command_, frames[pending].raw.view, frames[i].raw.view, frames[i].parameters,
+                                              gainOf(static_cast<std::uint32_t>(pending)), gainOf(i));
+            });
+            ++companions;
+            if (frameConsumed) frameConsumed(static_cast<std::uint32_t>(pending));
+            pending = -1;
         }
-        const auto levelTiming = executeChunk(11u, i, 4u, [&] {
-            recordTimestamp(0u);
-            recorder.recordCompanionAlignLevel(command_, 0u, [&](std::uint32_t k) { recordTimestamp(k); });
-            recordTimestamp(3u);
-        });
-        double alignmentMs = levelTiming.first;
-        if (!levelTiming.second.empty()) {
-            alignmentMs = 0.0;
-            for (const double ms : levelTiming.second) alignmentMs += ms;
-        }
-        timings.alignmentMs += alignmentMs;
-        if (profile && levelTiming.second.size() == 3u)
-            std::fprintf(stderr, "hdrp_profile frame=%u level=0 correct=%.3f cost=%.3f best=%.3f\n", i,
-                         levelTiming.second[0], levelTiming.second[1], levelTiming.second[2]);
-        const auto mergeTiming = executeChunk(14u, i, 5u, [&] {
-            recordTimestamp(0u);
-            recorder.recordCompanionMerge(command_, frameCount, [&](std::uint32_t k) { recordTimestamp(k); });
-            recordTimestamp(4u);
-        });
-        double mergeMs = mergeTiming.first;
-        if (!mergeTiming.second.empty()) {
-            mergeMs = 0.0;
-            for (const double ms : mergeTiming.second) mergeMs += ms;
-            if (std::getenv("RAWR_HDRP_PROFILE") && mergeTiming.second.size() == 4u)
-                std::fprintf(stderr, "hdrp_profile frame=%u warp=%.3f blur=%.3f weight=%.3f accumulate=%.3f\n", i,
-                             mergeTiming.second[0], mergeTiming.second[1], mergeTiming.second[2], mergeTiming.second[3]);
-        }
-        timings.accumulationMs += mergeMs;
         ++companions;
         if (frameConsumed) frameConsumed(i);
     }
-    timings.finalizeMs = gpuOrWall(executeChunk(20u, ref, 2u, [&] {
-        recordTimestamp(0u);
-        recorder.recordFinalize(command_);
-        recordTimestamp(1u);
-    }));
+    if (pending >= 0) {  // odd companion count: the last frame alone
+        const auto i = static_cast<std::uint32_t>(pending);
+        timings.accumulationMs += profiled(14u, i, 1u, [&] {
+            recorder.recordAccumulate(command_, frames[i].raw.view, frames[i].parameters, false, gainOf(i));
+        });
+        ++companions;
+        if (frameConsumed) frameConsumed(i);
+    }
+    if (rextureObserver_) rextureObserver_("companions_done", ref, arena_);
+    timings.finalizeMs = profiled(20u, ref, RextureRecorder::finalizeMarks(height_, rextureDebug_), [&] {
+        recorder.recordFinalize(command_, frames[ref].raw.view, frames[ref].parameters, rextureDebug_);
+    });
+    if (profile) {
+        std::fprintf(stderr, "rexture_profile companions=%u chunks=%u gpu_ms=%.2f chunk_wall_ms=%.2f frame_load_ms=%.2f stages:",
+                     companions, chunkCount, gpuInChunks, wallInChunks, hostLoad);
+        for (const auto& kv : profGpu) std::fprintf(stderr, " %s=%.2f", kv.first.c_str(), kv.second);
+        std::fprintf(stderr, "\n");
+    }
+    if (rextureObserver_) rextureObserver_("final", ref, arena_);
     timings.totalMs = std::chrono::duration<double, std::milli>(Clock::now() - runBegin).count();
-    const auto& out = arena_.image("hdrp_output");
-    const auto& cfa = arena_.image("hdrp_cfa");
+    timings.chunkCount = chunkStats_.chunkCount;
+    timings.chunkWallMs = chunkStats_.chunkWallMs;
+    timings.chunkRecordMs = chunkStats_.chunkRecordMs;
+    timings.chunkSubmitMs = chunkStats_.chunkSubmitMs;
+    timings.chunkWaitMs = chunkStats_.chunkWaitMs;
+    timings.chunkGpuMs = chunkStats_.chunkGpuMs;
+    const auto& out = arena_.image("linear_output");
     BurstRunResult result{ref,
-                          frameCount,
+                          std::uint32_t(frames.size()),
                           out.image,
                           out.view,
                           out.format,
                           out.extent,
                           arena_.physicalImageBytes(),
                           arena_.physicalBufferBytes(),
-                          2u + companions * 3u,
+                          1u + companions,
                           resourcesReused_,
                           pipelineCacheReused_,
                           timings};
-    result.cfaImage = cfa.image;
-    result.cfaView = cfa.view;
+    result.noiseEstimated = noiseFitted;
+    if (noiseFitted) result.estimatedNoise = *merge_.sensorNoiseProfile;
     return result;
 }
 BurstRunResult AndroidBurstCoordinator::runHdrPlusFrequency(const std::vector<BurstFrame>& frames, std::uint32_t ref,
@@ -721,15 +634,7 @@ BurstRunResult AndroidBurstCoordinator::runHdrPlusFrequency(const std::vector<Bu
     const auto gpuOrWall = [](const ChunkTiming& t) { return t.second.empty() ? t.first : t.second.front(); };
     const auto geometry = rawr::raw_merge_hdrplus_gpu::makeFrequencyGeometry(width_, height_, hdrplus_);
     HdrPlusFrequencyRecorder recorder(arena_, executor_, hdrplus_, geometry);
-    if (algorithm_ == MergeAlgorithm::HdrPlusBracketed) {
-        std::vector<float> factors(frames.size(), 1.0f), whites(frames.size(), 65535.0f);
-        const float refExposure = frames[ref].exposure;
-        for (std::size_t i = 0; i < frames.size(); ++i) {
-            if (refExposure > 0.0f && frames[i].exposure > 0.0f) factors[i] = frames[i].exposure / refExposure;
-            whites[i] = frames[i].parameters.normalization.whiteLevel;
-        }
-        recorder.setExposure(std::move(factors), std::move(whites));
-    } else {
+    {
         std::vector<float> gains(frames.size(), 1.0f);
         for (std::uint32_t i = 0; i < frames.size(); ++i) gains[i] = exposureGain(frames, ref, i);
         recorder.setExposureNormalization(std::move(gains));
@@ -744,17 +649,9 @@ BurstRunResult AndroidBurstCoordinator::runHdrPlusFrequency(const std::vector<Bu
     for (std::uint32_t i = 0; i < frameCount; ++i)
         if (frames[i].raw.ref.width != width_ || frames[i].raw.ref.height != height_)
             throw std::invalid_argument("multiframe burst: RAW geometry mismatch");
-    // Bracketed bursts merge the companions as dark as the reference first:
-    // their running merge is the substitute for brighter frames' clipped cells.
-    // Brighter ones follow by exposure, so each shares one pyramid clamp.
     std::vector<std::uint32_t> order;
     for (std::uint32_t i = 0; i < frameCount; ++i)
         if (i != ref) order.push_back(i);
-    std::stable_sort(order.begin(), order.end(), [&](std::uint32_t a, std::uint32_t b) {
-        const float ka = recorder.brighterCompanion(a) ? recorder.exposureFactor(a) : 0.0f;
-        const float kb = recorder.brighterCompanion(b) ? recorder.exposureFactor(b) : 0.0f;
-        return ka < kb;
-    });
     std::uint32_t companions = 0;
     for (std::uint32_t pass = 0; pass < 4u; ++pass) {
         recorder.beginPass(pass);
@@ -767,12 +664,6 @@ BurstRunResult AndroidBurstCoordinator::runHdrPlusFrequency(const std::vector<Bu
         }));
         if (initializeLayouts) layoutsInitialized_ = true;
         for (const std::uint32_t i : order) {
-            if (recorder.needsSubstitutionSource(i))
-                timings.accumulationMs += gpuOrWall(executeChunk(14u, i, 2u, [&] {
-                    recordTimestamp(0u);
-                    recorder.recordSubstitutionSource(command_);
-                    recordTimestamp(1u);
-                }));
             // Aligning passes: prepare + coarse levels, then the finest level
             // (+ shift store) as its own submission. One submission held the
             // GPU ~70 ms per companion on Adreno and dropped preview frames.
@@ -839,6 +730,12 @@ BurstRunResult AndroidBurstCoordinator::runHdrPlusFrequency(const std::vector<Bu
         recordTimestamp(1u);
     }));
     timings.totalMs = std::chrono::duration<double, std::milli>(Clock::now() - runBegin).count();
+    timings.chunkCount = chunkStats_.chunkCount;
+    timings.chunkWallMs = chunkStats_.chunkWallMs;
+    timings.chunkRecordMs = chunkStats_.chunkRecordMs;
+    timings.chunkSubmitMs = chunkStats_.chunkSubmitMs;
+    timings.chunkWaitMs = chunkStats_.chunkWaitMs;
+    timings.chunkGpuMs = chunkStats_.chunkGpuMs;
     const auto& out = arena_.image("hdrp_output");
     const auto& cfa = arena_.image("hdrp_cfa");
     BurstRunResult result{ref,
@@ -881,7 +778,6 @@ void AndroidBurstCoordinator::resetLocked() noexcept {
     resetInfraLocked();
     arena_.reset();
     queueFamily_ = width_ = height_ = 0;
-    outputScale_ = 0.0f;
     arenaReady_ = false;
     layoutsInitialized_ = false;
     submissionInFlight_ = false;

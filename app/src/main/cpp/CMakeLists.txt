@@ -441,3 +441,8 @@ set_source_files_properties(capture/persistence/BurstJob.cpp capture/persistence
 set_source_files_properties(capture/single/SingleShotSlot.cpp capture/single/SingleFrameCaptureAcquisition.cpp
   capture/single/SingleFrameCaptureJob.cpp
   PROPERTIES COMPILE_OPTIONS "$<$<CONFIG:Debug>:-O2>")
+
+# Full-size burst remosaic is inline in SessionEngine.cpp. Keep device Debug
+# timing representative of optimized CPU loops without changing the algorithm.
+set_source_files_properties(session/SessionEngine.cpp
+  PROPERTIES COMPILE_OPTIONS "$<$<CONFIG:Debug>:-O2>")

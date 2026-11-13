@@ -67,6 +67,7 @@ class NativePreviewEngine {
 
     /** This device's built-in lens profile JSON (matched natively from system properties). */
     external fun builtInCameraProfile(): String
+    external fun deviceCameraProfiles(): Array<String>
 
     /** A lens camera profile (.dcp) file: [error, name, summary]; error is empty when the app can use it. */
     external fun inspectCameraProfile(path: String): Array<String>
@@ -83,7 +84,6 @@ class NativePreviewEngine {
     external fun setExperimentalZeroCopy(handle: Long, enabled: Boolean)
 
     external fun setExperimentalMultiframeEnabled(handle: Long, enabled: Boolean)
-    external fun setHdrPlusHeadroomMaxEv(handle: Long, maxEv: Float)
 
     external fun setPersistentEngineEnabled(handle: Long, enabled: Boolean)
 
@@ -133,7 +133,7 @@ class NativePreviewEngine {
 
 
 
-    external fun prepareExperimentalMultiframe(handle: Long, maxFrames: Int, longFrames: Int): Int
+    external fun prepareExperimentalMultiframe(handle: Long, maxFrames: Int): Int
 
     external fun startPreparedMultiframeCapture(
         handle: Long,
