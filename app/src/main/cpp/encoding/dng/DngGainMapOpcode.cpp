@@ -96,15 +96,30 @@ bool appendLensShadingGainMaps(TinyDngWriteParams& p, const rawrcam::metadata::F
     const uint32_t rows = metadata.lensShadingMapHeight;
     const uint64_t points = uint64_t(cols) * uint64_t(rows);
     bool valid = cols >= 2 && rows >= 2 && points <= 65536u && ls.size() == size_t(points) * 4u;
+    // Xiaomi 200 MP reports some entries at 0 (or not finite): fill them with their channel's mean,
+    // give up only when too many are missing.
     float minGain = 1.0f;
-    if (valid)
-        for (float v : ls) {
-            if (!std::isfinite(v) || v <= 0.0f) {
-                valid = false;
-                break;
+    if (valid) {
+        size_t bad = 0;
+        double chSum[4] = {0, 0, 0, 0};
+        size_t chCount[4] = {0, 0, 0, 0};
+        for (size_t i = 0; i < ls.size(); ++i) {
+            if (std::isfinite(ls[i]) && ls[i] > 0.0f) {
+                chSum[i % 4] += ls[i];
+                ++chCount[i % 4];
+            } else {
+                ++bad;
             }
-            minGain = std::min(minGain, v);
         }
+        if (bad * 4 > ls.size()) valid = false;
+        for (int c = 0; c < 4 && valid; ++c)
+            if (chCount[c] == 0) valid = false;
+        if (valid)
+            for (size_t i = 0; i < ls.size(); ++i) {
+                if (!(std::isfinite(ls[i]) && ls[i] > 0.0f)) ls[i] = float(chSum[i % 4] / double(chCount[i % 4]));
+                minGain = std::min(minGain, ls[i]);
+            }
+    }
     // Some HAL modes (Xiaomi 200 MP) report gains below 1: keep the shape, rescale so the smallest is 1.
     if (valid && minGain < 1.0f)
         for (float& v : ls) v /= minGain;

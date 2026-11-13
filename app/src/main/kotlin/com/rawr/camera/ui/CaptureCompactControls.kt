@@ -14,7 +14,8 @@ import com.rawr.camera.ui.icons.outlined.Iso
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
-import androidx.compose.material3.Text
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -22,7 +23,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
@@ -171,11 +171,11 @@ private fun StripFoldHandle(expanded: Boolean, onToggle: () -> Unit) {
             .testTag("capture_strip_fold_handle"),
         contentAlignment = Alignment.Center
     ) {
-        Text(
-            text = if (expanded) "\u25BE  LOOK" else "\u25B4  LOOK",
-            color = Color.White.copy(alpha = 0.75f),
-            fontSize = 9.sp,
-            letterSpacing = 1.sp
+        // Grabber bar: brighter and wider while the strip is open.
+        Box(
+            Modifier
+                .size(width = if (expanded) 36.dp else 28.dp, height = 3.dp)
+                .background(Color.White.copy(alpha = if (expanded) 0.8f else 0.45f), RoundedCornerShape(2.dp))
         )
     }
 }
