@@ -2,7 +2,7 @@ name: Debug build
 
 on:
   push:
-    branches: [main, 17u-port, 17u-upstream-merge]
+    branches: [main, 17u-port, 17u-upstream-merge, xiaomi-17u]
   pull_request:
   workflow_dispatch:
 
@@ -19,6 +19,16 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+
+      # Fixed debug key kept as a repo secret (base64), so every CI APK installs
+      # over the previous one. Without the secret the default debug key is used.
+      - name: Restore debug keystore
+        env:
+          DEBUG_KEYSTORE_B64: ${{ secrets.DEBUG_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$DEBUG_KEYSTORE_B64" ]; then
+            echo "$DEBUG_KEYSTORE_B64" | base64 -d > debug.keystore
+          fi
 
       # The NDK download (~1 GB) dominates setup: keep it between runs.
       - uses: actions/cache@v4
@@ -75,7 +85,7 @@ jobs:
       # Merges to main republish the `debug` prerelease so its download link
       # stays stable. PRs only keep the run artifact.
       - name: Publish debug prerelease
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/xiaomi-17u')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
