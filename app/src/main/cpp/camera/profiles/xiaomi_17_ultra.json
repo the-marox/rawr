@@ -439,6 +439,11 @@
             64
           ],
           "white": 1023
+        },
+        "sensorLayout": {
+          "block": 4,
+          "liveRemosaic": "standard",
+          "photoRemosaic": "high"
         }
       }
     },

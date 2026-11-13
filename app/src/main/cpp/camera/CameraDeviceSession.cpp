@@ -246,7 +246,9 @@ std::optional<LensRoute> CameraDeviceSession::select(const LensRoute& requested,
     parsed->rawBufferFallBack = route.rawBufferFallBack;
     parsed->photoBufferUsage = route.photoBufferUsage;
     parsed->guardStillExposure = requiresStillExposureGuard(route);
-    parsed->cfaBlock = route.sensorLayoutBlock;
+    // With a full-size photo stream the viewfinder is the binned Bayer stream: the layout is the photo stream's.
+    parsed->cfaBlock = route.photoStream ? 1u : route.sensorLayoutBlock;
+    parsed->photoCfaBlock = route.photoStream ? route.sensorLayoutBlock : 1u;
     parsed->cfaLiveQuality = route.liveRemosaic;
     parsed->cfaPhotoQuality = route.photoRemosaic;
     parsed->profileDistortion = route.distortion;

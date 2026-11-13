@@ -55,6 +55,9 @@ struct CameraContextMetadata {
     // order before anything else reads it. Never persisted: stored frames
     // are already Bayer.
     uint32_t cfaBlock = 1;
+    // Block side of the full-size photo stream when the lens has one (sensorLayout then describes
+    // that stream; the binned viewfinder stays Bayer). Xiaomi 200 MP stills arrive as 4x4 blocks.
+    uint32_t photoCfaBlock = 1;
     // imaging::CfaRemosaicQuality for live frames (ingress) and single stills.
     uint32_t cfaLiveQuality = 1;
     uint32_t cfaPhotoQuality = 2;
