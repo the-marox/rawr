@@ -4,13 +4,7 @@
 
 #include <chrono>
 #include <cstring>
-#include <fcntl.h>
-#include <unistd.h>
-
 #include <fstream>
-#include <future>
-#include <string>
-#include <thread>
 #include <stdexcept>
 #include <vector>
 
@@ -119,73 +113,15 @@ void saveBurst(const std::string& path, multiframe::MultiframeWorkItem& work, co
     saveBurstFrames(path, job, *work.capture, work.requestId, vk, mutex);
 }
 namespace {
-// One row window of every frame, read in parallel (one thread per frame) ahead of the merge.
-struct WindowRead {
-    uint32_t y0 = 0, rows = 0;
-    std::vector<std::vector<uint8_t>> frames;
-    std::string error;
-    std::shared_future<void> done;  // declared last: destroyed (waited) before the buffers
-    ~WindowRead() {
-        if (done.valid()) done.wait();
-    }
-};
 // Frames read from the journal on demand (lazy loadBurst).
 struct JournalFrames {
     std::ifstream file;
-    int fd = -1;
     uint64_t offset = 0;
     size_t bytes = 0;
-    uint32_t width = 0;
     uint32_t windowY0 = 0, windowRows = 0;  // 0 rows: whole frames
     std::vector<uint8_t> buffer;
     std::vector<bool> loaded;
-    std::unique_ptr<WindowRead> current, next;
-    ~JournalFrames() {
-        current.reset();
-        next.reset();
-        if (fd >= 0) ::close(fd);
-    }
 };
-bool preadAll(int fd, uint8_t* dst, size_t bytes, uint64_t offset) {
-    while (bytes) {
-        const ssize_t n = ::pread(fd, dst, bytes, off_t(offset));
-        if (n <= 0) return false;
-        dst += n;
-        bytes -= size_t(n);
-        offset += uint64_t(n);
-    }
-    return true;
-}
-// Starts reading rows [y0, y0 + rows) of every frame; waits for `after` first so a prefetch never
-// competes with the read the merge is blocked on.
-std::unique_ptr<WindowRead> startWindowRead(const JournalFrames& source, uint32_t y0, uint32_t rows,
-                                            std::shared_future<void> after) {
-    auto read = std::make_unique<WindowRead>();
-    read->y0 = y0;
-    read->rows = rows;
-    read->frames.resize(source.loaded.size());
-    auto* r = read.get();
-    const int fd = source.fd;
-    const uint64_t base = source.offset;
-    const size_t frameBytes = source.bytes;
-    const size_t rowBytes = size_t(source.width) * sizeof(uint16_t);
-    read->done = std::async(std::launch::async, [r, fd, base, frameBytes, rowBytes, after]() {
-        if (after.valid()) after.wait();
-        const size_t bytes = rowBytes * r->rows;
-        std::vector<std::thread> workers;
-        std::vector<char> ok(r->frames.size(), 0);
-        for (size_t i = 0; i < r->frames.size(); ++i) {
-            workers.emplace_back([&, i]() {
-                r->frames[i].resize(bytes);
-                ok[i] = preadAll(fd, r->frames[i].data(), bytes, base + i * frameBytes + r->y0 * rowBytes) ? 1 : 0;
-            });
-        }
-        for (auto& w : workers) w.join();
-        for (char v : ok)
-            if (!v) r->error = "capture_job_frame_read_failed";
-    }).share();
-    return read;
-}
 }  // namespace
 std::unique_ptr<multiframe::MultiframeWorkItem> loadBurst(const std::string& path, const vulkan::VulkanContext& vk,
                                                           std::mutex& mutex, bool lazy) {
@@ -203,8 +139,6 @@ std::unique_ptr<multiframe::MultiframeWorkItem> loadBurst(const std::string& pat
         source->bytes = size_t(width) * height * sizeof(uint16_t);
         source->file.open(path, std::ios::binary);
         if (!source->file) throw std::runtime_error("capture_job_open_failed");
-        source->fd = ::open(path.c_str(), O_RDONLY | O_CLOEXEC);  // parallel window reads (pread)
-        source->width = width;
         source->loaded.assign(job.metadata.size(), false);
         uploaded->initialize(vk, source->bytes);
         auto* burst = work->capture.get();
@@ -225,24 +159,15 @@ std::unique_ptr<multiframe::MultiframeWorkItem> loadBurst(const std::string& pat
                 static_cast<unsigned long long>(requestId), i + 1, source->windowY0, rows);
             diagnostics::CaptureStageTimer readTiming("burst_frame_storage_read", requestId, i + 1);
             const size_t rowBytes = size_t(width) * sizeof(uint16_t), bytes = rowBytes * rows;
-            std::vector<uint8_t>* data = &source->buffer;
-            auto& window = source->current;
-            if (window && source->windowRows && window->y0 == source->windowY0 && window->rows == rows) {
-                window->done.wait();
-                if (!window->error.empty()) throw std::runtime_error(window->error);
-                data = &window->frames[i];
-            } else {
-                source->buffer.resize(bytes);
-                source->file.seekg(std::streamoff(source->offset + i * source->bytes + source->windowY0 * rowBytes));
-                source->file.read(reinterpret_cast<char*>(source->buffer.data()), std::streamsize(bytes));
-                if (!source->file) throw std::runtime_error("capture_job_frame_read_failed");
-            }
+            source->buffer.resize(bytes);
+            source->file.seekg(std::streamoff(source->offset + i * source->bytes + source->windowY0 * rowBytes));
+            source->file.read(reinterpret_cast<char*>(source->buffer.data()), std::streamsize(bytes));
+            if (!source->file) throw std::runtime_error("capture_job_frame_read_failed");
             readTiming.finish();
             diagnostics::CaptureStageTimer uploadTiming("burst_frame_gpu_upload", requestId, i + 1);
             auto& frame = burst->frames[i];
             frame.raw = uploaded->add(*vulkan, *queueMutex, width, rows, frame.raw.ref.timestampNs,
-                                      data->data(), bytes);
-            if (data != &source->buffer) std::vector<uint8_t>().swap(*data);  // uploaded: free the host copy
+                                      source->buffer.data(), bytes);
             source->loaded[i] = true;
         };
         burst->releaseFrame = [source, uploaded, burst](std::size_t i) {
@@ -258,23 +183,9 @@ std::unique_ptr<multiframe::MultiframeWorkItem> loadBurst(const std::string& pat
             for (size_t i = 0; i < source->loaded.size(); ++i) burst->releaseFrame(i);
             source->windowY0 = rows ? y0 : 0;
             source->windowRows = rows;
-            // Use the prefetched window when it matches; otherwise start reading this one now (all frames at once).
-            if (source->next && rows && source->next->y0 == y0 && source->next->rows == rows) {
-                source->current = std::move(source->next);
-            } else {
-                source->next.reset();
-                source->current.reset();
-                if (rows && source->fd >= 0) source->current = startWindowRead(*source, y0, rows, {});
-            }
             // The merge checks each frame's size before it loads it.
             for (auto& frame : burst->frames) frame.raw.ref.height = rows ? rows : height;
             source->buffer = {};  // whole-frame capacity no longer needed
-        };
-        burst->prefetchRowWindow = [source](uint32_t y0, uint32_t rows) {
-            if (source->fd < 0 || !rows) return;
-            if (source->next && source->next->y0 == y0 && source->next->rows == rows) return;
-            std::shared_future<void> after = source->current ? source->current->done : std::shared_future<void>{};
-            source->next = startWindowRead(*source, y0, rows, after);
         };
         // The reference stays resident: the base DNG and the clip map read it.
         const auto begin = std::chrono::steady_clock::now();
