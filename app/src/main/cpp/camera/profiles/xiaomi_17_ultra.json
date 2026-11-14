@@ -262,6 +262,48 @@
       }
     },
     {
+      "id": "1x ISZ",
+      "camera": {
+        "id": "2",
+        "physical": ""
+      },
+      "streams": {
+        "raw": {
+          "format": "RAW16",
+          "width": 4096,
+          "height": 3072
+        }
+      },
+      "vendorKeys": [
+        {
+          "tag": "org.codeaurora.qcamera3.sensor_meta_data.current_mode",
+          "type": "int32",
+          "scope": "request",
+          "values": [
+            2
+          ],
+          "enabled": true
+        }
+      ],
+      "image": {
+        "levels": {
+          "static": false,
+          "black": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "white": 0
+        },
+        "sensorLayout": {
+          "block": 2,
+          "liveRemosaic": "standard",
+          "photoRemosaic": "high"
+        }
+      }
+    },
+    {
       "id": "3.2x Normal",
       "camera": {
         "id": "4",

@@ -17,6 +17,19 @@
 >   readout; Leica-style palette.
 > - Release build installs as `x17u.rawr.camera` ("Rawr 17U") next to the official app.
 
+## Download (Xiaomi 17 Ultra)
+
+- Latest build: [rawr-debug.apk](https://github.com/utalpt/rawr/releases/download/debug/rawr-debug.apk)
+  ([release page](https://github.com/utalpt/rawr/releases/tag/debug)). Every push to `xiaomi-17u` rebuilds it;
+  install it over the previous one.
+- Lens setup (50 MP, 200 MP tele, vendor keys, merge limits) is built into the APK. If you restored an older
+  backup or edited lenses, use **Settings > Lens > Reset to device default** to get the current profile.
+- Optional recommended settings: [`presets/Rawr17U-recommended.zip`](presets/Rawr17U-recommended.zip). Import it
+  with **Settings > About > Backup > Import Backup**. It holds settings only (no lens profiles):
+  - Multiframe on (Rexture, 17 frames, Chroma Denoise on)
+  - RAWR look contrast +61, capture sharpening Medium
+  - Highlight recovery off, distortion correction off, AgX preset Default
+
 An Android RAW based camera application with GPU image processing, film simulation, JPEG/DNG
 capture, video recording, and DNG renderer.
 

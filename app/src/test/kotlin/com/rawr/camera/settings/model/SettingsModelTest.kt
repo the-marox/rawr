@@ -79,7 +79,7 @@ class SettingsModelTest {
         // Multiframe stays off, but is set up for HDR+ over 16 frames.
         assertFalse(v.experimentalMultiframeEnabled)
         assertEquals(MultiframeMergeAlgorithm.Rexture, v.multiframeTuning.mergeAlgorithm)
-        assertEquals(6, v.multiframeTuning.maxFrames)
+        assertEquals(17, v.multiframeTuning.maxFrames)
         // Monitoring.
         assertEquals(setOf(OverlayMode.Peaking, OverlayMode.TonemapShadows, OverlayMode.RawHighlights), v.armedOverlays)
         assertEquals("peaking.high", v.peakingSensitivityId)
@@ -668,7 +668,7 @@ class SettingsModelTest {
     @Test fun multiframeDefaultsFollowResearchedOperatingPoint() {
         val defaults = MultiframeTuning()
         assertEquals(MultiframeMergeAlgorithm.Rexture, defaults.mergeAlgorithm)
-        assertEquals(6, defaults.maxFrames)
+        assertEquals(17, defaults.maxFrames)
         assertEquals(13f, defaults.hdrPlusStrength)
         assertEquals(32, defaults.hdrPlusTileSize)
         assertEquals(

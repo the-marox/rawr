@@ -206,7 +206,7 @@ data class CaptureUiState(
     /** Active multiframe merge algorithm; names the shutter-row pill. */
     val multiframeAlgorithm: com.rawr.camera.settings.model.MultiframeMergeAlgorithm = com.rawr.camera.settings.model.MultiframeMergeAlgorithm.Rexture,
     /** Frames the next merged photo on the lens in use takes; shown briefly on a lens switch. */
-    val multiframeFrames: Int = 6,
+    val multiframeFrames: Int = 17,
     /** Post-shutter hold: brackets armed / finished, from native. */
     val bracketHoldOpened: Long = 0L,
     val bracketHoldDone: Long = 0L,
