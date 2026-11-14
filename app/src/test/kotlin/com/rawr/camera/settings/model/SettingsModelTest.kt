@@ -679,7 +679,7 @@ class SettingsModelTest {
             ),
             MultiframeSpecs.all.map { it.parameter }
         )
-        assertEquals(6f, MultiframeSpecs.forParameter(MultiframeNumericParameter.MaxFrames).defaultValue)
+        assertEquals(17f, MultiframeSpecs.forParameter(MultiframeNumericParameter.MaxFrames).defaultValue)
     }
 
     @Test fun everyMultiframeTunableExplainsLowerAndHigherImageEffects() {
