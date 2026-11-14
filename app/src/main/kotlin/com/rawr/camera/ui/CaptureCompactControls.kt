@@ -3,7 +3,6 @@ package com.rawr.camera.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -69,13 +68,13 @@ internal fun CompactViewfinderStrip(
     // The rail floats directly above whatever the strip stack currently is, so
     // multi-level strips push it up instead of overlapping it. It is measured
     // after the stack and only gets the height left under the scopes.
-    BoxWithConstraints(modifier) {
-        // The AF cell is the last column of the param row below (row inset each side).
-        val afColumn = paramsCellWidths(maxWidth - CaptureDimens.CompactParamRowEdgeInset * 2).last()
+    Box(modifier) {
         Layout(
             content = {
                 CompactStripStack(state, dispatch, forceTonemapStrip, renderProfiles, onSelectRenderProfile, filmQuick, onFilmEvent)
-                ViewfinderQuickRail(quick, state.spotAe.active, onQuickEvent, chipWidth = afColumn)
+                // MTR / AE / HL moved to the swipe-down quick panel (ViewfinderQuickPanel); the rail slot stays
+                // empty so the stack layout is unchanged.
+                Box(Modifier)
             },
             modifier = Modifier.fillMaxWidth()
         ) { measurables, constraints ->

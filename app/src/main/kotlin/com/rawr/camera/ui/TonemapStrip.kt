@@ -130,8 +130,8 @@ internal fun TonemapStrip(
 }
 
 /**
- * One row on the exposure row's five columns: the open content (profiles, or the tone sliders) on the
- * first three, LOOK over WB and PARAMS over AF. Both buttons stay put in every state; the open one is
+ * The exposure row's five columns: the open content (profiles, or the tone sliders) on the first four and
+ * PARAMS over AF, with LOOK one row higher above PARAMS (hidden while PARAMS is open). The open button is
  * outlined in the accent colour.
  */
 @Composable
@@ -156,11 +156,55 @@ private fun TonemapFixedRow(
     ) {
         val widths = paramsCellWidths(maxWidth)
         val gap = CaptureDimens.ControlGap
-        val contentWidth = widths[0] + widths[1] + widths[2] + gap * 2
-        val sliderWidths = widths.subList(0, 3)
+        // LOOK sits above PARAMS (the old MTR/AE/HL rail slot), so the open content gets the first four columns.
+        val contentWidth = widths[0] + widths[1] + widths[2] + widths[3] + gap * 3
+        val sliderWidths = widths.subList(0, 4)
         val gapPx = with(LocalDensity.current) { gap.toPx() }
         val lookOpen = mode == TonemapStripMode.Profiles
         val paramsOpen = mode == TonemapStripMode.Params
+        Column(
+            Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.End,
+            verticalArrangement = Arrangement.spacedBy(gap)
+        ) {
+        // LOOK over PARAMS; hidden while PARAMS is open so the sliders get the whole row.
+        if (!paramsOpen) {
+                Box(
+                    Modifier
+                        .width(widths[4])
+                        .height(StripDimens.ParamRowHeight)
+                        .testTag(CaptureTestTags.TONEMAP_STRIP_PROFILE)
+                        .captureCombinedClickable(
+                            shape = CaptureTextRippleShape,
+                            onLongClickLabel = "Explain",
+                            onLongClick = {
+                                showHelp(
+                                    "Look: the render profile (tone curve and colour) used for the JPEG and preview. " +
+                                        "A dot means its parameters were changed. Tap to pick another."
+                                )
+                            }
+                        ) {
+                            haptics.selection()
+                            onToggle(TonemapStripMode.Profiles)
+                        }.semantics {
+                            contentDescription = "Render profile $profileLabel. " +
+                                if (lookOpen) "Tap to close." else "Tap to choose profile."
+                            onClick {
+                                haptics.selection()
+                                onToggle(TonemapStripMode.Profiles)
+                                true
+                            }
+                        }
+                        .viewfinderChip(active = lookOpen),
+                    contentAlignment = Alignment.Center
+                ) {
+                    StripTwoLineItem(
+                        valueText = if (modified) "$profileLabel •" else profileLabel,
+                        valueColor = if (modified) CaptureColors.AccentSoft else Color.White.copy(alpha = .95f),
+                        labelText = "LOOK"
+                    )
+                }
+        }
         Row(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(gap),
@@ -250,41 +294,6 @@ private fun TonemapFixedRow(
                     }
                 }
             }
-            Box(
-                Modifier
-                    .width(widths[3])
-                    .height(StripDimens.ParamRowHeight)
-                    .testTag(CaptureTestTags.TONEMAP_STRIP_PROFILE)
-                    .captureCombinedClickable(
-                        shape = CaptureTextRippleShape,
-                        onLongClickLabel = "Explain",
-                        onLongClick = {
-                            showHelp(
-                                "Look: the render profile (tone curve and colour) used for the JPEG and preview. " +
-                                    "A dot means its parameters were changed. Tap to pick another."
-                            )
-                        }
-                    ) {
-                        haptics.selection()
-                        onToggle(TonemapStripMode.Profiles)
-                    }.semantics {
-                        contentDescription = "Render profile $profileLabel. " +
-                            if (lookOpen) "Tap to close." else "Tap to choose profile."
-                        onClick {
-                            haptics.selection()
-                            onToggle(TonemapStripMode.Profiles)
-                            true
-                        }
-                    }
-                    .viewfinderChip(active = lookOpen),
-                contentAlignment = Alignment.Center
-            ) {
-                StripTwoLineItem(
-                    valueText = if (modified) "$profileLabel •" else profileLabel,
-                    valueColor = if (modified) CaptureColors.AccentSoft else Color.White.copy(alpha = .95f),
-                    labelText = "LOOK"
-                )
-            }
             if (!profiles.log) {
                 StripParamsEntry(
                     { onToggle(TonemapStripMode.Params) },
@@ -294,6 +303,7 @@ private fun TonemapFixedRow(
             } else {
                 Box(Modifier.width(widths[4]))
             }
+        }
         }
     }
 }

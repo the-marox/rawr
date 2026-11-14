@@ -2,6 +2,7 @@ package com.rawr.camera.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -84,15 +85,38 @@ internal fun CaptureViewfinder(
             if (bottom > 0.dp) bottom + 6.dp else 0.dp
         }
         val popupOpen = focusOnly || modalOpen
+        var quickPanelOpen by remember { mutableStateOf(false) }
+        val swipePx = with(LocalDensity.current) { 48.dp.toPx() }
         Box(
             Modifier
                 .matchParentSize()
                 .onSizeChanged { viewfinderSize = it }
                 .then(
                     if (!popupOpen) {
-                        Modifier.pointerInput(state.orientation, state.exposureControl.mode) {
+                        Modifier.pointerInput(swipePx) {
+                            // Swipe down opens the quick panel (MTR / AE / HL), swipe up closes it.
+                            var travel = 0f
+                            detectVerticalDragGestures(
+                                onDragStart = { travel = 0f },
+                                onVerticalDrag = { change, dy ->
+                                    travel += dy
+                                    if (travel > swipePx && !quickPanelOpen) {
+                                        quickPanelOpen = true
+                                        haptics.selection()
+                                    } else if (travel < -swipePx && quickPanelOpen) {
+                                        quickPanelOpen = false
+                                        haptics.selection()
+                                    }
+                                    change.consume()
+                                }
+                            )
+                        }.pointerInput(state.orientation, state.exposureControl.mode) {
                             detectTapGestures(
                                 onTap = { offset ->
+                                    if (quickPanelOpen) {
+                                        quickPanelOpen = false  // a tap outside the panel only closes it
+                                        return@detectTapGestures
+                                    }
                                     if (viewfinderSize.width > 0 && viewfinderSize.height > 0) {
                                         haptics.selection()
                                         dispatch(FocusAt(offset.toNormalized(viewfinderSize)))
@@ -191,6 +215,14 @@ internal fun CaptureViewfinder(
         }
         if (state.captureFlash) Box(Modifier.matchParentSize().background(Color.White.copy(alpha = .12f)))
         Box(controlFrameModifier.zIndex(3f)) {
+            androidx.compose.animation.AnimatedVisibility(
+                visible = quickPanelOpen && !popupOpen,
+                enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.slideInVertically { -it / 3 },
+                exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.slideOutVertically { -it / 3 },
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp)
+            ) {
+                ViewfinderQuickPanel(quick, state.spotAe.active, onQuickEvent, Modifier.uprightInLandscape(state.orientation))
+            }
             if (state.capabilities.lensUnavailable) {
                 LensUnavailableNotice(state.orientation, Modifier.align(Alignment.Center))
             } else if (state.capabilities.profileError.isNotEmpty()) {
