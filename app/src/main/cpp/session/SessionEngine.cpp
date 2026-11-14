@@ -22,6 +22,7 @@
 #include "capture/BurstLimits.h"
 #include "imaging/BinnedCorner.h"
 #include "imaging/CfaRemosaic.h"
+#include "imaging/CfaRemosaicFast.h"
 #include "imaging/FrameLimits.h"
 #include "imaging/Raw16CpuSnapshot.h"
 #include "imaging/RawFrameLease.h"
@@ -720,8 +721,17 @@ uint32_t SessionEngine::prepareFullSizeBurst(uint32_t maxFrames) {
         if (context->cfaBlock > 1u) {
             diagnostics::CaptureStageTimer remosaicTiming("fullres_remosaic", tag, index + 1);
             const auto threads = std::clamp(std::thread::hardware_concurrency(), 1u, 8u);
-            imaging::remosaicBlockCfa(packed, width, height, context->cfaBlock, context->rawPreviewCfa,
-                                     threads, imaging::CfaRemosaicQuality::Standard);
+            // 4x4 blocks (Xiaomi 200 MP): the fast path, as single stills use (~0.7 s instead of ~16 s a frame).
+            if (context->cfaBlock == 4u && packed.size() >= size_t(width) * height * 2u) {
+                const auto& b = context->baselineBlackLevelPhysicalRggb;
+                imaging::remosaicBlockCfaFast(reinterpret_cast<uint16_t*>(packed.data()), width, height,
+                                              context->cfaBlock, context->rawPreviewCfa,
+                                              0.25f * (b[0] + b[1] + b[2] + b[3]), context->baselineWhiteLevel,
+                                              threads);
+            } else {
+                imaging::remosaicBlockCfa(packed, width, height, context->cfaBlock, context->rawPreviewCfa,
+                                         threads, imaging::CfaRemosaicQuality::Standard);
+            }
         }
         diagnostics::CaptureStageTimer journalTiming("fullres_journal_append", tag, index + 1);
         journal->append(packed);
