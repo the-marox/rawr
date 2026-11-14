@@ -41,13 +41,15 @@ inline void remosaicBlockCfaStill(imaging::RawSnapshot& frame) {
         const auto model = imaging::buildBlockCfaModel(raw, frame.width, frame.height, context->cfaBlock,
                                                        context->rawPreviewCfa, 0.25f * (b[0] + b[1] + b[2] + b[3]),
                                                        context->baselineWhiteLevel, threads);
-        // Too large for a full-size JPEG (200 MP). Experimental, `adb shell setprop debug.rawr.jpeg_from_blocks 1`:
-        // its 50 MP Bayer comes straight from the blocks, before the remosaic below rewrites them for the DNG.
-        // Sharper and +2.5 dB on synthetic scenes, but it keeps sub-block colour texture (moire on a TV screen),
-        // so it stays opt-in until compared on real scenes. Default: the JPEG bins the remosaicked frame.
+        // Too large for a full-size JPEG (200 MP): its 50 MP Bayer comes straight from the blocks, before the
+        // remosaic below rewrites them for the DNG. On real scenes this removes the stair-stepped edges and
+        // checker texture of binning the remosaicked frame (+2.5 dB on synthetic scenes). A TV screen's
+        // sub-pixels can show as moire. `adb shell setprop debug.rawr.jpeg_from_blocks 0` bins the remosaicked
+        // frame instead, for comparison.
         char fromBlocks[PROP_VALUE_MAX] = {};
-        if (jpegNeedsBinning(frame) && __system_property_get("debug.rawr.jpeg_from_blocks", fromBlocks) > 0 &&
-            fromBlocks[0] == '1') {
+        const bool binRemosaicked =
+            __system_property_get("debug.rawr.jpeg_from_blocks", fromBlocks) > 0 && fromBlocks[0] == '0';
+        if (jpegNeedsBinning(frame) && !binRemosaicked) {
             const auto jpegStart = std::chrono::steady_clock::now();
             auto half = halfSizeBayerSnapshot(frame);
             imaging::binBlockCfaToBayer(raw, model, reinterpret_cast<uint16_t*>(half->raw16.data()), threads);
