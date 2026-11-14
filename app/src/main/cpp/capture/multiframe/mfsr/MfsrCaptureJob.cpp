@@ -15,6 +15,7 @@
 #include <optional>
 #include <sstream>
 #include <stdexcept>
+#include <future>
 #include <thread>
 #include <utility>
 
@@ -431,8 +432,8 @@ void MfsrCaptureJob::runStages(Published& published) {
             LOGE("POST_SHUTTER_RZSL_FAIL %s", e.what());
         }
     };
-    // Strip merges: lay out the merge arena (~2.5 GB at 200 MP, ~2.5 s while Android reclaims memory) on a
-    // helper thread while the base frame is read back and its DNG starts, instead of inside the first strip.
+    // Strip merges: lay out the merge arena (~2.5 GB at 200 MP, up to ~2.5 s while Android reclaims memory) on a
+    // helper thread while the base DNG writes, instead of inside the first strip.
     struct ArenaWarm {
         std::thread thread;
         double ms = 0.0;
@@ -441,7 +442,8 @@ void MfsrCaptureJob::runStages(Published& published) {
         }
         ~ArenaWarm() { join(); }
     } arenaWarm;
-    if (stripMode) {
+    auto startArenaWarm = [&]() {
+        if (!stripMode) return;
         arenaWarm.thread = std::thread([&ctx, &arenaWarm, w = ctx.rawWidth, rows = strips.front().rows]() {
             const auto begin = std::chrono::steady_clock::now();
             try {
@@ -452,7 +454,7 @@ void MfsrCaptureJob::runStages(Published& published) {
             }
             arenaWarm.ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - begin).count();
         });
-    }
+    };
     MultiframeOutputAdapter outputAdapter;
     bool outputAdapterReady = false;
     if (baseRequested) try {
@@ -490,6 +492,10 @@ void MfsrCaptureJob::runStages(Published& published) {
             failDng(baseDisplayName, std::string("base_output_failed: ") + e.what());
             basePublished = true;
         }
+    // After the base read, not alongside it: the arena allocation makes Android reclaim memory, and on a
+    // 6-frame burst that evicted the journal from cache (base read 0.3 s -> 4.5 s). It still overlaps the
+    // base DNG write, which runs on its own thread.
+    startArenaWarm();
 
     std::optional<rawr::raw_gpu_pipeline::BurstRunResult> mergeResult;
     std::shared_ptr<rawrcam::imaging::RawSnapshot> mergedFrame;
@@ -543,11 +549,32 @@ void MfsrCaptureJob::runStages(Published& published) {
             packed.width = ctx.rawWidth;
             packed.height = ctx.rawHeight;
             packed.rowStrideBytes = ctx.rawWidth * sizeof(std::uint16_t);
-            packed.pixels.resize(std::size_t(packed.rowStrideBytes) * ctx.rawHeight);
-            auto* full = reinterpret_cast<std::uint16_t*>(packed.pixels.data());
+            // The 400 MB stitch target: zero-filling it took ~1.8 s under memory pressure before the first strip
+            // could start. Allocate it on a helper thread while the first strip merges on the GPU.
+            auto fullAlloc = std::async(std::launch::async, [&packed, bytes = std::size_t(packed.rowStrideBytes) *
+                                                                            ctx.rawHeight]() {
+                const auto begin = std::chrono::steady_clock::now();
+                packed.pixels.resize(bytes);
+                return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - begin).count();
+            });
+            std::uint16_t* full = nullptr;
+            auto& fullPacked = packed;  // the loop's own `packed` (one strip's projection) shadows it
             const auto hotPixels = job->referenceMetadata.hotPixelMap;
             rawr::raw_gpu_pipeline::BurstStageTimings total{};
             for (const auto& window : strips) {
+                // Declared first, destroyed last: times the end of the strip (result hand-over + frees), which
+                // logged ~0.26 s per strip with no stage of its own.
+                struct StripTail {
+                    std::chrono::steady_clock::time_point begin{};
+                    std::uint32_t y0 = 0;
+                    ~StripTail() {
+                        if (begin.time_since_epoch().count() == 0) return;
+                        __android_log_print(ANDROID_LOG_INFO, "RawrCamNative", "MULTIFRAME_STRIP_TAIL y0=%u ms=%.1f", y0,
+                                            std::chrono::duration<double, std::milli>(
+                                                std::chrono::steady_clock::now() - begin).count());
+                    }
+                } stripTail;
+                stripTail.y0 = window.y0;
                 diagnostics::CaptureStageTimer stripTiming("merge_strip", requestId, window.y0);
                 CAPTURE_DEBUG_LOG("MERGE_STRIP_BEGIN requestId=%llu y0=%u rows=%u frames=%zu algorithm=%u",
                      static_cast<unsigned long long>(requestId), window.y0, window.rows, job->frames.size(), tuning.mergeAlgorithm);
@@ -572,6 +599,13 @@ void MfsrCaptureJob::runStages(Published& published) {
                 const auto projectBegin = std::chrono::steady_clock::now();
                 const auto packed = projectMerged(merged);
                 projectMs += wallMs(projectBegin);
+                if (!full) {
+                    const auto waitBegin = std::chrono::steady_clock::now();
+                    const double allocMs = fullAlloc.get();
+                    full = reinterpret_cast<std::uint16_t*>(fullPacked.pixels.data());
+                    LOGI("MULTIFRAME_STRIP_ALLOC requestId=%llu allocMs=%.1f waitedMs=%.1f",
+                         static_cast<unsigned long long>(requestId), allocMs, wallMs(waitBegin));
+                }
                 writeStrip(full, ctx.rawWidth, window, reinterpret_cast<const std::uint16_t*>(packed.pixels.data()));
                 projectionTiming.finish();
                 const auto& t = merged.timings;
@@ -592,6 +626,7 @@ void MfsrCaptureJob::runStages(Published& published) {
                 total.totalMs += t.totalMs;
                 LOGI("MULTIFRAME_STRIP y0=%u rows=%u write=%u..%u blend=%u mergeMs=%.1f", window.y0, window.rows,
                      window.writeBegin, window.writeEnd, window.blendEnd - window.writeBegin, t.totalMs);
+                stripTail.begin = std::chrono::steady_clock::now();
                 mergeResult = std::move(merged);
             }
             job->referenceMetadata.hotPixelMap = hotPixels;
