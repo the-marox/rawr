@@ -219,7 +219,7 @@ internal fun CaptureViewfinder(
                 visible = quickPanelOpen && !popupOpen,
                 enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.slideInVertically { -it / 3 },
                 exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.slideOutVertically { -it / 3 },
-                modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp)
+                modifier = Modifier.align(Alignment.TopStart).padding(start = 8.dp, top = 8.dp)
             ) {
                 ViewfinderQuickPanel(quick, state.spotAe.active, onQuickEvent, Modifier.uprightInLandscape(state.orientation))
             }

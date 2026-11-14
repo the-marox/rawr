@@ -243,14 +243,16 @@ private const val HELP_AE =
     "Auto exposure: RAWR solves exposure in the app (with its own metering); DEVICE uses the phone's Camera2 AE."
 private const val HELP_HL =
     "Highlight reconstruction: rebuilds clipped highlights. PROP spreads colour from unclipped neighbours, " +
-        "OPP estimates the clipped channel from the others. Tap to change mode and strength."
+        "OPP estimates the clipped channel from the others. Tap to cycle OFF / PROP / OPP; " +
+        "OPP shows THR (where clipping starts) and CMP (highlight compression)."
 private const val HELP_HL_MODE =
     "Highlight mode: OFF, PROP (propagation from neighbours) or OPP (opposed channels). " +
         "OPP adds THR (where clipping starts) and CMP (highlight compression)."
 
 /**
- * Quick panel: the rail's MTR / AE / HL chips in a translucent card at the top of the viewfinder, opened with a
- * swipe down (closed with a swipe up or a tap outside). Tapping HL opens a second row with MODE / THR / CMP.
+ * Quick panel: MTR / AE / HL in a translucent card at the top-left of the viewfinder (clear of the scopes),
+ * opened with a swipe down and closed with a swipe up or a tap outside. HL cycles OFF / PROP / OPP; with OPP a
+ * second row shows its THR / CMP sliders.
  */
 @Composable
 internal fun ViewfinderQuickPanel(
@@ -259,35 +261,35 @@ internal fun ViewfinderQuickPanel(
     onEvent: (CaptureQuickEvent) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var highlightOpen by remember { mutableStateOf(false) }
     val enabled = !quick.locked
     val highlight = quick.highlight
-    val chipWidth = 84.dp
+    val chipWidth = 72.dp
+    val gap = CaptureDimens.ControlGap
     androidx.compose.foundation.layout.Column(
         modifier
             .background(Color.Black.copy(alpha = .62f), androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
             .pointerInput(Unit) { detectTapGestures(onTap = {}) }  // taps inside never focus the viewfinder
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(CaptureDimens.ControlGap),
-        horizontalAlignment = Alignment.CenterHorizontally
+            .padding(horizontal = 10.dp, vertical = 10.dp),
+        verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(gap),
+        horizontalAlignment = Alignment.Start
     ) {
         androidx.compose.foundation.layout.Row(
-            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(CaptureDimens.ControlGap)
+            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(gap)
         ) {
-            if (quick.rawrAeEnabled) {
-                val next = RawrMetering.entries[(quick.metering.ordinal + 1) % RawrMetering.entries.size]
-                RailChip(
-                    value = if (spotActive) "SPOT" else quick.metering.railLabel(),
-                    label = "MTR",
-                    active = spotActive,
-                    enabled = enabled,
-                    description = "Metering ${quick.metering.label}" +
-                        (if (spotActive) ", overridden by spot" else "") + ". Tap for ${next.label}.",
-                    tag = CaptureTestTags.RAIL_METERING,
-                    width = chipWidth,
-                    help = HELP_METERING
-                ) { onEvent(CaptureQuickEvent.SetMetering(next)) }
-            }
+            // MTR stays in place with Device AE (dimmed, not tappable) so the panel never changes width.
+            val next = RawrMetering.entries[(quick.metering.ordinal + 1) % RawrMetering.entries.size]
+            RailChip(
+                value = if (spotActive) "SPOT" else quick.metering.railLabel(),
+                label = "MTR",
+                active = spotActive && quick.rawrAeEnabled,
+                enabled = enabled && quick.rawrAeEnabled,
+                description = if (quick.rawrAeEnabled) "Metering ${quick.metering.label}" +
+                    (if (spotActive) ", overridden by spot" else "") + ". Tap for ${next.label}."
+                else "Metering applies to Rawr AE only.",
+                tag = CaptureTestTags.RAIL_METERING,
+                width = chipWidth,
+                help = HELP_METERING
+            ) { onEvent(CaptureQuickEvent.SetMetering(next)) }
             RailChip(
                 value = if (quick.rawrAeEnabled) "RAWR" else "DEVICE",
                 label = "AE",
@@ -298,65 +300,53 @@ internal fun ViewfinderQuickPanel(
                 width = chipWidth,
                 help = HELP_AE
             ) { onEvent(CaptureQuickEvent.ToggleRawrAe) }
+            val nextMode = HighlightQuickMode.entries[(highlight.mode.ordinal + 1) % HighlightQuickMode.entries.size]
             RailChip(
                 value = highlight.mode.railLabel(),
                 label = "HL",
-                active = highlightOpen || highlight.mode != HighlightQuickMode.Off,
-                enabled = true,
-                description = "Highlight reconstruction ${highlight.mode.name}. Tap to " +
-                    (if (highlightOpen) "close its settings." else "adjust."),
+                active = highlight.mode != HighlightQuickMode.Off,
+                enabled = enabled,
+                description = "Highlight reconstruction ${highlight.mode.name}. Tap for ${nextMode.name}.",
                 tag = CaptureTestTags.RAIL_HIGHLIGHT,
                 width = chipWidth,
                 help = HELP_HL
-            ) { highlightOpen = !highlightOpen }
+            ) { onEvent(CaptureQuickEvent.SetHighlightMode(nextMode)) }
         }
-        if (highlightOpen) {
+        if (highlight.mode == HighlightQuickMode.Opposed) {
             androidx.compose.foundation.layout.Row(
-                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(CaptureDimens.ControlGap)
+                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(gap)
             ) {
-                val nextMode = HighlightQuickMode.entries[(highlight.mode.ordinal + 1) % HighlightQuickMode.entries.size]
-                RailChip(
-                    value = highlight.mode.railLabel(),
-                    label = "MODE",
-                    active = highlight.mode != HighlightQuickMode.Off,
-                    enabled = enabled,
-                    description = "Highlight reconstruction ${highlight.mode.name}. Tap for ${nextMode.name}.",
-                    tag = CaptureTestTags.RAIL_HIGHLIGHT_MODE,
-                    width = chipWidth,
-                    help = HELP_HL_MODE
-                ) { onEvent(CaptureQuickEvent.SetHighlightMode(nextMode)) }
-                if (highlight.mode == HighlightQuickMode.Opposed) {
-                    StripNumericItem(
-                        key = "panel_highlight_threshold",
-                        shortLabel = "THR",
-                        value = highlight.threshold,
-                        display = "%.2f".format(java.util.Locale.US, highlight.threshold),
-                        isDefault = highlight.threshold == HIGHLIGHT_THRESHOLD_DEFAULT,
-                        defaultValue = HIGHLIGHT_THRESHOLD_DEFAULT,
-                        min = .5f, max = 2f, step = .05f, decimals = 2,
-                        onScrub = { onEvent(CaptureQuickEvent.SetHighlightThreshold(it)) },
-                        onReset = { onEvent(CaptureQuickEvent.SetHighlightThreshold(HIGHLIGHT_THRESHOLD_DEFAULT)) },
-                        modifier = Modifier.width(chipWidth).alpha(if (enabled) 1f else .4f),
-                        testTag = CaptureTestTags.RAIL_HIGHLIGHT_THRESHOLD
-                    )
-                    StripNumericItem(
-                        key = "panel_highlight_compression",
-                        shortLabel = "CMP",
-                        value = highlight.compression,
-                        display = highlight.compression.toInt().toString(),
-                        isDefault = highlight.compression == highlight.compressionDefault,
-                        defaultValue = highlight.compressionDefault,
-                        min = 0f, max = 300f, step = 5f, decimals = 0,
-                        onScrub = { onEvent(CaptureQuickEvent.SetHighlightCompression(it)) },
-                        onReset = { onEvent(CaptureQuickEvent.SetHighlightCompression(highlight.compressionDefault)) },
-                        modifier = Modifier.width(chipWidth).alpha(if (enabled) 1f else .4f),
-                        testTag = CaptureTestTags.RAIL_HIGHLIGHT_COMPRESSION
-                    )
-                }
+                StripNumericItem(
+                    key = "panel_highlight_threshold",
+                    shortLabel = "THR",
+                    value = highlight.threshold,
+                    display = "%.2f".format(java.util.Locale.US, highlight.threshold),
+                    isDefault = highlight.threshold == HIGHLIGHT_THRESHOLD_DEFAULT,
+                    defaultValue = HIGHLIGHT_THRESHOLD_DEFAULT,
+                    min = .5f, max = 2f, step = .05f, decimals = 2,
+                    onScrub = { onEvent(CaptureQuickEvent.SetHighlightThreshold(it)) },
+                    onReset = { onEvent(CaptureQuickEvent.SetHighlightThreshold(HIGHLIGHT_THRESHOLD_DEFAULT)) },
+                    modifier = Modifier.width(chipWidth).alpha(if (enabled) 1f else .4f),
+                    testTag = CaptureTestTags.RAIL_HIGHLIGHT_THRESHOLD
+                )
+                StripNumericItem(
+                    key = "panel_highlight_compression",
+                    shortLabel = "CMP",
+                    value = highlight.compression,
+                    display = highlight.compression.toInt().toString(),
+                    isDefault = highlight.compression == highlight.compressionDefault,
+                    defaultValue = highlight.compressionDefault,
+                    min = 0f, max = 300f, step = 5f, decimals = 0,
+                    onScrub = { onEvent(CaptureQuickEvent.SetHighlightCompression(it)) },
+                    onReset = { onEvent(CaptureQuickEvent.SetHighlightCompression(highlight.compressionDefault)) },
+                    modifier = Modifier.width(chipWidth).alpha(if (enabled) 1f else .4f),
+                    testTag = CaptureTestTags.RAIL_HIGHLIGHT_COMPRESSION
+                )
             }
         }
         androidx.compose.foundation.layout.Box(
             Modifier
+                .align(Alignment.CenterHorizontally)
                 .padding(top = 2.dp)
                 .width(36.dp)
                 .height(4.dp)
