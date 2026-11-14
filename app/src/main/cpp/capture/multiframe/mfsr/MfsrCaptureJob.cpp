@@ -326,6 +326,8 @@ void MfsrCaptureJob::runStages(Published& published) {
             throw std::runtime_error("strip_jpeg_render_failed: " + completed.error);
         }
         auto jpegContext = std::move(mergedJpeg);
+        // EXIF orientation, exposure and lens tags: the merged-JPEG block that sets them is skipped in strip mode.
+        rawrcam::capture::applySingleFrameCaptureMetadata(jpegContext.output, *captured);
         jpegContext.output.appliedLensShadingCorrection = jpegContext.develop.lensShadingCorrectionEnabled;
         jpegContext.output.appliedFccSteps = jpegContext.develop.fccSteps;
         JpegCaptureWriter writer;
