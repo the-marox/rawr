@@ -35,6 +35,9 @@ struct FrozenBurst {
     // Journal-backed: later loads read only rows [y0, y0 + rows) of each
     // frame (strip merge); drops every loaded frame. rows 0 = whole frames.
     std::function<void(std::uint32_t y0, std::uint32_t rows)> setRowWindow;
+    // Journal-backed: copies frame i's whole packed RAW16 (width * 2 bytes per row) straight from the journal,
+    // without the GPU. Used for the 200 MP base DNG. Unset otherwise.
+    std::function<void(std::size_t, std::vector<std::uint8_t>&)> readFrameHost;
     // Live bursts merged while their journal is still being written: the ring pins may only be released once this
     // says the journal no longer reads the frames. Unset: release freely.
     std::function<bool()> pinsMayRelease;

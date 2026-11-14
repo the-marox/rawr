@@ -187,10 +187,21 @@ std::unique_ptr<multiframe::MultiframeWorkItem> loadBurst(const std::string& pat
             for (auto& frame : burst->frames) frame.raw.ref.height = rows ? rows : height;
             source->buffer = {};  // whole-frame capacity no longer needed
         };
-        // The reference stays resident: the base DNG and the clip map read it.
-        const auto begin = std::chrono::steady_clock::now();
-        burst->loadFrame(job.referenceIndex);
-        uploadMs += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - begin).count();
+        burst->readFrameHost = [source](std::size_t i, std::vector<uint8_t>& out) {
+            if (i >= source->loaded.size()) throw std::runtime_error("capture_job_frame_index_invalid");
+            out.resize(source->bytes);
+            source->file.seekg(std::streamoff(source->offset + i * source->bytes));
+            source->file.read(reinterpret_cast<char*>(out.data()), std::streamsize(out.size()));
+            if (!source->file) throw std::runtime_error("capture_job_frame_read_failed");
+        };
+        // The reference stays resident: the base DNG and the clip map read it. Frames too big for one merge
+        // (200 MP, merged in strips) skip it: every strip reloads its rows and the base DNG reads the journal.
+        constexpr uint64_t kWholeMergePixels = 56'000'000;  // MfsrCaptureJob kStripMergePixels
+        if (uint64_t(width) * height <= kWholeMergePixels) {
+            const auto begin = std::chrono::steady_clock::now();
+            burst->loadFrame(job.referenceIndex);
+            uploadMs += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - begin).count();
+        }
     } else job = load(path, [&](CaptureJob& j, size_t i, const std::vector<uint8_t>& raw) {
         if (!j.multiframe) throw std::runtime_error("capture_job_not_burst");
         const auto begin = std::chrono::steady_clock::now();

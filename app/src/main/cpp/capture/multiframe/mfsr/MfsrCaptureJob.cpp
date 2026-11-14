@@ -456,14 +456,25 @@ void MfsrCaptureJob::runStages(Published& published) {
     MultiframeOutputAdapter outputAdapter;
     bool outputAdapterReady = false;
     if (baseRequested) try {
-            outputAdapter.initialize(ctx.vulkan.physicalDevice(), ctx.vulkan.device(), ctx.vulkan.queueFamily(),
-                                     queueSubmit, ctx.rawWidth, ctx.rawHeight);
-            outputAdapterReady = true;
             const auto baseReadBegin = std::chrono::steady_clock::now();
-            auto basePacked = outputAdapter.readBase(job->frames[job->referenceIndex].raw.image);
+            rawr::raw_multiframe_output::PackedRaw16 basePacked;
+            if (stripMode && job->readFrameHost) {
+                // 200 MP: the reference is already on the CPU (journal, in page cache); no GPU upload + readback.
+                basePacked.width = ctx.rawWidth;
+                basePacked.height = ctx.rawHeight;
+                basePacked.rowStrideBytes = ctx.rawWidth * std::uint32_t(sizeof(std::uint16_t));
+                job->readFrameHost(job->referenceIndex, basePacked.pixels);
+            } else {
+                outputAdapter.initialize(ctx.vulkan.physicalDevice(), ctx.vulkan.device(), ctx.vulkan.queueFamily(),
+                                         queueSubmit, ctx.rawWidth, ctx.rawHeight);
+                outputAdapterReady = true;
+                basePacked = outputAdapter.readBase(job->frames[job->referenceIndex].raw.image);
+                outputAdapter.reset();
+                outputAdapterReady = false;
+            }
             baseReadMs = wallMs(baseReadBegin);
-            outputAdapter.reset();
-            outputAdapterReady = false;
+            LOGI("MULTIFRAME_BASE_READ requestId=%llu source=%s ms=%.1f", static_cast<unsigned long long>(requestId),
+                 stripMode && job->readFrameHost ? "journal" : "gpu", baseReadMs);
             auto baseFrame = makeCaptured(std::move(basePacked));
             baseDng.imageDescription = std::string(rawrcam::encoding::kCapturedWith) + "\nMultiframe base frame\n";
             auto context = std::move(baseDng);
