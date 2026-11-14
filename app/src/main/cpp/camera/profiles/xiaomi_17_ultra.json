@@ -5,7 +5,11 @@
   "version": 1,
   "match": {
     "models": [
-      "25128PNA1G"
+      "25128PNA1G",
+      "25128PNA1C",
+      "2512BPNDAG",
+      "2512BPNDAC",
+      "2512BPNDAI"
     ],
     "verifiedModels": [
       "25128PNA1G"
