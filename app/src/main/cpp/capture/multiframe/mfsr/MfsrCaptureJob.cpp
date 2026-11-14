@@ -268,7 +268,7 @@ void MfsrCaptureJob::runStages(Published& published) {
     };
     // Half-size Bayer of the stitched merge (each output pixel: the four same-colour pixels of its 4x4
     // neighbourhood), back in sensor codes, developed and written like a single still.
-    auto developStripJpeg = [&](const rawr::raw_multiframe_output::PackedRaw16& full) {
+    auto binStripHalf = [&](const rawr::raw_multiframe_output::PackedRaw16& full) {
         const auto begin = std::chrono::steady_clock::now();
         const float codeScale =
             rawr::raw_multiframe_output::sixteenBitCodeScale(job->referenceMetadata.effectiveWhiteLevel);
@@ -305,6 +305,11 @@ void MfsrCaptureJob::runStages(Published& published) {
         captured->metadata.hotPixelMap.clear();  // full-size coordinates
         LOGI("MULTIFRAME_STRIP_JPEG_BIN requestId=%llu jpeg=%ux%u ms=%.1f", static_cast<unsigned long long>(requestId),
              w, h, wallMs(begin));
+        return captured;
+    };
+    // Develops and writes the binned half-size snapshot; runs after the merge arena is released.
+    auto renderStripJpeg = [&](std::shared_ptr<rawrcam::imaging::RawSnapshot> captured) {
+        const auto begin = std::chrono::steady_clock::now();
         rawrcam::capture::SingleFrameCaptureDevelop develop(
             ctx.vulkan, ctx.queue0Mutex, ctx.filesDir,
             [](const std::string& line) { __android_log_print(ANDROID_LOG_INFO, "RawrCamNative", "%s", line.c_str()); });
@@ -517,15 +522,36 @@ void MfsrCaptureJob::runStages(Published& published) {
                                               tuning, dumpRzslRequested, queueSubmit, mergeSubmit);
         }
         if (work->awaitDurable) work->awaitDurable();  // outputs follow: the journal must be durable first
-        if (stripJpeg && stitched) {
-            try {
-                developStripJpeg(*stitched);
-            } catch (const std::exception& e) {
-                mergedJpeg.output.outputFd.reset();
-                failJpeg(std::string("strip_jpeg_failed: ") + e.what());
-                LOGE("MULTIFRAME_STRIP_JPEG_FAIL %s", e.what());
+        if (stripMode) {
+            std::shared_ptr<rawrcam::imaging::RawSnapshot> stripHalf;
+            if (stripJpeg && stitched) try {
+                    stripHalf = binStripHalf(*stitched);
+                } catch (const std::exception& e) {
+                    mergedJpeg.output.outputFd.reset();
+                    failJpeg(std::string("strip_jpeg_failed: ") + e.what());
+                    LOGE("MULTIFRAME_STRIP_JPEG_FAIL %s", e.what());
+                    stripJpegPublished = true;
+                }
+            // Nothing below reads the merge arena or the projection buffers in strip mode (the merged DNG
+            // uses the CPU-stitched CFA): free them before the JPEG render to keep the peak under the LMK.
+            const double arenaMb =
+                double(mergeResult->physicalImageBytes + mergeResult->physicalBufferBytes) / (1024.0 * 1024.0);
+            outputAdapter.releaseDngResources();
+            coordinator.releaseScratch();
+            if (!mergedRequested) stitched.reset();
+            LOGI("MULTIFRAME_STRIP_RELEASE requestId=%llu arenaMB=%.0f stitchedKept=%d availMB=%.0f",
+                 static_cast<unsigned long long>(requestId), arenaMb, stitched ? 1 : 0,
+                 double(readMemAvailableBytes()) / (1024.0 * 1024.0));
+            if (stripHalf) {
+                try {
+                    renderStripJpeg(std::move(stripHalf));
+                } catch (const std::exception& e) {
+                    mergedJpeg.output.outputFd.reset();
+                    failJpeg(std::string("strip_jpeg_failed: ") + e.what());
+                    LOGE("MULTIFRAME_STRIP_JPEG_FAIL %s", e.what());
+                }
+                stripJpegPublished = true;
             }
-            stripJpegPublished = true;
         }
         // Merge timings feed both horizons (merged DNG and JPEG). Populate
         // here — not inside the merged-DNG gate below — so JPEG-only captures
