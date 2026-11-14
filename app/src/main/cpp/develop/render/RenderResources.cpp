@@ -1,6 +1,7 @@
 #include "develop/render/RenderResources.h"
 
 #include <thread>
+#include <unistd.h>
 #include <android/asset_manager.h>
 #include <android/log.h>
 #include <sys/system_properties.h>
@@ -335,10 +336,10 @@ bool RenderResources::ensureFilm(const RenderedStillContext& rendered) {
             64u * uint32_t(gates.grainProduction);
         const uint32_t workingW = std::min(fullW, 512u + 2u * overlap);
         const uint32_t workingH = std::min(fullH, 256u + 2u * overlap);
-        std::uint64_t required =
-            (rendered.filmTiled ? estimateFilmTileScratchBytes(fullW, fullH, workingW, workingH, gates)
-                                : estimateFilmScratchBytes(fullW, fullH, gates)) +
-            kFilmBuildHeadroomBytes;
+        const std::uint64_t scratch =
+            rendered.filmTiled ? estimateFilmTileScratchBytes(fullW, fullH, workingW, workingH, gates)
+                               : estimateFilmScratchBytes(fullW, fullH, gates);
+        std::uint64_t required = scratch + kFilmBuildHeadroomBytes;
         // Film glow-factor transient (full-res RGBA16F quotient) for
         // film+UltraHDR: account it here so large stills with
         // halation/diffusion can't slip past the gate and LMK-trip mid-capture.
@@ -354,11 +355,11 @@ bool RenderResources::ensureFilm(const RenderedStillContext& rendered) {
         }
         std::uint64_t avail = readMemAvailableBytes();
         // Right after a big merge the kernel is still reclaiming the released arena (MemAvailable climbed
-        // ~500 MB in 5 s on a 30-frame 50 MP merge): give it up to 4 s before giving up on the film look.
+        // ~400 MB in a few seconds after a 50 MP merge): give it a moment before judging.
         if (avail > 0 && required > avail) {
             const auto waitBegin = std::chrono::steady_clock::now();
             while (avail > 0 && required > avail &&
-                   std::chrono::steady_clock::now() - waitBegin < std::chrono::milliseconds(4000)) {
+                   std::chrono::steady_clock::now() - waitBegin < std::chrono::milliseconds(1500)) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(200));
                 avail = readMemAvailableBytes();
             }
@@ -372,6 +373,22 @@ bool RenderResources::ensureFilm(const RenderedStillContext& rendered) {
         __android_log_print(ANDROID_LOG_INFO, "RawrCamNative", "STILL_FILM_RAM_GATE requiredMB=%llu availMB=%llu",
                             static_cast<unsigned long long>(required >> 20),
                             static_cast<unsigned long long>(avail >> 20));
+        // Big-RAM phones: the full 768 MB build headroom is what fails right after a merge (scratch fits, the
+        // margin doesn't). Rawr is the foreground app there and LMK reclaims cached apps long before it, so
+        // accept a smaller margin rather than lose the film JPEG.
+        if (avail > 0 && required > avail) {
+            const long pages = sysconf(_SC_PHYS_PAGES), pageSize = sysconf(_SC_PAGESIZE);
+            const std::uint64_t totalRam =
+                pages > 0 && pageSize > 0 ? std::uint64_t(pages) * std::uint64_t(pageSize) : 0u;
+            constexpr std::uint64_t kTightHeadroomBytes = 128ull * 1024u * 1024u;
+            if (totalRam >= 12ull * 1024u * 1024u * 1024u && avail >= scratch + kTightHeadroomBytes) {
+                __android_log_print(ANDROID_LOG_INFO, "RawrCamNative",
+                                    "STILL_FILM_RAM_GATE_TIGHT scratchMB=%llu availMB=%llu",
+                                    static_cast<unsigned long long>(scratch >> 20),
+                                    static_cast<unsigned long long>(avail >> 20));
+                required = avail;
+            }
+        }
         if (avail > 0 && required > avail) {
             emit("STILL_FILM_RAM_GATE_REJECT falling back to tonemap");
             __android_log_print(ANDROID_LOG_ERROR, "RawrCamNative", "STILL_FILM_RAM_GATE_REJECT");
