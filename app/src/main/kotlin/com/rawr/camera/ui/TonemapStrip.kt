@@ -87,181 +87,64 @@ internal fun TonemapStrip(
         modifier.testTag(CaptureTestTags.TONEMAP_STRIP),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        when (mode) {
-            TonemapStripMode.Collapsed -> TonemapCollapsedRow(
-                profileLabel = profileLabel,
-                modified = modified,
-                paramsEnabled = !profiles.log,
-                onOpenProfiles = { mode = TonemapStripMode.Profiles },
-                onOpenParams = { mode = TonemapStripMode.Params }
-            )
-
-            TonemapStripMode.Profiles -> TonemapProfilesRow(
-                profiles = profiles,
+        val agx = profiles.agx
+        // AgX's sections need more than one row: its block opens above the fixed LOOK/PARAMS row.
+        if (mode == TonemapStripMode.Params && agx != null) {
+            val quick = agxStripState(agx, state.renderExposureTenths, profileLabel)
+            val section = quick.sections.firstOrNull { it.key == agxSection } ?: quick.sections.first()
+            val subsection = section.subsections.firstOrNull { it.key == agxSubsection } ?: section.subsections.first()
+            FilmConfigBlock(
+                quick = quick,
+                sectionKey = section.key,
+                subsectionKey = subsection.key,
+                onSection = {
+                    agxSection = it
+                    agxSubsection = null
+                },
+                onSubsection = { agxSubsection = it },
                 onBack = { mode = TonemapStripMode.Collapsed },
-                onSelect = onSelectProfile,
-                onOpenParams = { mode = TonemapStripMode.Params }
+                onOpenProfiles = { mode = TonemapStripMode.Profiles },
+                l4Key = null,
+                onOpenDiscrete = {},
+                onCloseL4 = {},
+                onScrubParam = { key, value -> dispatchAgx(dispatch, key, value) },
+                onResetParam = { key -> dispatchAgx(dispatch, key, null) },
+                onScrubDiscrete = { _, _ -> },
+                onToggleFlag = { _, _ -> },
+                kind = "AgX"
             )
-
-            TonemapStripMode.Params -> {
-                val agx = profiles.agx
-                if (agx != null) {
-                    val quick = agxStripState(agx, state.renderExposureTenths, profileLabel)
-                    val section = quick.sections.firstOrNull { it.key == agxSection } ?: quick.sections.first()
-                    val subsection = section.subsections.firstOrNull { it.key == agxSubsection } ?: section.subsections.first()
-                    FilmConfigBlock(
-                        quick = quick,
-                        sectionKey = section.key,
-                        subsectionKey = subsection.key,
-                        onSection = {
-                            agxSection = it
-                            agxSubsection = null
-                        },
-                        onSubsection = { agxSubsection = it },
-                        onBack = { mode = TonemapStripMode.Collapsed },
-                        onOpenProfiles = { mode = TonemapStripMode.Profiles },
-                        l4Key = null,
-                        onOpenDiscrete = {},
-                        onCloseL4 = {},
-                        onScrubParam = { key, value -> dispatchAgx(dispatch, key, value) },
-                        onResetParam = { key -> dispatchAgx(dispatch, key, null) },
-                        onScrubDiscrete = { _, _ -> },
-                        onToggleFlag = { _, _ -> },
-                        kind = "AgX"
-                    )
-                } else {
-                    TonemapParamsRow(
-                        state = state,
-                        profileLabel = profileLabel,
-                        modified = modified,
-                        onBack = { mode = TonemapStripMode.Collapsed },
-                        onOpenProfiles = { mode = TonemapStripMode.Profiles },
-                        dispatch = dispatch
-                    )
-                }
-            }
         }
+        TonemapFixedRow(
+            mode = mode,
+            profiles = profiles,
+            state = state,
+            profileLabel = profileLabel,
+            modified = modified,
+            paramsInline = agx == null,
+            dispatch = dispatch,
+            onSelectProfile = onSelectProfile,
+            // LOOK and PARAMS never move: tapping one opens its content on the left, tapping it again closes.
+            onToggle = { target -> mode = if (mode == target) TonemapStripMode.Collapsed else target }
+        )
     }
 }
 
+/**
+ * One row on the exposure row's five columns: the open content (profiles, or the tone sliders) on the
+ * first three, LOOK over WB and PARAMS over AF. Both buttons stay put in every state; the open one is
+ * outlined in the accent colour.
+ */
 @Composable
-private fun TonemapCollapsedRow(
-    profileLabel: String,
-    modified: Boolean,
-    paramsEnabled: Boolean,
-    onOpenProfiles: () -> Unit,
-    onOpenParams: () -> Unit
-) {
-    val haptics = LocalCaptureHaptics.current
-    // Same five-column grid as the exposure row below: the look sits over WB, PARAMS over AF.
-    BoxWithConstraints(
-        Modifier
-            .fillMaxWidth()
-            .padding(horizontal = CaptureDimens.CompactParamRowEdgeInset)
-            .padding(bottom = CaptureDimens.ControlGap)
-    ) {
-    val cells = paramsCellWidths(maxWidth)
-    Row(
-        Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(CaptureDimens.ControlGap, Alignment.End),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            Modifier
-                .width(cells[3])
-                .height(StripDimens.ParamRowHeight)
-                .testTag(CaptureTestTags.TONEMAP_STRIP_PROFILE)
-                .captureClickable(shape = CaptureTextRippleShape) {
-                    haptics.selection()
-                    onOpenProfiles()
-                }.semantics {
-                    contentDescription = "Render profile $profileLabel. Tap to choose profile."
-                    onClick {
-                        haptics.selection()
-                        onOpenProfiles()
-                        true
-                    }
-                }
-                .viewfinderChip(),
-            contentAlignment = Alignment.Center
-        ) {
-            StripTwoLineItem(
-                valueText = if (modified) "$profileLabel •" else profileLabel,
-                valueColor = if (modified) CaptureColors.AccentSoft else Color.White.copy(alpha = .95f),
-                labelText = "LOOK"
-            )
-        }
-        if (paramsEnabled) {
-            StripParamsEntry(onOpenParams, Modifier.width(cells[4]).height(StripDimens.ParamRowHeight))
-        }
-    }
-    }
-}
-
-@Composable
-private fun TonemapProfilesRow(
+private fun TonemapFixedRow(
+    mode: TonemapStripMode,
     profiles: RenderProfileQuickState,
-    onBack: () -> Unit,
-    onSelect: (com.rawr.camera.model.RenderProfileSelection) -> Unit,
-    onOpenParams: () -> Unit
-) {
-    val haptics = LocalCaptureHaptics.current
-    StripNavigationRow(onBack, Modifier.padding(bottom = 2.dp)) {
-        LazyRow(
-            Modifier
-                .weight(1f)
-                .height(CaptureDimens.CompactParamRowHeight),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(StripDimens.ParamSpacing, Alignment.End)
-        ) {
-            items(profiles.options, key = { it.id.key }) { option ->
-                val isSelected = option.id == profiles.selectedId
-                Box(
-                    Modifier
-                        .height(CaptureDimens.CompactParamRowHeight)
-                        .viewfinderChip(active = isSelected)
-                        .testTag(CaptureTestTags.renderProfile(option.id.key))
-                        .captureClickable(shape = CaptureTextRippleShape, enabled = !profiles.locked) {
-                            haptics.selection()
-                            onSelect(option.id)
-                        }.semantics {
-                            contentDescription = "Render profile ${option.label}" +
-                                if (isSelected) ", active" else ""
-                            role = Role.RadioButton
-                            selected = isSelected
-                            onClick {
-                                if (profiles.locked) return@onClick false
-                                haptics.selection()
-                                onSelect(option.id)
-                                true
-                            }
-                        }.padding(horizontal = 10.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        option.label,
-                        color = if (isSelected) CaptureColors.Accent else Color.White.copy(alpha = .62f),
-                        fontFamily = CaptureMono,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 10.sp,
-                        maxLines = 1,
-                        style = ViewfinderTextStyle
-                    )
-                }
-            }
-        }
-        if (!profiles.log) StripParamsEntry(onOpenParams, Modifier.padding(start = StripDimens.ParamSpacing))
-    }
-}
-
-@Composable
-private fun TonemapParamsRow(
     state: CaptureUiState,
     profileLabel: String,
     modified: Boolean,
-    onBack: () -> Unit,
-    onOpenProfiles: () -> Unit,
-    dispatch: CaptureDispatch
+    paramsInline: Boolean,
+    dispatch: CaptureDispatch,
+    onSelectProfile: (com.rawr.camera.model.RenderProfileSelection) -> Unit,
+    onToggle: (TonemapStripMode) -> Unit
 ) {
     val haptics = LocalCaptureHaptics.current
     BoxWithConstraints(
@@ -271,65 +154,119 @@ private fun TonemapParamsRow(
             .padding(bottom = CaptureDimens.ControlGap)
     ) {
         val widths = paramsCellWidths(maxWidth)
-        val sliderWidths = widths.subList(1, 4)
-        val gapPx = with(LocalDensity.current) { CaptureDimens.ControlGap.toPx() }
+        val gap = CaptureDimens.ControlGap
+        val contentWidth = widths[0] + widths[1] + widths[2] + gap * 2
+        val sliderWidths = widths.subList(0, 3)
+        val gapPx = with(LocalDensity.current) { gap.toPx() }
+        val lookOpen = mode == TonemapStripMode.Profiles
+        val paramsOpen = mode == TonemapStripMode.Params
         Row(
             Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(CaptureDimens.ControlGap),
+            horizontalArrangement = Arrangement.spacedBy(gap),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            StripBackButton(onBack, Modifier.width(widths[0]))
-            LazyRow(
+            Box(
                 Modifier
-                    .weight(CaptureDimens.CompactParamColumnWeights.subList(1, 4).sum())
-                    .height(StripDimens.ParamRowHeight)
-                    .testTag(CaptureTestTags.TONEMAP_STRIP_PARAMS),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(CaptureDimens.ControlGap)
+                    .width(contentWidth)
+                    .height(StripDimens.ParamRowHeight),
+                contentAlignment = Alignment.CenterEnd
             ) {
-                itemsIndexed(TonemapCatalog.all, key = { _, item -> item.jsonKey }) { index, descriptor ->
-                    // Divider where the controls move to another stage of the render, drawn in the gap so
-                    // the cells stay on the exposure row's columns.
-                    val startsGroup = index > 0 && TonemapCatalog.all[index - 1].group != descriptor.group
-                    val cellModifier = Modifier
-                        .width(sliderWidths[index % sliderWidths.size])
-                        .then(
-                            if (startsGroup) {
-                                Modifier.drawBehind {
-                                    drawLine(
-                                        Color.White.copy(alpha = .35f),
-                                        Offset(-gapPx / 2f, size.height * .25f),
-                                        Offset(-gapPx / 2f, size.height * .75f),
-                                        strokeWidth = 1.dp.toPx()
-                                    )
-                                }
-                            } else {
+                if (lookOpen) {
+                    LazyRow(
+                        Modifier.fillMaxSize(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(StripDimens.ParamSpacing, Alignment.End)
+                    ) {
+                        items(profiles.options, key = { it.id.key }) { option ->
+                            val isSelected = option.id == profiles.selectedId
+                            Box(
                                 Modifier
+                                    .height(CaptureDimens.CompactParamRowHeight)
+                                    .viewfinderChip(active = isSelected)
+                                    .testTag(CaptureTestTags.renderProfile(option.id.key))
+                                    .captureClickable(shape = CaptureTextRippleShape, enabled = !profiles.locked) {
+                                        haptics.selection()
+                                        onSelectProfile(option.id)
+                                    }.semantics {
+                                        contentDescription = "Render profile ${option.label}" +
+                                            if (isSelected) ", active" else ""
+                                        role = Role.RadioButton
+                                        selected = isSelected
+                                        onClick {
+                                            if (profiles.locked) return@onClick false
+                                            haptics.selection()
+                                            onSelectProfile(option.id)
+                                            true
+                                        }
+                                    }.padding(horizontal = 10.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    option.label,
+                                    color = if (isSelected) CaptureColors.Accent else Color.White.copy(alpha = .62f),
+                                    fontFamily = CaptureMono,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 10.sp,
+                                    maxLines = 1,
+                                    style = ViewfinderTextStyle
+                                )
                             }
-                        )
-                    if (descriptor.param == null) {
-                        RenderExposureParamItem(descriptor, state, dispatch, cellModifier)
-                    } else {
-                        TonemapParamItem(descriptor, state, dispatch, cellModifier)
+                        }
+                    }
+                } else if (paramsOpen && paramsInline) {
+                    LazyRow(
+                        Modifier
+                            .fillMaxSize()
+                            .testTag(CaptureTestTags.TONEMAP_STRIP_PARAMS),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(gap)
+                    ) {
+                        itemsIndexed(TonemapCatalog.all, key = { _, item -> item.jsonKey }) { index, descriptor ->
+                            // Divider where the controls move to another stage of the render, drawn in the gap.
+                            val startsGroup = index > 0 && TonemapCatalog.all[index - 1].group != descriptor.group
+                            val cellModifier = Modifier
+                                .width(sliderWidths[index % sliderWidths.size])
+                                .then(
+                                    if (startsGroup) {
+                                        Modifier.drawBehind {
+                                            drawLine(
+                                                Color.White.copy(alpha = .35f),
+                                                Offset(-gapPx / 2f, size.height * .25f),
+                                                Offset(-gapPx / 2f, size.height * .75f),
+                                                strokeWidth = 1.dp.toPx()
+                                            )
+                                        }
+                                    } else {
+                                        Modifier
+                                    }
+                                )
+                            if (descriptor.param == null) {
+                                RenderExposureParamItem(descriptor, state, dispatch, cellModifier)
+                            } else {
+                                TonemapParamItem(descriptor, state, dispatch, cellModifier)
+                            }
+                        }
                     }
                 }
             }
             Box(
                 Modifier
-                    .width(widths[4])
+                    .width(widths[3])
                     .height(StripDimens.ParamRowHeight)
+                    .testTag(CaptureTestTags.TONEMAP_STRIP_PROFILE)
                     .captureClickable(shape = CaptureTextRippleShape) {
                         haptics.selection()
-                        onOpenProfiles()
+                        onToggle(TonemapStripMode.Profiles)
                     }.semantics {
-                        contentDescription = "Render profile $profileLabel. Tap to choose profile."
+                        contentDescription = "Render profile $profileLabel. " +
+                            if (lookOpen) "Tap to close." else "Tap to choose profile."
                         onClick {
                             haptics.selection()
-                            onOpenProfiles()
+                            onToggle(TonemapStripMode.Profiles)
                             true
                         }
                     }
-                    .viewfinderChip(),
+                    .viewfinderChip(active = lookOpen),
                 contentAlignment = Alignment.Center
             ) {
                 StripTwoLineItem(
@@ -337,6 +274,15 @@ private fun TonemapParamsRow(
                     valueColor = if (modified) CaptureColors.AccentSoft else Color.White.copy(alpha = .95f),
                     labelText = "LOOK"
                 )
+            }
+            if (!profiles.log) {
+                StripParamsEntry(
+                    { onToggle(TonemapStripMode.Params) },
+                    Modifier.width(widths[4]).height(StripDimens.ParamRowHeight),
+                    active = paramsOpen
+                )
+            } else {
+                Box(Modifier.width(widths[4]))
             }
         }
     }

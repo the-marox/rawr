@@ -56,7 +56,7 @@ import androidx.compose.ui.unit.sp
 import com.rawr.camera.model.formatFilmStripValue
 
 @Composable
-internal fun StripParamsEntry(onOpen: () -> Unit, modifier: Modifier = Modifier) {
+internal fun StripParamsEntry(onOpen: () -> Unit, modifier: Modifier = Modifier, active: Boolean = false) {
     val haptics = LocalCaptureHaptics.current
     Row(
         modifier
@@ -73,15 +73,15 @@ internal fun StripParamsEntry(onOpen: () -> Unit, modifier: Modifier = Modifier)
                     true
                 }
             }
-            .viewfinderChip()
+            .viewfinderChip(active)
             .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center
     ) {
-        ContrastIcon(Icons.Outlined.Tune, Color.White.copy(alpha = .62f), 14.dp)
+        ContrastIcon(Icons.Outlined.Tune, if (active) CaptureColors.Accent else Color.White.copy(alpha = .62f), 14.dp)
         Text(
             "PARAMS",
-            color = Color.White.copy(alpha = .62f),
+            color = if (active) CaptureColors.Accent else Color.White.copy(alpha = .62f),
             fontFamily = CaptureMono,
             fontWeight = FontWeight.Bold,
             fontSize = 8.sp,
