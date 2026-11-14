@@ -1,5 +1,6 @@
 #include "develop/render/RenderResources.h"
 
+#include <thread>
 #include <android/asset_manager.h>
 #include <android/log.h>
 #include <sys/system_properties.h>
@@ -351,7 +352,21 @@ bool RenderResources::ensureFilm(const RenderedStillContext& rendered) {
                 rendered.filmTiled)) {
             required += uint64_t(rendered.width) * rendered.height * 8u;
         }
-        const std::uint64_t avail = readMemAvailableBytes();
+        std::uint64_t avail = readMemAvailableBytes();
+        // Right after a big merge the kernel is still reclaiming the released arena (MemAvailable climbed
+        // ~500 MB in 5 s on a 30-frame 50 MP merge): give it up to 4 s before giving up on the film look.
+        if (avail > 0 && required > avail) {
+            const auto waitBegin = std::chrono::steady_clock::now();
+            while (avail > 0 && required > avail &&
+                   std::chrono::steady_clock::now() - waitBegin < std::chrono::milliseconds(4000)) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                avail = readMemAvailableBytes();
+            }
+            __android_log_print(ANDROID_LOG_INFO, "RawrCamNative", "STILL_FILM_RAM_GATE_WAIT ms=%.0f availMB=%llu",
+                                std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - waitBegin)
+                                    .count(),
+                                static_cast<unsigned long long>(avail >> 20));
+        }
         emit("STILL_FILM_RAM_GATE requiredMB=" + std::to_string(required >> 20) +
              " availMB=" + std::to_string(avail >> 20));
         __android_log_print(ANDROID_LOG_INFO, "RawrCamNative", "STILL_FILM_RAM_GATE requiredMB=%llu availMB=%llu",
