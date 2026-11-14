@@ -155,6 +155,9 @@ struct NativeCameraController::Impl final : CameraEventSink {
     bool shutDown = false;
     // Empty or unknown lens ids resolve to the profile's first lens at start.
     std::string lensId;
+    // Exposure/WB/focus intent each physical camera had when the user left it,
+    // restored on return (1x at ISO 100, tele at ISO 800 stay as they were).
+    std::map<std::string, CameraControlState> controlByCamera;
     // Built-in profile for this device model until the app supplies the
     // user's lens profile (setProfile).
     const std::string deviceModel = systemProperty("ro.product.model");
@@ -816,6 +819,12 @@ struct NativeCameraController::Impl final : CameraEventSink {
         const CameraControlState previousControl = control;
         const bool sameCameraRestart =
             !previousControl.capabilities.cameraId.empty() && previousControl.capabilities.cameraId == route.cameraId;
+        // Leaving a camera remembers its controls; returning to one restores them (clamped below).
+        if (!previousControl.capabilities.cameraId.empty() && !sameCameraRestart)
+            controlByCamera[previousControl.capabilities.cameraId] = previousControl;
+        const auto saved = controlByCamera.find(route.cameraId);
+        const CameraControlState* restore = sameCameraRestart ? &previousControl
+            : saved != controlByCamera.end() ? &saved->second : nullptr;
         control = deviceSession.initialControls(route);
         // Vendor full-size modes: the HAL's S/I priority AE crashes the camera
         // provider once it raises gain (vivo X300 Ultra 50 MP); only rawr AE
@@ -828,8 +837,8 @@ struct NativeCameraController::Impl final : CameraEventSink {
         control.focusRequestId = previousControl.focusRequestId;
         control.whiteBalanceRequestId = previousControl.whiteBalanceRequestId;
 
-        if (sameCameraRestart) {
-            const auto mode = previousControl.exposureMode;
+        if (restore) {
+            const auto mode = restore->exposureMode;
             const bool modeSupported =
                 mode == ExposureControlMode::Auto ||
                 (mode == ExposureControlMode::Manual && control.capabilities.manualExposureSupported) ||
@@ -837,17 +846,17 @@ struct NativeCameraController::Impl final : CameraEventSink {
                 (mode == ExposureControlMode::IsoPriority && control.capabilities.isoPrioritySupported);
             control.exposureMode = modeSupported ? mode : ExposureControlMode::Auto;
             control.requestedExposureTimeNs =
-                std::clamp(previousControl.requestedExposureTimeNs, control.capabilities.exposureTimeMinNs,
+                std::clamp(restore->requestedExposureTimeNs, control.capabilities.exposureTimeMinNs,
                            control.capabilities.exposureTimeMaxNs);
             control.requestedSensitivity =
-                std::clamp(previousControl.requestedSensitivity, control.capabilities.sensitivityMin,
+                std::clamp(restore->requestedSensitivity, control.capabilities.sensitivityMin,
                            control.capabilities.sensitivityMax);
-            control.requestedEvSteps = std::clamp(previousControl.requestedEvSteps, control.capabilities.evMinSteps,
+            control.requestedEvSteps = std::clamp(restore->requestedEvSteps, control.capabilities.evMinSteps,
                                                   control.capabilities.evMaxSteps);
             // Preserve white-balance intent across same-camera restarts (e.g.
             // sensor-mode key changes). A lens/camera change gets fresh WB state because
             // the newly read capabilities/seed may differ.
-            const auto wbMode = previousControl.whiteBalanceMode;
+            const auto wbMode = restore->whiteBalanceMode;
             const bool wbSupported =
                 wbMode == WhiteBalanceControlMode::Auto ||
                 (wbMode == WhiteBalanceControlMode::ManualTempTint && control.capabilities.manualGainsSupported) ||
@@ -855,18 +864,19 @@ struct NativeCameraController::Impl final : CameraEventSink {
                           static_cast<uint8_t>(wbMode)) != control.capabilities.supportedAwbModes.end();
             control.whiteBalanceMode = wbSupported ? wbMode : WhiteBalanceControlMode::Auto;
             control.requestedWhiteBalanceTemperatureK =
-                std::clamp(previousControl.requestedWhiteBalanceTemperatureK, 2000, 10000);
-            control.requestedWhiteBalanceTint = std::clamp(previousControl.requestedWhiteBalanceTint, -50, 50);
+                std::clamp(restore->requestedWhiteBalanceTemperatureK, 2000, 10000);
+            control.requestedWhiteBalanceTint = std::clamp(restore->requestedWhiteBalanceTint, -50, 50);
             // Same-sensor restart keeps the manual entry baseline so an
             // in-progress manual session doesn't snap to absolute gains.
             // A new camera gets fresh state from readInitial (above).
-            control.manualWhiteBalanceEntryGains = previousControl.manualWhiteBalanceEntryGains;
-            control.hasManualWhiteBalanceEntryGains = previousControl.hasManualWhiteBalanceEntryGains;
-            control.manualWhiteBalanceEntryTempK = previousControl.manualWhiteBalanceEntryTempK;
-            control.manualWhiteBalanceEntryTint = previousControl.manualWhiteBalanceEntryTint;
-            control.focusMode = previousControl.focusMode;
-            control.requestedManualFocusNormalized = previousControl.requestedManualFocusNormalized;
-            diag("CAMERA_CONTROL_INTENT_RESTORED cameraId=" + route.cameraId +
+            control.manualWhiteBalanceEntryGains = restore->manualWhiteBalanceEntryGains;
+            control.hasManualWhiteBalanceEntryGains = restore->hasManualWhiteBalanceEntryGains;
+            control.manualWhiteBalanceEntryTempK = restore->manualWhiteBalanceEntryTempK;
+            control.manualWhiteBalanceEntryTint = restore->manualWhiteBalanceEntryTint;
+            control.focusMode = restore->focusMode;
+            control.requestedManualFocusNormalized = restore->requestedManualFocusNormalized;
+            diag(std::string("CAMERA_CONTROL_INTENT_RESTORED source=") + (sameCameraRestart ? "restart" : "lens_return") +
+                 " cameraId=" + route.cameraId +
                  " exposureMode=" + std::to_string(static_cast<int>(control.exposureMode)) +
                  " shutterNs=" + std::to_string(control.requestedExposureTimeNs) +
                  " sensitivity=" + std::to_string(control.requestedSensitivity) +
