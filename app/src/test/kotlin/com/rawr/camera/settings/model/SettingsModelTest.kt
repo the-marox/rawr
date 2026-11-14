@@ -642,6 +642,29 @@ class SettingsModelTest {
         assertEquals(13f, MultiframeTuning().copy(hdrPlusStrength = 0f).sanitized().hdrPlusStrength)
     }
 
+    @Test fun lookCanBeSetPerLens() {
+        val base = PersistentSettingsController(onValuesChanged = {}).state.value.values
+        val shared = base.rawrBaseTone.copy(contrast = 10f)
+        var v = base.copy(lastLensId = "1x 50MP", rawrBaseTone = shared)
+        // Own look for the 200 MP lens, then edit it there.
+        v = v.withLensSelected("3.2x 200MP").withOwnLookForActiveLens(true)
+        assertTrue(v.activeLensHasOwnLook)
+        v = v.copy(rawrBaseTone = shared.copy(contrast = 40f), filmSimEnabled = !base.filmSimEnabled)
+        // Back on a shared lens: shared look again.
+        v = v.withLensSelected("1x 50MP")
+        assertEquals(10f, v.rawrBaseTone.contrast)
+        assertEquals(base.filmSimEnabled, v.filmSimEnabled)
+        // Returning to the 200 MP lens restores its own look.
+        v = v.withLensSelected("3.2x 200MP")
+        assertEquals(40f, v.rawrBaseTone.contrast)
+        assertEquals(!base.filmSimEnabled, v.filmSimEnabled)
+        // Dropping it returns the lens to the shared look.
+        v = v.withOwnLookForActiveLens(false)
+        assertFalse(v.activeLensHasOwnLook)
+        assertEquals(10f, v.rawrBaseTone.contrast)
+        assertTrue(v.lookByLens.isEmpty())
+    }
+
     @Test fun multiframeTuningCanBeSetPerLens() {
         val base = PersistentSettingsController(onValuesChanged = {}).state.value
         var state = base.withValues(base.values.copy(lastLensId = "3.2x 200MP"))

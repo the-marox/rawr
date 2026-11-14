@@ -34,6 +34,22 @@ internal fun ImageToneSettings(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        val lensId = state.values.lastLensId
+        if (lensId != null && !state.values.isVideo) {
+            item {
+                SettingsGroup(
+                    title = "Lens",
+                    description = "Off: this lens uses the shared look, like every lens without its own. " +
+                        "On: profile, tone sliders, AgX choice and film look apply to $lensId only (starting from " +
+                        "the current look). AgX preset edits stay shared. Switch lenses on the capture screen to set up another one."
+                ) {
+                    SettingsSwitchRow(
+                        title = "Own look for $lensId",
+                        checked = state.values.activeLensHasOwnLook
+                    ) { dispatch.invoke(SetLookLensOverride(it)) }
+                }
+            }
+        }
         item {
             SettingsGroup(
                 title = "Tone Mapping",

@@ -583,6 +583,8 @@ class SettingsPreferencesRepository(context: Context, private val defaults: Sett
                     maxFrames = p[Keys.multiframeMaxFrames] ?: d.multiframeTuning.maxFrames
                 ).sanitized(d.multiframeTuning),
             multiframeTuningByLens = decodeMultiframeByLens(p[Keys.multiframeTuningByLens], d.multiframeTuning),
+            lookByLens = decodeLookByLens(p[Keys.lookByLens]),
+            sharedLook = p[Keys.sharedLook]?.let { raw -> runCatching { decodeLensLook(org.json.JSONObject(raw)) }.getOrNull() },
             customGpuDriverEnabled = p[Keys.customGpuDriverEnabled] ?: d.customGpuDriverEnabled,
             customGpuDriverName = p[Keys.customGpuDriverName] ?: d.customGpuDriverName,
             persistZslRingEnabled = p[Keys.persistZslRingEnabled] ?: d.persistZslRingEnabled,
@@ -806,6 +808,12 @@ class SettingsPreferencesRepository(context: Context, private val defaults: Sett
         p[Keys.multiframeMaxFrames] = v.multiframeTuning.maxFrames
         if (v.multiframeTuningByLens.isEmpty()) p.remove(Keys.multiframeTuningByLens)
         else p[Keys.multiframeTuningByLens] = encodeMultiframeByLens(v.multiframeTuningByLens)
+        if (v.lookByLens.isEmpty()) p.remove(Keys.lookByLens)
+        else p[Keys.lookByLens] = org.json.JSONObject().apply {
+            v.lookByLens.toSortedMap().forEach { (lens, look) -> put(lens, encodeLensLook(look)) }
+        }.toString()
+        val shared = v.sharedLook
+        if (shared == null) p.remove(Keys.sharedLook) else p[Keys.sharedLook] = encodeLensLook(shared).toString()
         p[Keys.customGpuDriverEnabled] = v.customGpuDriverEnabled
         if (v.customGpuDriverName ==
             null
@@ -949,6 +957,60 @@ class SettingsPreferencesRepository(context: Context, private val defaults: Sett
         }.toMap()
 
     /** `{"<lens id>": {"mergeAlgorithm", "hdrPlusStrength", "hdrPlusTileSize", "maxFrames"}}`. */
+    private fun encodeTone(t: ProfileTone) = org.json.JSONArray().apply {
+        listOf(t.renderExposure, t.blacks, t.shadows, t.contrast, t.midtones, t.highlights, t.whites, t.saturation,
+            t.vibrance).forEach { put(it.toDouble()) }
+    }
+
+    private fun decodeTone(a: org.json.JSONArray?, d: ProfileTone): ProfileTone {
+        if (a == null || a.length() != 9) return d
+        val f = { i: Int -> a.optDouble(i).toFloat().takeIf { it.isFinite() } }
+        return ProfileTone(
+            renderExposure = f(0) ?: d.renderExposure, blacks = f(1) ?: d.blacks, shadows = f(2) ?: d.shadows,
+            contrast = f(3) ?: d.contrast, midtones = f(4) ?: d.midtones, highlights = f(5) ?: d.highlights,
+            whites = f(6) ?: d.whites, saturation = f(7) ?: d.saturation, vibrance = f(8) ?: d.vibrance
+        )
+    }
+
+    /** One lens look as JSON (render profile, LUT, the three tone sets, AgX choice, film). */
+    private fun encodeLensLook(l: LensLook) = org.json.JSONObject().apply {
+        put("profile", l.colorRenderProfile.name)
+        l.selectedUserLutProfileId?.let { put("lut", it) }
+        put("rawrTone", encodeTone(l.rawrBaseTone))
+        put("srgbTone", encodeTone(l.srgbTone))
+        put("agxTone", encodeTone(l.agxTone))
+        put("agxPreset", l.agxPreset.name)
+        l.selectedAgxLookId?.let { put("agxLook", it) }
+        put("film", l.filmSimEnabled)
+        put("filmLook", FilmSimCodec.encodeLook(l.filmSimLook))
+        l.selectedFilmPresetId?.let { put("filmPreset", it) }
+    }
+
+    private fun decodeLensLook(o: org.json.JSONObject): LensLook {
+        val d = SettingsValues.Defaults
+        return LensLook(
+            colorRenderProfile = enumOrDefault(o.optString("profile"), d.colorRenderProfile),
+            selectedUserLutProfileId = o.optString("lut").takeIf { it.isNotBlank() },
+            rawrBaseTone = decodeTone(o.optJSONArray("rawrTone"), d.rawrBaseTone),
+            srgbTone = decodeTone(o.optJSONArray("srgbTone"), d.srgbTone),
+            agxTone = decodeTone(o.optJSONArray("agxTone"), d.agxTone),
+            agxPreset = enumOrDefault(o.optString("agxPreset"), d.agxPreset),
+            selectedAgxLookId = o.optString("agxLook").takeIf { it.isNotBlank() },
+            filmSimEnabled = o.optBoolean("film", d.filmSimEnabled),
+            filmSimLook = FilmSimCodec.decodeLook(o.optString("filmLook").takeIf { it.isNotBlank() }) ?: d.filmSimLook,
+            selectedFilmPresetId = o.optString("filmPreset").takeIf { it.isNotBlank() }
+        )
+    }
+
+    private fun decodeLookByLens(raw: String?): Map<String, LensLook> {
+        if (raw.isNullOrBlank()) return emptyMap()
+        val json = runCatching { org.json.JSONObject(raw) }.getOrNull() ?: return emptyMap()
+        return json.keys().asSequence().filter { it.isNotBlank() }.mapNotNull { lens ->
+            val o = json.optJSONObject(lens) ?: return@mapNotNull null
+            runCatching { lens to decodeLensLook(o) }.getOrNull()
+        }.toMap()
+    }
+
     private fun encodeMultiframeByLens(values: Map<String, MultiframeTuning>): String =
         org.json.JSONObject().apply {
             values.toSortedMap().forEach { (lens, t) ->
@@ -1100,6 +1162,8 @@ class SettingsPreferencesRepository(context: Context, private val defaults: Sett
         val multiframeHdrPlusTileSize = intPreferencesKey("multiframe_hdrplus_tile_size")
         val multiframeMaxFrames = intPreferencesKey("multiframe_max_frames")
         val multiframeTuningByLens = stringPreferencesKey("multiframe_tuning_by_lens")
+        val lookByLens = stringPreferencesKey("look_by_lens")
+        val sharedLook = stringPreferencesKey("shared_look")
         val customGpuDriverEnabled = booleanPreferencesKey("debug_custom_gpu_driver_enabled")
         val customGpuDriverName = stringPreferencesKey("debug_custom_gpu_driver_name")
         val retiredPersistentDiagnosticsEnabled = booleanPreferencesKey("debug_persistent_diagnostics_enabled")

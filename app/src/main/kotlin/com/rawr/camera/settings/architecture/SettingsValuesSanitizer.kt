@@ -131,6 +131,7 @@ internal fun sanitizeSettingsValues(persisted: SettingsValues, defaults: Setting
             multiframeTuningByLens = persisted.multiframeTuningByLens
                 .filterKeys { it.isNotBlank() }
                 .mapValues { (_, tuning) -> tuning.sanitized(defaults.multiframeTuning) },
+            lookByLens = persisted.lookByLens.filterKeys { it.isNotBlank() },
             photoFccSteps = persisted.photoFccSteps.coerceIn(1, 8),
             photoDefringeStrength = persisted.photoDefringeStrength.coerceIn(0f, 1f),
             photoDefringeEdgeThreshold = persisted.photoDefringeEdgeThreshold.coerceIn(0.005f, 0.2f),

@@ -323,6 +323,7 @@ data class SetMultiframeMergeAlgorithm(val value: MultiframeMergeAlgorithm) : Se
 
 /** Gives the lens in use its own multiframe tuning (starting from the global one), or drops it. */
 data class SetMultiframeLensOverride(val enabled: Boolean) : SettingsApplicationAction
+data class SetLookLensOverride(val enabled: Boolean) : SettingsApplicationAction
 
 data class SetCustomGpuDriverEnabled(val enabled: Boolean) : SettingsApplicationAction
 

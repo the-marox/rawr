@@ -706,6 +706,10 @@ data class SettingsValues(
     val multiframeTuning: MultiframeTuning = MultiframeTuning(),
     /** Per-lens multiframe tuning keyed by lens id (profile name); lenses without an entry use [multiframeTuning]. */
     val multiframeTuningByLens: Map<String, MultiframeTuning> = emptyMap(),
+    // Per-lens look ("Own look for <lens>"): the look fields above always hold the active lens's look; these keep
+    // the other lenses' looks and the shared one while a lens with its own look is active.
+    val lookByLens: Map<String, LensLook> = emptyMap(),
+    val sharedLook: LensLook? = null,
     val customGpuDriverEnabled: Boolean = false,
     val customGpuDriverName: String? = null,
     val persistZslRingEnabled: Boolean = false,
@@ -1059,4 +1063,66 @@ fun postGainKneeWidthEvFor(value: HighlightProtection): Float = when (value) {
     HighlightProtection.Low -> 2f
     HighlightProtection.High -> 0.5f
     HighlightProtection.Normal -> 1f
+}
+
+
+/** What a lens can keep for itself: render profile / LUT, tone sliders, AgX choice and the film look. */
+data class LensLook(
+    val colorRenderProfile: ColorRenderProfile,
+    val selectedUserLutProfileId: String?,
+    val rawrBaseTone: ProfileTone,
+    val srgbTone: ProfileTone,
+    val agxTone: ProfileTone,
+    val agxPreset: AgxPreset,
+    val selectedAgxLookId: String?,
+    val filmSimEnabled: Boolean,
+    val filmSimLook: FilmSimLook,
+    val selectedFilmPresetId: String?
+)
+
+val SettingsValues.currentLook: LensLook
+    get() = LensLook(
+        colorRenderProfile, selectedUserLutProfileId, rawrBaseTone, srgbTone, agxTone, agxPreset,
+        selectedAgxLookId, filmSimEnabled, filmSimLook, selectedFilmPresetId
+    )
+
+fun SettingsValues.withLook(look: LensLook): SettingsValues = copy(
+    colorRenderProfile = look.colorRenderProfile,
+    selectedUserLutProfileId = look.selectedUserLutProfileId?.takeIf { id -> userLutProfiles.any { it.id == id } },
+    rawrBaseTone = look.rawrBaseTone,
+    srgbTone = look.srgbTone,
+    agxTone = look.agxTone,
+    agxPreset = look.agxPreset,
+    selectedAgxLookId = look.selectedAgxLookId?.takeIf { id -> agxLooks.any { it.id == id && it.base == look.agxPreset } },
+    filmSimEnabled = look.filmSimEnabled,
+    filmSimLook = look.filmSimLook,
+    selectedFilmPresetId = look.selectedFilmPresetId?.takeIf { id -> filmPresets.any { it.id == id } }
+)
+
+val SettingsValues.activeLensHasOwnLook: Boolean
+    get() = lastLensId?.let { it in lookByLens } == true
+
+/**
+ * Lens switch: the outgoing lens's look is stored (its own slot, or the shared one) and the incoming lens's
+ * look becomes the active one. Lenses without their own look all use the shared look.
+ */
+fun SettingsValues.withLensSelected(lensId: String?): SettingsValues {
+    if (lensId == lastLensId) return this
+    val current = currentLook
+    val previous = lastLensId
+    val stored = if (previous != null && previous in lookByLens) copy(lookByLens = lookByLens + (previous to current))
+    else copy(sharedLook = current)
+    val target = lensId?.let { stored.lookByLens[it] } ?: stored.sharedLook ?: current
+    return stored.withLook(target).copy(lastLensId = lensId)
+}
+
+/** "Own look for <active lens>": on starts from the current look; off returns the lens to the shared look. */
+fun SettingsValues.withOwnLookForActiveLens(own: Boolean): SettingsValues {
+    val lens = lastLensId ?: return this
+    val current = currentLook
+    return if (own) {
+        if (lens in lookByLens) this else copy(lookByLens = lookByLens + (lens to current), sharedLook = current)
+    } else {
+        if (lens !in lookByLens) this else copy(lookByLens = lookByLens - lens).withLook(sharedLook ?: current)
+    }
 }

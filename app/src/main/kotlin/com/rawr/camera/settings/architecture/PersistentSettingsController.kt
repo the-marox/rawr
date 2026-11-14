@@ -66,6 +66,7 @@ class PersistentSettingsController(
 
             is SetMultiframeChromaDenoise, is SetMultiframeRextureNativeRgb, is SetMultiframeBaseFrameMode, is SetMultiframeNumericValue,
             is SetMultiframeMergeAlgorithm, is SetMultiframeLensOverride -> reduceMultiframeSettings(state, action)
+            is SetLookLensOverride -> state.withValues(state.values.withOwnLookForActiveLens(action.enabled))
 
             is SetPhotoDenoiseEnabled, is SetPhotoDenoiseStrength, is SetPhotoDenoiseDetail,
             is SetPhotoDenoiseLuma, is SetPhotoDenoiseScales,

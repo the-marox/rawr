@@ -1,5 +1,6 @@
 package com.rawr.camera
 
+import com.rawr.camera.settings.model.withLensSelected
 import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
@@ -130,7 +131,7 @@ class CaptureViewModel(application: Application) : AndroidViewModel(application)
                     ).show()
                 }
             },
-            onLensSelected = { lensId -> settingsEditor.update { it.copy(lastLensId = lensId) } },
+            onLensSelected = { lensId -> settingsEditor.update { it.withLensSelected(lensId) } },
             onCapturePreferencesChanged = { before, after ->
                 settingsEditor.update { it.withCapturePreferenceChanges(before, after) }
                 settingsSync.updatePreviewCrop(after.captureMode, after.videoResolution)
