@@ -104,19 +104,20 @@ internal fun Modifier.captureCombinedClickable(
 }
 
 /**
- * Long-press help for viewfinder controls: a short explanation, like the
- * Settings "!" notes. A new hint replaces the one still showing.
+ * Long-press help for viewfinder controls, like the Settings "!" notes:
+ * shown as the centred viewfinder overlay ([ControlHelpOverlay]), or a toast
+ * where no overlay host is provided.
  */
 @Composable
 internal fun rememberControlHelp(): (String) -> Unit {
+    val host = LocalControlHelp.current
     val context = androidx.compose.ui.platform.LocalContext.current
     val haptics = LocalCaptureHaptics.current
-    val last = remember { arrayOfNulls<android.widget.Toast>(1) }
-    return remember(context, haptics) {
+    return remember(host, context, haptics) {
         { text: String ->
             haptics.longPress()
-            last[0]?.cancel()
-            last[0] = android.widget.Toast.makeText(context, text, android.widget.Toast.LENGTH_LONG).also { it.show() }
+            if (host != null) host.show(text)
+            else android.widget.Toast.makeText(context, text, android.widget.Toast.LENGTH_LONG).show()
         }
     }
 }

@@ -215,6 +215,9 @@ internal fun CaptureViewfinder(
                 multiframeHintKey = listOf(state.selectedLensId, state.experimentalMultiframeEnabled,
                     state.multiframeAlgorithm, state.multiframeFrames)
             )
+            LocalControlHelp.current?.let { help ->
+                ControlHelpOverlay(help, state.orientation, Modifier.align(Alignment.Center))
+            }
         }
         state.selfTimerRemainingMs?.let { remaining ->
             SelfTimerCountdownOverlay(

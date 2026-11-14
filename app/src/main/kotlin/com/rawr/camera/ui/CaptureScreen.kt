@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import com.rawr.camera.architecture.CaptureDispatch
 import com.rawr.camera.architecture.CaptureFilmEvent
@@ -39,9 +40,11 @@ fun CaptureScreen(
     onToggleVideoRecording: () -> Unit = {}
 ) {
     val haptics = rememberCaptureHaptics()
+    val controlHelp = remember { ControlHelpState() }
     CompositionLocalProvider(
         LocalControlSurfaceStyle provides state.controlSurfaceStyle,
-        LocalCaptureHaptics provides haptics
+        LocalCaptureHaptics provides haptics,
+        LocalControlHelp provides controlHelp
     ) {
         CaptureStateHaptics(state)
         Surface(modifier.fillMaxSize(), color = CaptureColors.Background) {

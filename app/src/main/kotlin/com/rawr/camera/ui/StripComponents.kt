@@ -68,7 +68,7 @@ internal fun StripParamsEntry(onOpen: () -> Unit, modifier: Modifier = Modifier,
                 onLongClickLabel = "Explain",
                 onLongClick = {
                     showHelp(
-                        "Parameters of the current look or film: contrast, shadows, highlights, colour and more. " +
+                        "Params: adjust the current look or film - contrast, shadows, highlights, colour and more. " +
                             "Drag a value to change it; double-tap resets it."
                     )
                 }
