@@ -35,6 +35,8 @@ import com.rawr.camera.architecture.CaptureQuickEvent
 import com.rawr.camera.model.HighlightQuickMode
 import com.rawr.camera.model.HIGHLIGHT_THRESHOLD_DEFAULT
 import com.rawr.camera.model.ViewfinderQuickState
+import com.rawr.camera.settings.model.CaptureSharpeningLevel
+import com.rawr.camera.settings.model.RawrMaxShutter
 import com.rawr.camera.settings.model.RawrMetering
 
 /** Lower rank = kept first when the rail runs out of height. */
@@ -230,6 +232,15 @@ private fun HighlightQuickMode.railLabel(): String = when (this) {
 }
 
 /** Short enough for a 56dp chip at 10sp. */
+private fun RawrMaxShutter.railLabel(): String = if (this == RawrMaxShutter.Auto) "AUTO" else label
+
+private fun CaptureSharpeningLevel.railLabel(): String = when (this) {
+    CaptureSharpeningLevel.Low -> "LOW"
+    CaptureSharpeningLevel.Medium -> "MED"
+    CaptureSharpeningLevel.Sharp -> "SHARP"
+    CaptureSharpeningLevel.Sharpest -> "MAX"
+}
+
 private fun RawrMetering.railLabel(): String = when (this) {
     RawrMetering.Matrix -> "MATRIX"
     RawrMetering.CenterWeighted -> "CENTRE"
@@ -301,6 +312,19 @@ internal fun ViewfinderQuickPanel(
                 width = chipWidth,
                 help = HELP_METERING
             ) { onEvent(CaptureQuickEvent.SetMetering(next)) }
+            // SHUT: Rawr AE's slowest auto shutter (photo); dimmed with Device AE or in video.
+            val shutEnabled = enabled && quick.rawrAeEnabled && !quick.isVideo
+            val nextShutter = RawrMaxShutter.entries[(quick.maxShutter.ordinal + 1) % RawrMaxShutter.entries.size]
+            RailChip(
+                value = quick.maxShutter.railLabel(),
+                label = "SHUT",
+                active = quick.maxShutter != RawrMaxShutter.Auto && shutEnabled,
+                enabled = shutEnabled,
+                description = "Slowest auto shutter ${quick.maxShutter.label}. Tap for ${nextShutter.label}.",
+                tag = "quick_panel_max_shutter",
+                width = chipWidth,
+                help = HELP_SHUT
+            ) { onEvent(CaptureQuickEvent.SetMaxShutter(nextShutter)) }
         }
         PanelSection("HIGHLIGHTS")
         androidx.compose.foundation.layout.Row(horizontalArrangement = rowArrangement) {
@@ -344,6 +368,39 @@ internal fun ViewfinderQuickPanel(
                 testTag = CaptureTestTags.RAIL_HIGHLIGHT_COMPRESSION,
                 help = HELP_CMP
             )
+        }
+        PanelSection("DETAIL")
+        androidx.compose.foundation.layout.Row(horizontalArrangement = rowArrangement) {
+            if (!quick.isVideo) {
+                // OFF → LOW → MED → SHARP → MAX → OFF
+                val levels = CaptureSharpeningLevel.entries
+                val (nextOn, nextLevel) = when {
+                    !quick.sharpeningEnabled -> true to levels.first()
+                    quick.sharpeningLevel == levels.last() -> false to quick.sharpeningLevel
+                    else -> true to levels[quick.sharpeningLevel.ordinal + 1]
+                }
+                RailChip(
+                    value = if (quick.sharpeningEnabled) quick.sharpeningLevel.railLabel() else "OFF",
+                    label = "SHARP",
+                    active = quick.sharpeningEnabled,
+                    enabled = enabled,
+                    description = "Sharpening ${if (quick.sharpeningEnabled) quick.sharpeningLevel.label else "off"}. " +
+                        "Tap for ${if (nextOn) nextLevel.label else "off"}.",
+                    tag = "quick_panel_sharpening",
+                    width = chipWidth,
+                    help = HELP_SHARP
+                ) { onEvent(CaptureQuickEvent.SetSharpening(nextOn, nextLevel)) }
+            }
+            RailChip(
+                value = if (quick.denoiseEnabled) "ON" else "OFF",
+                label = "NR",
+                active = quick.denoiseEnabled,
+                enabled = enabled,
+                description = "Noise reduction ${if (quick.denoiseEnabled) "on" else "off"}. Tap to switch.",
+                tag = "quick_panel_denoise",
+                width = chipWidth,
+                help = HELP_NR
+            ) { onEvent(CaptureQuickEvent.ToggleDenoise) }
         }
         if (!quick.isVideo) {
             PanelSection("LENS ${quick.lensId.orEmpty()}".trim())
@@ -461,6 +518,13 @@ private fun FrameStepper(frames: Int, min: Int, max: Int, enabled: Boolean, widt
 private const val HELP_OWN_MF =
     "Own multiframe: ON gives this lens its own merge settings and frame count (FR then changes only this " +
         "lens); OFF uses the shared ones. FR is capped by the lens limit (200 MP: 3)."
+private const val HELP_SHUT =
+    "Shutter: the slowest shutter Rawr AE picks before raising ISO. AUTO uses 1/15 s (OIS keeps it sharp); " +
+        "faster limits freeze motion at higher ISO. Needs Rawr AE."
+private const val HELP_SHARP =
+    "Sharpening: capture sharpening applied to photos (JPEG). OFF, LOW, MED, SHARP or MAX; tap to cycle."
+private const val HELP_NR =
+    "Noise reduction: wavelet denoise for the current mode (photo or video). Strength and detail are in Settings."
 private const val HELP_OWN_LOOK =
     "Own look: ON keeps a separate profile, tone, AgX choice and film look for this lens (it starts from the " +
         "current look); OFF returns the lens to the shared look."

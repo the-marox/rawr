@@ -40,6 +40,7 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rawr.camera.architecture.CaptureDispatch
@@ -65,7 +66,7 @@ import kotlin.math.roundToInt
  * catalog owns the parameter set, order, labels and defaults, so this file
  * only presents them.
  */
-private enum class TonemapStripMode { Collapsed, Profiles, Params }
+private enum class TonemapStripMode { Collapsed, Profiles, Params, Adv }
 
 @Composable
 internal fun TonemapStrip(
@@ -81,7 +82,7 @@ internal fun TonemapStrip(
     val modified = !profiles.log && (state.renderExposureTenths != 0 ||
         TonemapCatalog.tone.any { !TonemapCatalog.isDefault(state, requireNotNull(it.param)) } ||
         profiles.agx?.modified == true)
-    // AgX replaces the TONE row with darktable's sections (FilmConfigBlock levels).
+    // AgX: PARAMS opens a quick card; ADV › opens darktable's sections (RANGE, CURVE, LOOK, PRIM) as grids.
     var agxSection by remember { mutableStateOf<String?>(null) }
     var agxSubsection by remember { mutableStateOf<String?>(null) }
     Column(
@@ -89,31 +90,10 @@ internal fun TonemapStrip(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         val agx = profiles.agx
-        // AgX's sections need more than one row: its block opens above the fixed LOOK/PARAMS row.
-        if (mode == TonemapStripMode.Params && agx != null) {
-            val quick = agxStripState(agx, state.renderExposureTenths, profileLabel)
-            val section = quick.sections.firstOrNull { it.key == agxSection } ?: quick.sections.first()
-            val subsection = section.subsections.firstOrNull { it.key == agxSubsection } ?: section.subsections.first()
-            FilmConfigBlock(
-                quick = quick,
-                sectionKey = section.key,
-                subsectionKey = subsection.key,
-                onSection = {
-                    agxSection = it
-                    agxSubsection = null
-                },
-                onSubsection = { agxSubsection = it },
-                onBack = { mode = TonemapStripMode.Collapsed },
-                onOpenProfiles = { mode = TonemapStripMode.Profiles },
-                l4Key = null,
-                onOpenDiscrete = {},
-                onCloseL4 = {},
-                onScrubParam = { key, value -> dispatchAgx(dispatch, key, value) },
-                onResetParam = { key -> dispatchAgx(dispatch, key, null) },
-                onScrubDiscrete = { _, _ -> },
-                onToggleFlag = { _, _ -> },
-                kind = "AgX"
-            )
+        val agxQuick = agx?.let { agxStripState(it, state.renderExposureTenths, profileLabel) }
+        val agxSectionState = agxQuick?.let { q -> q.sections.firstOrNull { it.key == agxSection } ?: q.sections.first() }
+        val agxSubsectionState = agxSectionState?.let { sec ->
+            sec.subsections.firstOrNull { it.key == agxSubsection } ?: sec.subsections.first()
         }
         TonemapFixedRow(
             mode = mode,
@@ -125,7 +105,57 @@ internal fun TonemapStrip(
             dispatch = dispatch,
             onSelectProfile = onSelectProfile,
             // LOOK and PARAMS never move: tapping one opens its content on the left, tapping it again closes.
-            onToggle = { target -> mode = if (mode == target) TonemapStripMode.Collapsed else target }
+            // From the AgX ADV editor, PARAMS closes too.
+            onToggle = { target ->
+                mode = if (mode == target || (target == TonemapStripMode.Params && mode == TonemapStripMode.Adv)) {
+                    TonemapStripMode.Collapsed
+                } else target
+            },
+            // AgX: PARAMS opens a quick card (the controls changed per scene); ADV › opens the full editor.
+            card = if (agxQuick == null) null else when (mode) {
+                TonemapStripMode.Params -> { _: Dp ->
+                    FilmQuickCard(
+                        quick = agxQuick,
+                        onScrubParam = { key, value -> dispatchAgx(dispatch, key, value) },
+                        onResetParam = { key -> dispatchAgx(dispatch, key, null) },
+                        onToggleFlag = { _, _ -> },
+                        onAdvanced = { mode = TonemapStripMode.Adv },
+                        groups = AgxQuickGroups,
+                        tagPrefix = "agx",
+                        advDescription = "All AgX parameters"
+                    )
+                }
+                TonemapStripMode.Adv -> { cardWidth: Dp ->
+                    FilmAdvCard(
+                        quick = agxQuick,
+                        sectionKey = agxSectionState?.key,
+                        subsectionKey = agxSubsectionState?.key,
+                        cardWidth = cardWidth,
+                        onSection = {
+                            agxSection = it
+                            agxSubsection = null
+                        },
+                        onSubsection = { agxSubsection = it },
+                        onBackToQuick = { mode = TonemapStripMode.Params },
+                        sectionTag = { "capture_agx_section_$it" },
+                        subsectionTag = { sec, sub -> "capture_agx_subsection_${sec}_$sub" },
+                        backTag = "agx_adv_back"
+                    )
+                }
+                else -> null
+            },
+            inlineRow = if (agxQuick != null && mode == TonemapStripMode.Adv && agxSubsectionState != null) {
+                { widths ->
+                    FilmNumericRow(
+                        quick = agxQuick,
+                        items = agxSubsectionState.items,
+                        widths = widths,
+                        onScrubParam = { key, value -> dispatchAgx(dispatch, key, value) },
+                        onResetParam = { key -> dispatchAgx(dispatch, key, null) },
+                        modifier = Modifier.fillMaxSize().testTag(CaptureTestTags.TONEMAP_STRIP_PARAMS)
+                    )
+                }
+            } else null
         )
     }
 }
@@ -145,7 +175,11 @@ private fun TonemapFixedRow(
     paramsInline: Boolean,
     dispatch: CaptureDispatch,
     onSelectProfile: (com.rawr.camera.model.RenderProfileSelection) -> Unit,
-    onToggle: (TonemapStripMode) -> Unit
+    onToggle: (TonemapStripMode) -> Unit,
+    /** Card above LOOK (AgX quick card or ADV grids), given the four right columns' width. */
+    card: (@Composable (Dp) -> Unit)? = null,
+    /** Content of the four columns beside PARAMS when it is not the inline tone row (AgX ADV). */
+    inlineRow: (@Composable (List<Dp>) -> Unit)? = null
 ) {
     val haptics = LocalCaptureHaptics.current
     val showHelp = rememberControlHelp()
@@ -162,7 +196,7 @@ private fun TonemapFixedRow(
         val sliderWidths = widths.subList(0, 4)
         val gapPx = with(LocalDensity.current) { gap.toPx() }
         val lookOpen = mode == TonemapStripMode.Profiles
-        val paramsOpen = mode == TonemapStripMode.Params
+        val paramsOpen = mode == TonemapStripMode.Params || mode == TonemapStripMode.Adv
         Column(
             Modifier.fillMaxWidth(),
             horizontalAlignment = Alignment.End,
@@ -217,6 +251,10 @@ private fun TonemapFixedRow(
                 }
             }
         }
+        card?.let { content ->
+            val cardWidth = widths[1] + widths[2] + widths[3] + widths[4] + gap * 3
+            Box(Modifier.width(cardWidth)) { content(cardWidth) }
+        }
         // LOOK over PARAMS, visible in every state.
         run {
                 Box(
@@ -266,7 +304,9 @@ private fun TonemapFixedRow(
                     .height(StripDimens.ParamRowHeight),
                 contentAlignment = Alignment.CenterEnd
             ) {
-                if (paramsOpen && paramsInline) {
+                if (paramsOpen && inlineRow != null) {
+                    inlineRow(sliderWidths)
+                } else if (paramsOpen && paramsInline) {
                     LazyRow(
                         Modifier
                             .fillMaxSize()
@@ -407,6 +447,25 @@ private fun RenderExposureParamItem(
         format = { renderExposureLabel(renderExposureTenthsOf(it)) }
     )
 }
+
+/** AgX PARAMS quick card: range, curve and look controls people change per scene; ADV › has the rest. */
+private val AgxQuickGroups: List<Pair<String, List<FilmQuickEntry>>> = listOf(
+    "RANGE" to listOf(
+        FilmQuickEntry.Num(AGX_STRIP_EXPOSURE_KEY, "EV"),
+        FilmQuickEntry.Num("whiteEv", "WHITE"),
+        FilmQuickEntry.Num("blackEv", "BLACK")
+    ),
+    "CURVE" to listOf(
+        FilmQuickEntry.Num("contrast", "CONTR"),
+        FilmQuickEntry.Num("toePower", "TOE"),
+        FilmQuickEntry.Num("shoulderPower", "SHLDR")
+    ),
+    "LOOK" to listOf(
+        FilmQuickEntry.Num("lookSlope", "SLOPE"),
+        FilmQuickEntry.Num("lookSaturation", "SAT"),
+        FilmQuickEntry.Advanced
+    )
+)
 
 /** AgX strip edits: the RANGE exposure cell is render exposure, every other key an AgX control. */
 private fun dispatchAgx(dispatch: CaptureDispatch, key: String, value: Float?) {

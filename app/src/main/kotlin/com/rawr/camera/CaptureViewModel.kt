@@ -6,6 +6,7 @@ import com.rawr.camera.settings.model.activeLensHasOwnLook
 import com.rawr.camera.settings.model.editActiveMultiframeTuning
 import com.rawr.camera.settings.model.multiframeTuningFor
 import com.rawr.camera.settings.model.withOwnLookForActiveLens
+import com.rawr.camera.settings.model.withMaster
 import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
@@ -296,6 +297,13 @@ class CaptureViewModel(application: Application) : AndroidViewModel(application)
                     else c.copy(multiframeTuningByLens = c.multiframeTuningByLens + (lens to c.multiframeTuningFor(lens)))
                 } ?: c
                 CaptureQuickEvent.ToggleOwnLook -> c.withOwnLookForActiveLens(!c.activeLensHasOwnLook)
+                is CaptureQuickEvent.SetMaxShutter -> c.copy(rawrAe = c.rawrAe.copy(maxShutter = event.value))
+                is CaptureQuickEvent.SetSharpening ->
+                    c.copy(photoCaptureSharpeningEnabled = event.enabled, photoCaptureSharpeningLevel = event.level)
+                CaptureQuickEvent.ToggleDenoise ->
+                    if (video) c.copy(videoDenoiseEnabled = !c.videoDenoiseEnabled)
+                    else c.copy(photoDenoise = c.photoDenoise.withMaster(
+                        c.photoDenoise !is com.rawr.camera.settings.model.DenoiseConfig.Wavelet))
             }
         }
     }

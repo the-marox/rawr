@@ -101,6 +101,12 @@ std::optional<LensRoute> routeForLens(const CameraProfile& profile, const std::s
     return std::nullopt;
 }
 
+const LensRoute& defaultLensRoute(const CameraProfile& profile) {
+    for (const auto& r : profile.lenses)
+        if (r.lensId.rfind("1x", 0) == 0) return r;
+    return profile.lenses.front();
+}
+
 LensRoute routeForCameraId(const CameraProfile& profile, const std::string& cameraId) {
     for (const auto& r : profile.lenses)
         if (r.cameraId == cameraId && r.physicalCameraId.empty()) return r;

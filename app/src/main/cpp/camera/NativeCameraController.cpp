@@ -287,7 +287,7 @@ struct NativeCameraController::Impl final : CameraEventSink {
         profile = std::move(next);
         publishProfileLocked();
         auto after = routeForLens(profile, lensId);
-        if (!after && !profile.lenses.empty()) after = profile.lenses.front();
+        if (!after && !profile.lenses.empty()) after = defaultLensRoute(profile);
         const bool routeChanged = !before || !after || describeRoute(*before) != describeRoute(*after);
         diag("CAMERA_PROFILE_APPLIED profile=" + profile.id + " lenses=" + std::to_string(profile.lenses.size()) +
              " lensId=" + lensId + " routeChanged=" + (routeChanged ? "true" : "false"));
@@ -780,9 +780,9 @@ struct NativeCameraController::Impl final : CameraEventSink {
         fullSizeDecisionRepeating = false;
         if (preferredCameraId.empty() && !routeForLens(profile, lensId) && !profile.lenses.empty()) {
             if (!lensId.empty())
-                diag("CAMERA_LENS_FALLBACK from=" + lensId + " to=" + profile.lenses.front().lensId +
+                diag("CAMERA_LENS_FALLBACK from=" + lensId + " to=" + defaultLensRoute(profile).lensId +
                      " reason=lens_not_in_profile");
-            lensId = profile.lenses.front().lensId;
+            lensId = defaultLensRoute(profile).lensId;
         }
         const auto requested = selectedRouteLocked();
         if (!requested) {

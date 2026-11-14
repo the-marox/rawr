@@ -341,6 +341,8 @@ using PropertyReader = std::function<std::string(const std::string& name)>;
 [[nodiscard]] ProfileMatch matchBuiltInProfile(const PropertyReader& property);
 
 [[nodiscard]] std::optional<LensRoute> routeForLens(const CameraProfile& profile, const std::string& lensId);
+/** Lens a fresh start opens: the first 1x lens, else the profile's first lens. Profile must not be empty. */
+[[nodiscard]] const LensRoute& defaultLensRoute(const CameraProfile& profile);
 // Explicit camera-id override (debug intent / diagnostics): the profile's
 // route for that camera when it has one, otherwise a negotiated generic route.
 [[nodiscard]] LensRoute routeForCameraId(const CameraProfile& profile, const std::string& cameraId);

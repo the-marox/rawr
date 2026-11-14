@@ -272,7 +272,7 @@ private fun FilmFixedColumn(
 }
 
 /** One quick-card entry: a film numeric slider or flag by catalog key, with the card's own label. */
-private sealed interface FilmQuickEntry {
+internal sealed interface FilmQuickEntry {
     val label: String
     data class Num(val key: String, override val label: String, val needsFlag: String? = null) : FilmQuickEntry
     data class Flag(val key: String, override val label: String) : FilmQuickEntry
@@ -309,12 +309,15 @@ private val FilmQuickGroups: List<Pair<String, List<FilmQuickEntry>>> = listOf(
 
 /** PARAMS quick card: the film settings people change per scene, grouped, each led by its switch. */
 @Composable
-private fun FilmQuickCard(
+internal fun FilmQuickCard(
     quick: FilmSimQuickState,
     onScrubParam: (String, Float) -> Unit,
     onResetParam: (String) -> Unit,
     onToggleFlag: (String, Boolean) -> Unit,
-    onAdvanced: () -> Unit
+    onAdvanced: () -> Unit,
+    groups: List<Pair<String, List<FilmQuickEntry>>> = FilmQuickGroups,
+    tagPrefix: String = "film",
+    advDescription: String = "All film parameters"
 ) {
     val haptics = LocalCaptureHaptics.current
     val gap = CaptureDimens.ControlGap
@@ -326,7 +329,7 @@ private fun FilmQuickCard(
     ) {
         val cell = (maxWidth - gap * 2) / 3
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            FilmQuickGroups.forEach { (title, entries) ->
+            groups.forEach { (title, entries) ->
                 FilmCardTitle(title)
                 Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
                     entries.forEach { entry ->
@@ -371,11 +374,11 @@ private fun FilmQuickCard(
                                     .width(cell)
                                     .height(StripDimens.ParamRowHeight)
                                     .viewfinderChip()
-                                    .testTag("film_quick_advanced")
+                                    .testTag("${tagPrefix}_quick_advanced")
                                     .captureClickable(shape = CaptureTextRippleShape) {
                                         haptics.selection()
                                         onAdvanced()
-                                    }.semantics { contentDescription = "All film parameters" },
+                                    }.semantics { contentDescription = advDescription },
                                 contentAlignment = Alignment.Center
                             ) {
                                 StripTwoLineItem(valueText = "ADV ›", valueColor = Color.White.copy(alpha = .95f),
@@ -390,7 +393,7 @@ private fun FilmQuickCard(
 }
 
 @Composable
-private fun FilmCardTitle(title: String) {
+internal fun FilmCardTitle(title: String) {
     Text(
         title,
         color = Color.White.copy(alpha = .55f),
@@ -404,7 +407,7 @@ private fun FilmCardTitle(title: String) {
 
 /** Grid tile used by the ADV card (sections and subsections). */
 @Composable
-private fun FilmGridTile(label: String, selected: Boolean, width: androidx.compose.ui.unit.Dp, tag: String, onClick: () -> Unit) {
+internal fun FilmGridTile(label: String, selected: Boolean, width: androidx.compose.ui.unit.Dp, tag: String, onClick: () -> Unit) {
     val haptics = LocalCaptureHaptics.current
     Box(
         Modifier
@@ -479,41 +482,10 @@ private fun FilmAdvBlock(
             val cells = paramsCellWidths(maxWidth)
             val gap = CaptureDimens.ControlGap
             val cardWidth = cells[1] + cells[2] + cells[3] + cells[4] + gap * 3
-            val tile = (cardWidth - gap * 4) / 3
             Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(gap)) {
-                Column(
-                    Modifier
-                        .width(cardWidth)
-                        .background(Color.Black.copy(alpha = .62f), androidx.compose.foundation.shape.RoundedCornerShape(14.dp))
-                        .padding(gap),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        FilmGridTile("‹ QUICK", false, tile, "film_adv_back", onBackToQuick)
-                        Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) { FilmCardTitle("ALL PARAMS") }
-                    }
-                    FilmCardTitle("SECTION")
-                    quick.sections.chunked(3).forEach { row ->
-                        Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
-                            row.forEach { sec ->
-                                FilmGridTile(sec.label, sec.key == section?.key, tile, CaptureTestTags.filmSection(sec.key)) {
-                                    onSection(sec.key)
-                                }
-                            }
-                        }
-                    }
-                    if (section != null && section.subsections.size > 1) {
-                        FilmCardTitle("${section.label} ›")
-                        section.subsections.chunked(3).forEach { row ->
-                            Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
-                                row.forEach { sub ->
-                                    FilmGridTile(sub.label, sub.key == subsection?.key, tile,
-                                        CaptureTestTags.filmSubsection(section.key, sub.key)) { onSubsection(sub.key) }
-                                }
-                            }
-                        }
-                    }
-                }
+                FilmAdvCard(quick, section?.key, subsection?.key, cardWidth, onSection, onSubsection, onBackToQuick,
+                    sectionTag = CaptureTestTags::filmSection, subsectionTag = CaptureTestTags::filmSubsection,
+                    backTag = "film_adv_back")
                 // FILM above PARAMS, as in every film state.
                 Box(
                     Modifier
@@ -1043,6 +1015,97 @@ private fun FilmDiscreteOptionsRow(
                         style = ViewfinderTextStyle
                     )
                 }
+            }
+        }
+    }
+}
+
+/** ADV card: ‹ QUICK, then the sections and the active section's subsections as grids. */
+@Composable
+internal fun FilmAdvCard(
+    quick: FilmSimQuickState,
+    sectionKey: String?,
+    subsectionKey: String?,
+    cardWidth: androidx.compose.ui.unit.Dp,
+    onSection: (String) -> Unit,
+    onSubsection: (String) -> Unit,
+    onBackToQuick: () -> Unit,
+    sectionTag: (String) -> String,
+    subsectionTag: (String, String) -> String,
+    backTag: String
+) {
+    val gap = CaptureDimens.ControlGap
+    val tile = (cardWidth - gap * 4) / 3
+    val section = quick.sections.firstOrNull { it.key == sectionKey } ?: quick.sections.firstOrNull()
+    val subsection = section?.subsections?.firstOrNull { it.key == subsectionKey } ?: section?.subsections?.firstOrNull()
+    Column(
+        Modifier
+            .width(cardWidth)
+            .background(Color.Black.copy(alpha = .62f), androidx.compose.foundation.shape.RoundedCornerShape(14.dp))
+            .padding(gap),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            FilmGridTile("‹ QUICK", false, tile, backTag, onBackToQuick)
+            Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) { FilmCardTitle("ALL PARAMS") }
+        }
+        FilmCardTitle("SECTION")
+        quick.sections.chunked(3).forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
+                row.forEach { sec ->
+                    FilmGridTile(sec.label, sec.key == section?.key, tile, sectionTag(sec.key)) { onSection(sec.key) }
+                }
+            }
+        }
+        if (section != null && section.subsections.size > 1) {
+            FilmCardTitle("${section.label} ›")
+            section.subsections.chunked(3).forEach { row ->
+                Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
+                    row.forEach { sub ->
+                        FilmGridTile(sub.label, sub.key == subsection?.key, tile, subsectionTag(section.key, sub.key)) {
+                            onSubsection(sub.key)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Numeric parameters of one subsection in the columns beside PARAMS (scrolls past four). */
+@Composable
+internal fun FilmNumericRow(
+    quick: FilmSimQuickState,
+    items: List<FilmStripItem>,
+    widths: List<androidx.compose.ui.unit.Dp>,
+    onScrubParam: (String, Float) -> Unit,
+    onResetParam: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val gap = CaptureDimens.ControlGap
+    LazyRow(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(gap)) {
+        items.filterIsInstance<FilmStripItem.Numeric>().forEachIndexed { index, item ->
+            val param = quick.params[item.key] ?: return@forEachIndexed
+            item(key = item.key) {
+                StripNumericItem(
+                    key = item.key,
+                    modifier = Modifier.width(widths[index % widths.size]),
+                    shortLabel = param.shortLabel,
+                    value = param.value,
+                    display = param.displayValue,
+                    isDefault = param.isDefault,
+                    defaultValue = param.defaultValue,
+                    min = param.minimum,
+                    max = param.maximum,
+                    step = param.step,
+                    decimals = param.decimals,
+                    onScrub = { onScrubParam(item.key, it) },
+                    onReset = { onResetParam(item.key) },
+                    format = {
+                        formatFilmStripValue(it * param.displayScale, param.minimum * param.displayScale,
+                            param.displayDecimals) + param.unit
+                    }
+                )
             }
         }
     }

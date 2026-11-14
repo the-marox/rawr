@@ -1,5 +1,8 @@
 package com.rawr.camera.model
 
+import com.rawr.camera.settings.model.CaptureSharpeningLevel
+import com.rawr.camera.settings.model.DenoiseConfig
+import com.rawr.camera.settings.model.RawrMaxShutter
 import com.rawr.camera.settings.model.RawrMetering
 import com.rawr.camera.settings.model.SettingsValues
 import com.rawr.camera.settings.model.activeLensHasOwnLook
@@ -40,7 +43,14 @@ data class ViewfinderQuickState(
     /** Profile cap for the lens in use (0 = none). */
     val frameLimit: Int = 0,
     val ownMultiframe: Boolean = false,
-    val ownLook: Boolean = false
+    val ownLook: Boolean = false,
+    /** Rawr AE's slowest auto shutter. */
+    val maxShutter: RawrMaxShutter = RawrMaxShutter.Auto,
+    /** Photo capture sharpening (photo only). */
+    val sharpeningEnabled: Boolean = true,
+    val sharpeningLevel: CaptureSharpeningLevel = CaptureSharpeningLevel.Low,
+    /** Denoise master switch of the current capture mode. */
+    val denoiseEnabled: Boolean = false
 )
 
 internal const val HIGHLIGHT_THRESHOLD_DEFAULT = 1f
@@ -74,6 +84,10 @@ internal fun SettingsValues.toViewfinderQuickState(
         frames = activeMultiframeTuning.maxFrames,
         frameLimit = activeLensMergeFrameLimit(deviceDefaults),
         ownMultiframe = activeLensHasOwnMultiframeTuning,
-        ownLook = activeLensHasOwnLook
+        ownLook = activeLensHasOwnLook,
+        maxShutter = rawrAe.maxShutter,
+        sharpeningEnabled = photoCaptureSharpeningEnabled,
+        sharpeningLevel = photoCaptureSharpeningLevel,
+        denoiseEnabled = if (isVideo) videoDenoiseEnabled else photoDenoise is DenoiseConfig.Wavelet
     )
 }

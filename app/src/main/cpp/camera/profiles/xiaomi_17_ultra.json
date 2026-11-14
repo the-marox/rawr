@@ -437,7 +437,7 @@
           "buffers": {
             "usage": "0x100003"
           },
-          "mergeFrameLimit": 1,
+          "mergeFrameLimit": 3,
           "includePreview": false
         },
         "companion": {

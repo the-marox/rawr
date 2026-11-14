@@ -1,6 +1,8 @@
 package com.rawr.camera.architecture
 
 import com.rawr.camera.model.HighlightQuickMode
+import com.rawr.camera.settings.model.CaptureSharpeningLevel
+import com.rawr.camera.settings.model.RawrMaxShutter
 import com.rawr.camera.settings.model.RawrMetering
 
 /**
@@ -18,4 +20,9 @@ sealed interface CaptureQuickEvent {
     data class SetMultiframeFrames(val frames: Int) : CaptureQuickEvent
     data object ToggleOwnMultiframe : CaptureQuickEvent
     data object ToggleOwnLook : CaptureQuickEvent
+    data class SetMaxShutter(val value: RawrMaxShutter) : CaptureQuickEvent
+    /** Photo sharpening: off, or on at [level]. */
+    data class SetSharpening(val enabled: Boolean, val level: CaptureSharpeningLevel) : CaptureQuickEvent
+    /** Denoise master switch of the current capture mode. */
+    data object ToggleDenoise : CaptureQuickEvent
 }
