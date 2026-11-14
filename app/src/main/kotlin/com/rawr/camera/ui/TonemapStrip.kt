@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -167,8 +168,57 @@ private fun TonemapFixedRow(
             horizontalAlignment = Alignment.End,
             verticalArrangement = Arrangement.spacedBy(gap)
         ) {
-        // LOOK over PARAMS; hidden while PARAMS is open so the sliders get the whole row.
-        if (!paramsOpen) {
+        // LOOK open: a grid of the looks above the LOOK button (tap picks one and closes the grid).
+        if (lookOpen) {
+            val gridWidth = widths[1] + widths[2] + widths[3] + widths[4] + gap * 3
+            val cellWidth = (gridWidth - gap * 2) / 3
+            Column(
+                Modifier
+                    .width(gridWidth)
+                    .background(Color.Black.copy(alpha = .62f), RoundedCornerShape(14.dp))
+                    .padding(gap),
+                verticalArrangement = Arrangement.spacedBy(gap)
+            ) {
+                profiles.options.chunked(3).forEach { rowOptions ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
+                        rowOptions.forEach { option ->
+                            val isSelected = option.id == profiles.selectedId
+                            Box(
+                                Modifier
+                                    .width(cellWidth)
+                                    .height(CaptureDimens.CompactParamRowHeight)
+                                    .viewfinderChip(active = isSelected)
+                                    .testTag(CaptureTestTags.renderProfile(option.id.key))
+                                    .captureClickable(shape = CaptureTextRippleShape, enabled = !profiles.locked) {
+                                        haptics.selection()
+                                        onSelectProfile(option.id)
+                                        onToggle(TonemapStripMode.Profiles)
+                                    }.semantics {
+                                        contentDescription = "Render profile ${option.label}" +
+                                            if (isSelected) ", active" else ""
+                                        role = Role.RadioButton
+                                        selected = isSelected
+                                    }.padding(horizontal = 6.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    option.label,
+                                    color = if (isSelected) CaptureColors.Accent else Color.White.copy(alpha = .85f),
+                                    fontFamily = CaptureMono,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 10.sp,
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                    style = ViewfinderTextStyle
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // LOOK over PARAMS, visible in every state.
+        run {
                 Box(
                     Modifier
                         .width(widths[4])
@@ -216,49 +266,7 @@ private fun TonemapFixedRow(
                     .height(StripDimens.ParamRowHeight),
                 contentAlignment = Alignment.CenterEnd
             ) {
-                if (lookOpen) {
-                    LazyRow(
-                        Modifier.fillMaxSize(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(StripDimens.ParamSpacing, Alignment.End)
-                    ) {
-                        items(profiles.options, key = { it.id.key }) { option ->
-                            val isSelected = option.id == profiles.selectedId
-                            Box(
-                                Modifier
-                                    .height(CaptureDimens.CompactParamRowHeight)
-                                    .viewfinderChip(active = isSelected)
-                                    .testTag(CaptureTestTags.renderProfile(option.id.key))
-                                    .captureClickable(shape = CaptureTextRippleShape, enabled = !profiles.locked) {
-                                        haptics.selection()
-                                        onSelectProfile(option.id)
-                                    }.semantics {
-                                        contentDescription = "Render profile ${option.label}" +
-                                            if (isSelected) ", active" else ""
-                                        role = Role.RadioButton
-                                        selected = isSelected
-                                        onClick {
-                                            if (profiles.locked) return@onClick false
-                                            haptics.selection()
-                                            onSelectProfile(option.id)
-                                            true
-                                        }
-                                    }.padding(horizontal = 10.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    option.label,
-                                    color = if (isSelected) CaptureColors.Accent else Color.White.copy(alpha = .62f),
-                                    fontFamily = CaptureMono,
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 10.sp,
-                                    maxLines = 1,
-                                    style = ViewfinderTextStyle
-                                )
-                            }
-                        }
-                    }
-                } else if (paramsOpen && paramsInline) {
+                if (paramsOpen && paramsInline) {
                     LazyRow(
                         Modifier
                             .fillMaxSize()

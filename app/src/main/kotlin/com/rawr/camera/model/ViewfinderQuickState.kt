@@ -34,6 +34,7 @@ data class ViewfinderQuickState(
     val locked: Boolean = false,
     // Quick panel, second row (photo only): frames of the lens in use and its per-lens switches.
     val isVideo: Boolean = false,
+    val lensId: String? = null,
     val multiframeEnabled: Boolean = false,
     val frames: Int = 17,
     /** Profile cap for the lens in use (0 = none). */
@@ -68,6 +69,7 @@ internal fun SettingsValues.toViewfinderQuickState(
             compressionDefault = compressionDefault
         ),
         isVideo = isVideo,
+        lensId = lastLensId,
         multiframeEnabled = experimentalMultiframeEnabled,
         frames = activeMultiframeTuning.maxFrames,
         frameLimit = activeLensMergeFrameLimit(deviceDefaults),

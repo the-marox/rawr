@@ -226,9 +226,12 @@ internal fun StripNumericItem(
     testTag: String = CaptureTestTags.filmParam(key),
     format: (Float) -> String = { formatFilmStripValue(it, min, decimals) },
     onDragStarted: () -> Unit = {},
-    onDragStopped: () -> Unit = {}
+    onDragStopped: () -> Unit = {},
+    /** Long-press explanation (the help card); null keeps long-press inert. */
+    help: String? = null
 ) {
     val haptics = LocalCaptureHaptics.current
+    val showHelp = rememberControlHelp()
     var accumulated by remember(key) { mutableFloatStateOf(0f) }
     var gestureValue by remember(key) { mutableFloatStateOf(value) }
     var dragging by remember(key) { mutableStateOf(false) }
@@ -293,6 +296,8 @@ internal fun StripNumericItem(
             .captureCombinedClickable(
                 shape = CaptureTextRippleShape,
                 onClick = {},
+                onLongClickLabel = help?.let { "Explain" },
+                onLongClick = help?.let { text -> { showHelp(text) } },
                 onDoubleClick = {
                     gestureValue = latestValue
                     haptics.selection()

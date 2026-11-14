@@ -3,6 +3,7 @@ package com.rawr.camera.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -250,9 +251,9 @@ private const val HELP_HL_MODE =
         "OPP adds THR (where clipping starts) and CMP (highlight compression)."
 
 /**
- * Quick panel: MTR / AE / HL in a translucent card at the top-left of the viewfinder (clear of the scopes),
- * opened with a swipe down and closed with a swipe up or a tap outside. HL cycles OFF / PROP / OPP; with OPP a
- * second row shows its THR / CMP sliders.
+ * Quick panel: a translucent card at the top-left of the viewfinder (clear of the scopes), opened with a swipe
+ * down and closed with a swipe up or a tap outside. Fixed groups, each led by its main switch so nothing moves:
+ * EXPOSURE (AE, MTR), HIGHLIGHTS (HL, THR, CMP - the sliders dim outside OPP) and LENS (FR, OWN MF, OWN LOOK).
  */
 @Composable
 internal fun ViewfinderQuickPanel(
@@ -265,18 +266,28 @@ internal fun ViewfinderQuickPanel(
     val highlight = quick.highlight
     val chipWidth = 72.dp
     val gap = CaptureDimens.ControlGap
+    val rowArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(gap)
     androidx.compose.foundation.layout.Column(
         modifier
             .background(Color.Black.copy(alpha = .62f), androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
             .pointerInput(Unit) { detectTapGestures(onTap = {}) }  // taps inside never focus the viewfinder
-            .padding(horizontal = 10.dp, vertical = 10.dp),
-        verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(gap),
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(4.dp),
         horizontalAlignment = Alignment.Start
     ) {
-        androidx.compose.foundation.layout.Row(
-            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(gap)
-        ) {
-            // MTR stays in place with Device AE (dimmed, not tappable) so the panel never changes width.
+        PanelSection("EXPOSURE")
+        androidx.compose.foundation.layout.Row(horizontalArrangement = rowArrangement) {
+            RailChip(
+                value = if (quick.rawrAeEnabled) "RAWR" else "DEVICE",
+                label = "AE",
+                active = quick.rawrAeEnabled,
+                enabled = enabled,
+                description = "Auto exposure ${if (quick.rawrAeEnabled) "Rawr" else "Device"}. Tap to switch.",
+                tag = CaptureTestTags.RAIL_AE,
+                width = chipWidth,
+                help = HELP_AE
+            ) { onEvent(CaptureQuickEvent.ToggleRawrAe) }
+            // MTR depends on Rawr AE: dimmed and inert with Device AE, but it never moves.
             val next = RawrMetering.entries[(quick.metering.ordinal + 1) % RawrMetering.entries.size]
             RailChip(
                 value = if (spotActive) "SPOT" else quick.metering.railLabel(),
@@ -290,16 +301,9 @@ internal fun ViewfinderQuickPanel(
                 width = chipWidth,
                 help = HELP_METERING
             ) { onEvent(CaptureQuickEvent.SetMetering(next)) }
-            RailChip(
-                value = if (quick.rawrAeEnabled) "RAWR" else "DEVICE",
-                label = "AE",
-                active = quick.rawrAeEnabled,
-                enabled = enabled,
-                description = "Auto exposure ${if (quick.rawrAeEnabled) "Rawr" else "Device"}. Tap to switch.",
-                tag = CaptureTestTags.RAIL_AE,
-                width = chipWidth,
-                help = HELP_AE
-            ) { onEvent(CaptureQuickEvent.ToggleRawrAe) }
+        }
+        PanelSection("HIGHLIGHTS")
+        androidx.compose.foundation.layout.Row(horizontalArrangement = rowArrangement) {
             val nextMode = HighlightQuickMode.entries[(highlight.mode.ordinal + 1) % HighlightQuickMode.entries.size]
             RailChip(
                 value = highlight.mode.railLabel(),
@@ -311,28 +315,50 @@ internal fun ViewfinderQuickPanel(
                 width = chipWidth,
                 help = HELP_HL
             ) { onEvent(CaptureQuickEvent.SetHighlightMode(nextMode)) }
+            val opp = enabled && highlight.mode == HighlightQuickMode.Opposed
+            StripNumericItem(
+                key = "panel_highlight_threshold",
+                shortLabel = "THR",
+                value = highlight.threshold,
+                display = "%.2f".format(java.util.Locale.US, highlight.threshold),
+                isDefault = highlight.threshold == HIGHLIGHT_THRESHOLD_DEFAULT,
+                defaultValue = HIGHLIGHT_THRESHOLD_DEFAULT,
+                min = .5f, max = 2f, step = .05f, decimals = 2,
+                onScrub = { if (opp) onEvent(CaptureQuickEvent.SetHighlightThreshold(it)) },
+                onReset = { if (opp) onEvent(CaptureQuickEvent.SetHighlightThreshold(HIGHLIGHT_THRESHOLD_DEFAULT)) },
+                modifier = Modifier.width(chipWidth).alpha(if (opp) 1f else .35f),
+                testTag = CaptureTestTags.RAIL_HIGHLIGHT_THRESHOLD,
+                help = HELP_THR
+            )
+            StripNumericItem(
+                key = "panel_highlight_compression",
+                shortLabel = "CMP",
+                value = highlight.compression,
+                display = highlight.compression.toInt().toString(),
+                isDefault = highlight.compression == highlight.compressionDefault,
+                defaultValue = highlight.compressionDefault,
+                min = 0f, max = 300f, step = 5f, decimals = 0,
+                onScrub = { if (opp) onEvent(CaptureQuickEvent.SetHighlightCompression(it)) },
+                onReset = { if (opp) onEvent(CaptureQuickEvent.SetHighlightCompression(highlight.compressionDefault)) },
+                modifier = Modifier.width(chipWidth).alpha(if (opp) 1f else .35f),
+                testTag = CaptureTestTags.RAIL_HIGHLIGHT_COMPRESSION,
+                help = HELP_CMP
+            )
         }
         if (!quick.isVideo) {
-            androidx.compose.foundation.layout.Row(
-                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(gap)
-            ) {
+            PanelSection("LENS ${quick.lensId.orEmpty()}".trim())
+            androidx.compose.foundation.layout.Row(horizontalArrangement = rowArrangement) {
                 // Frames for the lens in use, capped by its profile limit (a 1-frame lens has nothing to pick).
                 val maxFrames = if (quick.frameLimit > 0) quick.frameLimit else 30
                 val framesEnabled = enabled && quick.multiframeEnabled && maxFrames > 1
                 val frames = quick.frames.coerceIn(1, maxFrames)
-                val defaultFrames = minOf(17, maxFrames)
-                StripNumericItem(
-                    key = "panel_frames",
-                    shortLabel = "FR",
-                    value = frames.toFloat(),
-                    display = frames.toString(),
-                    isDefault = frames == defaultFrames,
-                    defaultValue = defaultFrames.toFloat(),
-                    min = 1f, max = maxOf(2, maxFrames).toFloat(), step = 1f, decimals = 0,
-                    onScrub = { if (framesEnabled) onEvent(CaptureQuickEvent.SetMultiframeFrames(it.toInt())) },
-                    onReset = { if (framesEnabled) onEvent(CaptureQuickEvent.SetMultiframeFrames(defaultFrames)) },
-                    modifier = Modifier.width(chipWidth).alpha(if (framesEnabled) 1f else .4f),
-                    testTag = "quick_panel_frames"
+                FrameStepper(
+                    frames = frames,
+                    min = 1,
+                    max = maxFrames,
+                    enabled = framesEnabled,
+                    width = chipWidth,
+                    onChange = { onEvent(CaptureQuickEvent.SetMultiframeFrames(it)) }
                 )
                 RailChip(
                     value = if (quick.ownMultiframe) "ON" else "OFF",
@@ -356,46 +382,79 @@ internal fun ViewfinderQuickPanel(
                 ) { onEvent(CaptureQuickEvent.ToggleOwnLook) }
             }
         }
-        if (highlight.mode == HighlightQuickMode.Opposed) {
-            androidx.compose.foundation.layout.Row(
-                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(gap)
-            ) {
-                StripNumericItem(
-                    key = "panel_highlight_threshold",
-                    shortLabel = "THR",
-                    value = highlight.threshold,
-                    display = "%.2f".format(java.util.Locale.US, highlight.threshold),
-                    isDefault = highlight.threshold == HIGHLIGHT_THRESHOLD_DEFAULT,
-                    defaultValue = HIGHLIGHT_THRESHOLD_DEFAULT,
-                    min = .5f, max = 2f, step = .05f, decimals = 2,
-                    onScrub = { onEvent(CaptureQuickEvent.SetHighlightThreshold(it)) },
-                    onReset = { onEvent(CaptureQuickEvent.SetHighlightThreshold(HIGHLIGHT_THRESHOLD_DEFAULT)) },
-                    modifier = Modifier.width(chipWidth).alpha(if (enabled) 1f else .4f),
-                    testTag = CaptureTestTags.RAIL_HIGHLIGHT_THRESHOLD
-                )
-                StripNumericItem(
-                    key = "panel_highlight_compression",
-                    shortLabel = "CMP",
-                    value = highlight.compression,
-                    display = highlight.compression.toInt().toString(),
-                    isDefault = highlight.compression == highlight.compressionDefault,
-                    defaultValue = highlight.compressionDefault,
-                    min = 0f, max = 300f, step = 5f, decimals = 0,
-                    onScrub = { onEvent(CaptureQuickEvent.SetHighlightCompression(it)) },
-                    onReset = { onEvent(CaptureQuickEvent.SetHighlightCompression(highlight.compressionDefault)) },
-                    modifier = Modifier.width(chipWidth).alpha(if (enabled) 1f else .4f),
-                    testTag = CaptureTestTags.RAIL_HIGHLIGHT_COMPRESSION
-                )
-            }
-        }
         androidx.compose.foundation.layout.Box(
             Modifier
                 .align(Alignment.CenterHorizontally)
-                .padding(top = 2.dp)
+                .padding(top = 4.dp)
                 .width(36.dp)
                 .height(4.dp)
                 .background(Color.White.copy(alpha = .55f), androidx.compose.foundation.shape.RoundedCornerShape(2.dp))
         )
+    }
+}
+
+@Composable
+private fun PanelSection(title: String) {
+    Text(
+        title,
+        color = Color.White.copy(alpha = .55f),
+        fontSize = 9.sp,
+        fontWeight = FontWeight.SemiBold,
+        letterSpacing = 1.sp,
+        style = ViewfinderTextStyle,
+        modifier = Modifier.padding(start = 2.dp, top = 2.dp)
+    )
+}
+
+/** FR: frames with − / + taps (long-press: help). */
+@Composable
+private fun FrameStepper(frames: Int, min: Int, max: Int, enabled: Boolean, width: Dp, onChange: (Int) -> Unit) {
+    val haptics = LocalCaptureHaptics.current
+    val showHelp = rememberControlHelp()
+    androidx.compose.foundation.layout.Row(
+        Modifier
+            .width(width)
+            .height(StripDimens.ParamRowHeight)
+            .alpha(if (enabled) 1f else .35f)
+            .viewfinderChip()
+            .testTag("quick_panel_frames")
+            .semantics { contentDescription = "Frames $frames. Use minus and plus to change." },
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        @Composable
+        fun StepButton(symbol: String, target: Int) {
+            androidx.compose.foundation.layout.Box(
+                Modifier
+                    .width(22.dp)
+                    .fillMaxHeight()
+                    .captureCombinedClickable(
+                        shape = CaptureTextRippleShape,
+                        enabled = enabled && target in min..max && target != frames,
+                        role = Role.Button,
+                        onLongClickLabel = "Explain",
+                        onLongClick = { showHelp(HELP_FRAMES) }
+                    ) {
+                        haptics.selection()
+                        onChange(target)
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(symbol, color = Color.White.copy(alpha = .9f), fontSize = 16.sp, style = ViewfinderTextStyle)
+            }
+        }
+        StepButton("−", frames - 1)
+        androidx.compose.foundation.layout.Box(
+            Modifier.weight(1f).fillMaxHeight()
+                .captureCombinedClickable(
+                    shape = CaptureTextRippleShape,
+                    onLongClickLabel = "Explain",
+                    onLongClick = { showHelp(HELP_FRAMES) }
+                ) {},
+            contentAlignment = Alignment.Center
+        ) {
+            StripTwoLineItem(valueText = frames.toString(), valueColor = Color.White.copy(alpha = .95f), labelText = "FR")
+        }
+        StepButton("+", frames + 1)
     }
 }
 
@@ -405,3 +464,12 @@ private const val HELP_OWN_MF =
 private const val HELP_OWN_LOOK =
     "Own look: ON keeps a separate profile, tone, AgX choice and film look for this lens (it starts from the " +
         "current look); OFF returns the lens to the shared look."
+private const val HELP_THR =
+    "Threshold: how bright a pixel must be before highlight reconstruction treats it as clipped. Lower catches " +
+        "more of the highlights; 1.00 is the sensor clip point. Drag up/down; double-tap resets. Active with OPP."
+private const val HELP_CMP =
+    "Compression: how strongly rebuilt highlights are rolled off into white. Higher keeps more highlight " +
+        "detail but flatter. Drag up/down; double-tap resets. Active with OPP."
+private const val HELP_FRAMES =
+    "Frames merged per multiframe photo on this lens, capped by the lens limit (200 MP: 3). With OWN MF on the " +
+        "count is this lens's own; off, it is shared by the lenses without their own settings."
