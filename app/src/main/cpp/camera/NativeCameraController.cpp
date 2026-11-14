@@ -1538,6 +1538,110 @@ struct NativeCameraController::Impl final : CameraEventSink {
         diag("CAMERA_CONTROL_REQUEST sensitivity=" + std::to_string(control.requestedSensitivity));
         submitRepeatingLocked();
     }
+    // Per-camera control intent kept across app restarts. One line per physical camera:
+    // "id mode shutterNs iso evSteps wbMode tempK tint focusMode focusNormalized".
+    std::string exportCameraControlsText() {
+        std::lock_guard<std::mutex> lock(mutex);
+        auto all = controlByCamera;
+        if (!control.capabilities.cameraId.empty()) all[control.capabilities.cameraId] = control;
+        std::ostringstream out;
+        for (const auto& [id, c] : all) {
+            if (id.empty() || id.find_first_of(" \t\n") != std::string::npos) continue;
+            out << id << ' ' << static_cast<int>(c.exposureMode) << ' ' << c.requestedExposureTimeNs << ' '
+                << c.requestedSensitivity << ' ' << c.requestedEvSteps << ' ' << static_cast<int>(c.whiteBalanceMode)
+                << ' ' << c.requestedWhiteBalanceTemperatureK << ' ' << c.requestedWhiteBalanceTint << ' '
+                << static_cast<int>(c.focusMode) << ' ' << c.requestedManualFocusNormalized << '\n';
+        }
+        return out.str();
+    }
+    // Before the first camera opens: fills the per-camera memory the start path restores from.
+    // applyOpen (UNDO after a reset) also puts the open camera's line back on the live session.
+    void importCameraControlsText(const std::string& text, bool applyOpen) {
+        std::lock_guard<std::mutex> lock(mutex);
+        std::optional<CameraControlState> openLine;
+        std::istringstream in(text);
+        std::string line;
+        int count = 0;
+        while (std::getline(in, line)) {
+            std::istringstream fields(line);
+            std::string id;
+            int mode = 0, wb = 0, focus = 0;
+            CameraControlState c;
+            if (!(fields >> id >> mode >> c.requestedExposureTimeNs >> c.requestedSensitivity >> c.requestedEvSteps >> wb >>
+                  c.requestedWhiteBalanceTemperatureK >> c.requestedWhiteBalanceTint >> focus >>
+                  c.requestedManualFocusNormalized))
+                continue;
+            if (id.empty()) continue;
+            c.exposureMode = mode >= 0 && mode <= 3 ? static_cast<ExposureControlMode>(mode) : ExposureControlMode::Auto;
+            c.whiteBalanceMode = wb >= 1 && wb <= 255 ? static_cast<WhiteBalanceControlMode>(wb) : WhiteBalanceControlMode::Auto;
+            // A tap-AF lock has no tap point after a restart: continuous AF instead.
+            c.focusMode = focus == static_cast<int>(FocusControlMode::Manual) ? FocusControlMode::Manual
+                                                                              : FocusControlMode::Continuous;
+            if (!std::isfinite(c.requestedManualFocusNormalized)) c.requestedManualFocusNormalized = 1.0f;
+            // The open camera keeps its live state unless this is an UNDO.
+            if (id == control.capabilities.cameraId) {
+                if (applyOpen) openLine = c;
+                continue;
+            }
+            controlByCamera[id] = c;
+            ++count;
+        }
+        diag("CAMERA_CONTROL_INTENT_IMPORTED cameras=" + std::to_string(count) +
+             " open=" + (openLine ? "applied" : "kept"));
+        if (openLine) applyControlIntentLocked(*openLine);
+    }
+    void applyControlIntentLocked(const CameraControlState& s) {
+        const auto& caps = control.capabilities;
+        const auto mode = s.exposureMode;
+        const bool modeSupported = mode == ExposureControlMode::Auto ||
+                                   (mode == ExposureControlMode::Manual && caps.manualExposureSupported) ||
+                                   (mode == ExposureControlMode::ShutterPriority && caps.shutterPrioritySupported) ||
+                                   (mode == ExposureControlMode::IsoPriority && caps.isoPrioritySupported);
+        control.exposureMode = modeSupported ? mode : ExposureControlMode::Auto;
+        control.requestedExposureTimeNs = std::clamp(s.requestedExposureTimeNs, caps.exposureTimeMinNs,
+                                                     std::max(caps.exposureTimeMinNs, caps.exposureTimeMaxNs));
+        control.requestedSensitivity =
+            std::clamp(s.requestedSensitivity, caps.sensitivityMin, std::max(caps.sensitivityMin, caps.sensitivityMax));
+        control.requestedEvSteps =
+            std::clamp(s.requestedEvSteps, std::min(caps.evMinSteps, caps.evMaxSteps), caps.evMaxSteps);
+        if (control.exposureMode == ExposureControlMode::Manual ||
+            control.exposureMode == ExposureControlMode::ShutterPriority) {
+            cadencePolicy.bindShutter(control.requestedExposureTimeNs, caps.exposureTimeMinNs, caps.exposureTimeMaxNs);
+            applyHeldShutterLocked();
+        }
+        if (requestWhiteBalanceMode(control, s.whiteBalanceMode, control.whiteBalanceRequestId) &&
+            s.whiteBalanceMode == WhiteBalanceControlMode::ManualTempTint) {
+            control.requestedWhiteBalanceTemperatureK = std::clamp(s.requestedWhiteBalanceTemperatureK, 2000, 10000);
+            control.requestedWhiteBalanceTint = std::clamp(s.requestedWhiteBalanceTint, -50, 50);
+        }
+        if (focusControls.requestMode(control, s.focusMode, control.focusRequestId) &&
+            s.focusMode == FocusControlMode::Manual)
+            control.requestedManualFocusNormalized = std::clamp(s.requestedManualFocusNormalized, 0.0f, 1.0f);
+        diag("CAMERA_CONTROL_INTENT_RESTORED source=undo cameraId=" + caps.cameraId +
+             " exposureMode=" + std::to_string(static_cast<int>(control.exposureMode)) +
+             " sensitivity=" + std::to_string(control.requestedSensitivity));
+        submitRepeatingLocked();
+    }
+    // Back to automatic exposure, WB and focus: the open camera, or every camera.
+    void resetCameraControlsValue(bool allCameras) {
+        std::lock_guard<std::mutex> lock(mutex);
+        if (allCameras) controlByCamera.clear();
+        const std::string id = control.capabilities.cameraId;
+        if (id.empty()) return;
+        controlByCamera.erase(id);
+        const auto& caps = control.capabilities;
+        control.exposureMode = ExposureControlMode::Auto;
+        cadencePolicy.clearShutterAngle();
+        control.requestedSensitivity =
+            std::clamp(100, caps.sensitivityMin, std::max(caps.sensitivityMin, caps.sensitivityMax));
+        control.requestedExposureTimeNs = std::clamp<int64_t>(
+            10'000'000, caps.exposureTimeMinNs, std::max(caps.exposureTimeMinNs, caps.exposureTimeMaxNs));
+        control.requestedEvSteps = std::clamp(0, std::min(caps.evMinSteps, caps.evMaxSteps), caps.evMaxSteps);
+        requestWhiteBalanceMode(control, WhiteBalanceControlMode::Auto, control.whiteBalanceRequestId);
+        focusControls.requestMode(control, FocusControlMode::Continuous, control.focusRequestId);
+        diag(std::string("CAMERA_CONTROL_INTENT_RESET cameraId=") + id + " all=" + (allCameras ? "true" : "false"));
+        submitRepeatingLocked();
+    }
     void setEvSteps(int32_t value) {
         std::lock_guard<std::mutex> lock(mutex);
         control.requestedEvSteps = std::clamp(value, control.capabilities.evMinSteps, control.capabilities.evMaxSteps);
@@ -2042,6 +2146,11 @@ void NativeCameraController::setSensitivityCalibrationStore(const std::string& p
     impl_->loadSensitivityStoreLocked();
 }
 void NativeCameraController::setExposureCompensationSteps(int32_t value) { impl_->setEvSteps(value); }
+std::string NativeCameraController::exportCameraControls() { return impl_->exportCameraControlsText(); }
+void NativeCameraController::importCameraControls(const std::string& text, bool applyOpen) {
+    impl_->importCameraControlsText(text, applyOpen);
+}
+void NativeCameraController::resetCameraControls(bool allCameras) { impl_->resetCameraControlsValue(allCameras); }
 void NativeCameraController::setRawrAeConfig(const RawrAeConfig& config) { impl_->setRawrAeConfigValue(config); }
 NativeCameraController::RawrAeContext NativeCameraController::rawrAeContext() const {
     std::lock_guard<std::mutex> lock(impl_->rawrAeContextMutex);

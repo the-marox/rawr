@@ -437,6 +437,7 @@ internal fun ViewfinderQuickPanel(
                     width = chipWidth,
                     help = HELP_OWN_LOOK
                 ) { onEvent(CaptureQuickEvent.ToggleOwnLook) }
+                ResetChip(lensId = quick.lensId.orEmpty(), enabled = enabled, width = chipWidth, onEvent = onEvent)
             }
         }
         androidx.compose.foundation.layout.Box(
@@ -447,6 +448,49 @@ internal fun ViewfinderQuickPanel(
                 .height(4.dp)
                 .background(Color.White.copy(alpha = .55f), androidx.compose.foundation.shape.RoundedCornerShape(2.dp))
         )
+    }
+}
+
+/** RESET: this camera back to automatic (UNDO on the card); long-press offers RESET ALL CAMERAS. */
+@Composable
+private fun ResetChip(lensId: String, enabled: Boolean, width: Dp, onEvent: (CaptureQuickEvent) -> Unit) {
+    val haptics = LocalCaptureHaptics.current
+    val showAction = rememberControlHelpAction()
+    val lens = lensId.substringBefore(' ').ifEmpty { "This lens" }
+    val undo = { what: String ->
+        showAction("Reset: $what back to Auto (exposure, ISO, shutter, EV, WB, focus).", "UNDO") {
+            onEvent(CaptureQuickEvent.UndoCameraControlsReset)
+        }
+    }
+    Box(
+        Modifier
+            .width(width)
+            .height(StripDimens.ParamRowHeight)
+            .alpha(if (enabled) 1f else .35f)
+            .background(Color.Transparent)
+            .viewfinderChip()
+            .testTag("quick_panel_reset")
+            .captureCombinedClickable(
+                shape = CaptureTextRippleShape,
+                enabled = enabled,
+                role = Role.Button,
+                onLongClickLabel = "Reset all cameras",
+                onLongClick = {
+                    haptics.longPress()
+                    showAction(HELP_RESET, "RESET ALL CAMERAS") {
+                        onEvent(CaptureQuickEvent.ResetCameraControls(allCameras = true))
+                        undo("every camera")
+                    }
+                }
+            ) {
+                haptics.selection()
+                onEvent(CaptureQuickEvent.ResetCameraControls(allCameras = false))
+                undo(lens)
+            }
+            .semantics { contentDescription = "Reset $lens exposure, white balance and focus to automatic" },
+        contentAlignment = Alignment.Center
+    ) {
+        StripTwoLineItem(valueText = "↺ RESET", valueColor = CaptureColors.AccentSoft, labelText = "$lens → AUTO")
     }
 }
 
@@ -518,6 +562,9 @@ private fun FrameStepper(frames: Int, min: Int, max: Int, enabled: Boolean, widt
 private const val HELP_OWN_MF =
     "Own multiframe: ON gives this lens its own merge settings and frame count (FR then changes only this " +
         "lens); OFF uses the shared ones. FR is capped by the lens limit (200 MP: 3)."
+private const val HELP_RESET =
+    "Reset: tap puts this camera back to Auto - exposure mode, ISO, shutter, EV, WB and focus. Other cameras " +
+        "keep what they had. Every camera reopens as you left it, even after closing the app."
 private const val HELP_SHUT =
     "Shutter: the slowest shutter Rawr AE picks before raising ISO. AUTO uses 1/15 s (OIS keeps it sharp); " +
         "faster limits freeze motion at higher ISO. Needs Rawr AE."

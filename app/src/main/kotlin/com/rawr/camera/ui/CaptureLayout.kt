@@ -72,8 +72,9 @@ internal fun PhysicalCaptureLayout(
         // Open Gate, and 16:9 video share identical control geometry.
         val photoFrame = DpSize(viewfinderWidth, viewfinderWidth * 4f / 3f)
         Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
-            CaptureTopBar(state, dispatch, onOpenSettings, videoLocked = videoLocked)
-            monitor()
+            CaptureTopBar(state, dispatch, onOpenSettings, videoLocked = videoLocked, vfControlsHidden = quick.anyVfControlHidden)
+            // The info bar can be hidden (VF CONTROLS); its row keeps its height so the frame never moves.
+            if (quick.showInfoBar) monitor() else Spacer(Modifier.fillMaxWidth().height(CaptureDimens.MonitorHeight))
             Box(Modifier.fillMaxWidth().weight(1f)) {
                 CaptureViewfinder(
                     state = state,

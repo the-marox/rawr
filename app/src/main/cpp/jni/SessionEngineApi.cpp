@@ -71,6 +71,15 @@ void setRawrAutoExposure(EngineHandle h, bool enabled, int nightLook, int isoMin
     c.metering = std::clamp(metering, 0, 3);
     engine(h)->cameraControls().setRawrAeConfig(c);
 }
+std::string exportCameraControls(EngineHandle h) noexcept {
+    return h ? engine(h)->cameraControls().exportCameraControls() : std::string();
+}
+void importCameraControls(EngineHandle h, const std::string& text, bool applyOpen) noexcept {
+    if (h) engine(h)->cameraControls().importCameraControls(text, applyOpen);
+}
+void resetCameraControls(EngineHandle h, bool allCameras) noexcept {
+    if (h) engine(h)->cameraControls().resetCameraControls(allCameras);
+}
 void selectLens(EngineHandle h, const std::string& v) noexcept {
     if (h) engine(h)->cameraControls().selectLens(v);
 }

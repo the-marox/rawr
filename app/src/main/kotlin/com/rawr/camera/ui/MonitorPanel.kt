@@ -147,3 +147,47 @@ private fun ArmChoice(
         onToggle()
     }
 }
+
+/** Under MONITORING: show/hide the viewfinder control groups while shooting (Settings › Display holds the same). */
+@Composable
+internal fun VfControlsPanel(
+    quick: com.rawr.camera.model.ViewfinderQuickState,
+    orientation: Orientation,
+    onQuickEvent: (com.rawr.camera.architecture.CaptureQuickEvent) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val haptics = LocalCaptureHaptics.current
+    val width = if (orientation == Orientation.Landscape) CaptureDimens.TopBarPaletteLandscapeWidth
+    else CaptureDimens.TopBarPalettePortraitWidth
+    CaptureTopPanel(title = "VF CONTROLS · SHOW", orientation = orientation, modifier = modifier.width(width)) {
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(CaptureDimens.TopBarPaletteInnerGap)
+        ) {
+            listOf(
+                Triple(com.rawr.camera.settings.model.VfControl.Look, "LOOK", quick.showLook),
+                Triple(com.rawr.camera.settings.model.VfControl.Exposure, "EXPO", quick.showExposure),
+                Triple(com.rawr.camera.settings.model.VfControl.InfoBar, "INFO", quick.showInfoBar)
+            ).forEach { (control, label, shown) ->
+                SmallChoice(
+                    label = label,
+                    active = shown,
+                    modifier = Modifier.weight(1f).height(CaptureDimens.TopBarPaletteMajorChoiceHeight),
+                    testTag = "vf_controls_${control.name.lowercase()}"
+                ) {
+                    haptics.selection()
+                    onQuickEvent(com.rawr.camera.architecture.CaptureQuickEvent.SetVfControlVisible(control, !shown))
+                }
+            }
+            SmallChoice(
+                label = "ALL",
+                active = !quick.anyVfControlHidden,
+                modifier = Modifier.weight(1f).height(CaptureDimens.TopBarPaletteMajorChoiceHeight),
+                testTag = "vf_controls_all"
+            ) {
+                haptics.selection()
+                onQuickEvent(com.rawr.camera.architecture.CaptureQuickEvent.ShowAllVfControls)
+            }
+        }
+    }
+}

@@ -121,3 +121,16 @@ internal fun rememberControlHelp(): (String) -> Unit {
         }
     }
 }
+
+/** Like [rememberControlHelp], with one action button on the card (e.g. UNDO, RESET ALL). */
+@Composable
+internal fun rememberControlHelpAction(): (text: String, actionLabel: String, action: () -> Unit) -> Unit {
+    val host = LocalControlHelp.current
+    val context = androidx.compose.ui.platform.LocalContext.current
+    return remember(host, context) {
+        { text: String, label: String, action: () -> Unit ->
+            if (host != null) host.show(text, label, action)
+            else android.widget.Toast.makeText(context, text, android.widget.Toast.LENGTH_LONG).show()
+        }
+    }
+}

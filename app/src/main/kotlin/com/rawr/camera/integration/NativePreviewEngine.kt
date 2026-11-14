@@ -261,6 +261,15 @@ class NativePreviewEngine {
 
     external fun cameraControlSnapshot(handle: Long): String
 
+    /** Per-camera exposure/WB/focus memory as text (one line per camera). */
+    external fun exportCameraControls(handle: Long): String
+
+    /** Restores that memory; [applyOpen] also applies the open camera's line (UNDO). */
+    external fun importCameraControls(handle: Long, text: String, applyOpen: Boolean)
+
+    /** Back to automatic exposure, WB and focus: the open camera, or every camera. */
+    external fun resetCameraControls(handle: Long, allCameras: Boolean)
+
     /** Read-only camera discovery; no preview handle or open camera is required. */
     external fun cameraVideoCapabilitiesSnapshot(): String
 

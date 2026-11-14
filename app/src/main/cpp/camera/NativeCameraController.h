@@ -58,6 +58,11 @@ class NativeCameraController {
     bool setExposureMode(ExposureControlMode mode);
     void setManualExposureTimeNs(int64_t exposureTimeNs);
     void setManualSensitivity(int32_t sensitivity);
+    // Per-camera exposure/WB/focus memory, as text, so the app can keep it across restarts.
+    std::string exportCameraControls();
+    void importCameraControls(const std::string& text, bool applyOpen);
+    // Back to automatic: the open camera, or every camera.
+    void resetCameraControls(bool allCameras);
     // Long exposure: the (shutter, ISO) a capture needs when M or rawr S asks
     // for a shutter past the viewfinder cap (ViewfinderExposure.h); nullopt
     // when the viewfinder frames are the capture.

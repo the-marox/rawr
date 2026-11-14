@@ -71,7 +71,7 @@ internal fun CompactViewfinderStrip(
     Box(modifier) {
         Layout(
             content = {
-                CompactStripStack(state, dispatch, forceTonemapStrip, renderProfiles, onSelectRenderProfile, filmQuick, onFilmEvent)
+                CompactStripStack(state, dispatch, forceTonemapStrip, renderProfiles, onSelectRenderProfile, filmQuick, onFilmEvent, quick)
                 // MTR / AE / HL moved to the swipe-down quick panel (ViewfinderQuickPanel); the rail slot stays
                 // empty so the stack layout is unchanged.
                 Box(Modifier)
@@ -102,7 +102,8 @@ private fun CompactStripStack(
     renderProfiles: RenderProfileQuickState,
     onSelectRenderProfile: (com.rawr.camera.model.RenderProfileSelection) -> Unit,
     filmQuick: FilmSimQuickState?,
-    onFilmEvent: (CaptureFilmEvent) -> Unit
+    onFilmEvent: (CaptureFilmEvent) -> Unit,
+    quick: ViewfinderQuickState
 ) {
     // No scrim: legibility on bright and dark scenes comes from drop shadows
     // on every glyph instead of a background wash.
@@ -118,7 +119,10 @@ private fun CompactStripStack(
         // when ON, otherwise the regular tonemap profile/PARAMS strip. Both
         // share the same strip language and the same bottom slot geometry.
         // Video mode always shows the tonemap strip (film controls hidden).
-        if (state.filmSimEnabled && filmQuick != null && !forceTonemapStrip) {
+        // VF CONTROLS (eye panel / Settings › Display) can hide the look strip and the exposure row.
+        if (!quick.showLook) {
+            // hidden
+        } else if (state.filmSimEnabled && filmQuick != null && !forceTonemapStrip) {
             FilmStrip(
                 quick = filmQuick,
                 onSelectPreset = { onFilmEvent(CaptureFilmEvent.SelectPreset(it)) },
@@ -141,12 +145,14 @@ private fun CompactStripStack(
                 modifier = Modifier.fillMaxWidth()
             )
         }
-        CompactParamRow(
-            state = state,
-            dispatch = dispatch,
-            modifier = Modifier.fillMaxWidth(),
-            oneLine = true
-        )
+        if (quick.showExposure) {
+            CompactParamRow(
+                state = state,
+                dispatch = dispatch,
+                modifier = Modifier.fillMaxWidth(),
+                oneLine = true
+            )
+        }
     }
 }
 

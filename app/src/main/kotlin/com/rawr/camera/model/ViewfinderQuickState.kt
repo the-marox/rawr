@@ -50,8 +50,15 @@ data class ViewfinderQuickState(
     val sharpeningEnabled: Boolean = true,
     val sharpeningLevel: CaptureSharpeningLevel = CaptureSharpeningLevel.Low,
     /** Denoise master switch of the current capture mode. */
-    val denoiseEnabled: Boolean = false
-)
+    val denoiseEnabled: Boolean = false,
+    /** Viewfinder control groups shown, and whether the eye panel offers VF CONTROLS. */
+    val showLook: Boolean = true,
+    val showExposure: Boolean = true,
+    val showInfoBar: Boolean = true,
+    val eyeControls: Boolean = true
+) {
+    val anyVfControlHidden: Boolean get() = !showLook || !showExposure || !showInfoBar
+}
 
 internal const val HIGHLIGHT_THRESHOLD_DEFAULT = 1f
 internal const val PHOTO_HIGHLIGHT_COMPRESSION_DEFAULT = 45f
@@ -88,6 +95,10 @@ internal fun SettingsValues.toViewfinderQuickState(
         maxShutter = rawrAe.maxShutter,
         sharpeningEnabled = photoCaptureSharpeningEnabled,
         sharpeningLevel = photoCaptureSharpeningLevel,
-        denoiseEnabled = if (isVideo) videoDenoiseEnabled else photoDenoise is DenoiseConfig.Wavelet
+        denoiseEnabled = if (isVideo) videoDenoiseEnabled else photoDenoise is DenoiseConfig.Wavelet,
+        showLook = vfShowLook,
+        showExposure = vfShowExposure,
+        showInfoBar = vfShowInfoBar,
+        eyeControls = vfEyeControls
     )
 }

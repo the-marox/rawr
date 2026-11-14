@@ -77,5 +77,11 @@ internal fun reduceCaptureSettings(
     is SetShowDcpQuickSelect -> {
         state.withValues(state.values.copy(showDcpQuickSelect = action.enabled))
     }
+    is SetViewfinderControlVisible -> {
+        state.withValues(state.values.withVfControl(action.control, action.visible))
+    }
+    is SetEyeControlsViewfinder -> {
+        state.withValues(state.values.copy(vfEyeControls = action.enabled))
+    }
     else -> error("Unsupported capture settings action: $action")
 }

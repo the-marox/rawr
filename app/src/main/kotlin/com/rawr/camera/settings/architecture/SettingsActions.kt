@@ -70,6 +70,10 @@ data class SetViewfinderDivisor(val divisor: Int) : SettingsApplicationAction
 
 data class SetShowDcpQuickSelect(val enabled: Boolean) : SettingsApplicationAction
 
+data class SetViewfinderControlVisible(val control: VfControl, val visible: Boolean) : SettingsApplicationAction
+
+data class SetEyeControlsViewfinder(val enabled: Boolean) : SettingsApplicationAction
+
 data class SetColorRenderProfile(val value: ColorRenderProfile) : SettingsApplicationAction
 
 data class SelectUserLutProfile(val profileId: String) : SettingsApplicationAction

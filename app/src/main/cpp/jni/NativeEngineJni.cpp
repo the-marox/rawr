@@ -819,6 +819,20 @@ extern "C" JNIEXPORT jstring JNICALL Java_com_rawr_camera_integration_NativePrev
     return env->NewStringUTF(r.c_str());
 }
 extern "C" JNIEXPORT jstring JNICALL
+Java_com_rawr_camera_integration_NativePreviewEngine_exportCameraControls(JNIEnv* env, jobject, jlong h) {
+    auto s = rawrcam::session::exportCameraControls(handle(h));
+    return env->NewStringUTF(s.c_str());
+}
+extern "C" JNIEXPORT void JNICALL
+Java_com_rawr_camera_integration_NativePreviewEngine_importCameraControls(JNIEnv* env, jobject, jlong h, jstring text,
+                                                                                jboolean applyOpen) {
+    rawrcam::session::importCameraControls(handle(h), jString(env, text), applyOpen == JNI_TRUE);
+}
+extern "C" JNIEXPORT void JNICALL
+Java_com_rawr_camera_integration_NativePreviewEngine_resetCameraControls(JNIEnv*, jobject, jlong h, jboolean all) {
+    rawrcam::session::resetCameraControls(handle(h), all == JNI_TRUE);
+}
+extern "C" JNIEXPORT jstring JNICALL
 Java_com_rawr_camera_integration_NativePreviewEngine_cameraControlSnapshot(JNIEnv* env, jobject, jlong h) {
     auto s = rawrcam::session::cameraControlSnapshot(handle(h));
     return env->NewStringUTF(s.c_str());

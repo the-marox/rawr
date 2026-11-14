@@ -458,6 +458,15 @@ enum class DemosaicAlgorithm(val label: String) {
 }
 
 /** RawTherapee capture sharpening strength: Richardson-Lucy iterations after demosaic. */
+/** Viewfinder control groups that can be hidden. */
+enum class VfControl { Look, Exposure, InfoBar }
+
+fun SettingsValues.withVfControl(control: VfControl, visible: Boolean): SettingsValues = when (control) {
+    VfControl.Look -> copy(vfShowLook = visible)
+    VfControl.Exposure -> copy(vfShowExposure = visible)
+    VfControl.InfoBar -> copy(vfShowInfoBar = visible)
+}
+
 enum class CaptureSharpeningLevel(val label: String, val iterations: Int) {
     Low("Low", 2),
     Medium("Medium", 3),
@@ -653,6 +662,12 @@ data class SettingsValues(
     val gridMode: GridMode = GridMode.Thirds,
     /** Capture-screen DCP shortcut next to the lens selector. */
     val showDcpQuickSelect: Boolean = true,
+    /** Viewfinder control groups shown over the preview (Settings › Display, or the eye's VF CONTROLS). */
+    val vfShowLook: Boolean = true,
+    val vfShowExposure: Boolean = true,
+    val vfShowInfoBar: Boolean = true,
+    /** The eye (MONITORING) panel offers VF CONTROLS to show/hide those groups while shooting. */
+    val vfEyeControls: Boolean = true,
     // Preview-only look-stage (tonemap or film) downsample divisor, 1..4.
     // Film always runs at 2 or more. Never touches stills, video, or EXIF.
     val viewfinderDivisor: Int = 2,

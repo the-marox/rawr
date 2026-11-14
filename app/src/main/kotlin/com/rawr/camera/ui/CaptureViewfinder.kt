@@ -206,7 +206,12 @@ internal fun CaptureViewfinder(
             Box(controlFrameModifier.zIndex(21f)) {
                 val paletteModifier = Modifier.topBarPaletteModifier(state, this)
                 if (state.monitorPanelOpen) {
-                    MonitorPanel(state, dispatch, paletteModifier)
+                    Column(paletteModifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        MonitorPanel(state, dispatch, Modifier)
+                        if (quick.eyeControls) {
+                            VfControlsPanel(quick, state.orientation, onQuickEvent)
+                        }
+                    }
                 }
                 if (state.whiteBalancePanelOpen) {
                     WhiteBalancePanel(state, dispatch, paletteModifier)
@@ -321,8 +326,9 @@ internal fun ViewfinderBottomSlot(
 }
 
 private fun Modifier.topBarPaletteModifier(state: CaptureUiState, scope: BoxScope): Modifier = with(scope) { when {
+    // Without scopes the palette hangs from the top of the frame (it used to float mid-frame).
     state.activeScopes.isEmpty() -> {
-        this@topBarPaletteModifier.align(Alignment.Center)
+        this@topBarPaletteModifier.align(Alignment.TopCenter).padding(top = 12.dp)
     }
 
     state.orientation == Orientation.Portrait -> {

@@ -22,6 +22,9 @@ import com.rawr.camera.video.VideoImageSettings
  */
 class RawPreviewCoordinator(application: Application) : AutoCloseable {
     private val dcpDir = java.io.File(application.filesDir, DcpFileStore.DIR)
+    // Per-camera exposure/WB/focus memory across app restarts (state, not a setting: not in backups).
+    private val cameraControlsPrefs =
+        application.getSharedPreferences("rawr_camera_controls", android.content.Context.MODE_PRIVATE)
     private val native = NativePreviewEngine()
     private val nativeHandle: Long
     @Volatile private var currentVideoImageSettings: VideoImageSettings? = null
@@ -83,6 +86,30 @@ class RawPreviewCoordinator(application: Application) : AutoCloseable {
                 }
             )
         native.setAssetManager(nativeHandle, application.assets)
+        // Each camera reopens as it was left (exposure mode, ISO, shutter, EV, WB, focus), before any camera opens.
+        cameraControlsPrefs.getString(KEY_CAMERA_CONTROLS, null)?.takeIf { it.isNotBlank() }?.let {
+            native.importCameraControls(nativeHandle, it, false)
+        }
+    }
+
+    /** Writes the per-camera memory on the camera lane (the controller mutex may be held there). */
+    private fun saveCameraControls() = postNative {
+        val text = native.exportCameraControls(nativeHandle)
+        cameraControlsPrefs.edit().putString(KEY_CAMERA_CONTROLS, text).apply()
+    }
+
+    /**
+     * Resets the open camera (or all) to automatic; [onSnapshot] receives the state before the reset, for UNDO.
+     */
+    fun resetCameraControls(allCameras: Boolean, onSnapshot: (String) -> Unit) = postNative {
+        onSnapshot(native.exportCameraControls(nativeHandle))
+        native.resetCameraControls(nativeHandle, allCameras)
+        cameraControlsPrefs.edit().putString(KEY_CAMERA_CONTROLS, native.exportCameraControls(nativeHandle)).apply()
+    }
+
+    fun undoCameraControlsReset(snapshot: String) = postNative {
+        native.importCameraControls(nativeHandle, snapshot, true)
+        cameraControlsPrefs.edit().putString(KEY_CAMERA_CONTROLS, snapshot).apply()
     }
 
     // Presentation visibility only; camera eligibility lives in native policy.
@@ -175,6 +202,7 @@ class RawPreviewCoordinator(application: Application) : AutoCloseable {
     fun stop() {
         if (closed) return
         previewVisible = false
+        saveCameraControls()
         native.setPreviewForeground(nativeHandle, false)
         sessionClock?.cancel(false)
         sessionClock = null
@@ -771,6 +799,7 @@ class RawPreviewCoordinator(application: Application) : AutoCloseable {
 
     private companion object {
         const val TAG = "RawrCamCoordinator"
+        const val KEY_CAMERA_CONTROLS = "by_camera"
         const val FILM_LOOK_DEBOUNCE_MS = 180L
         const val FILM_LIVE_UPDATE_MS = 16L
     }

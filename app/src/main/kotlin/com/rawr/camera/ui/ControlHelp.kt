@@ -39,14 +39,28 @@ internal class ControlHelpState {
         private set
     var seq by mutableIntStateOf(0)
         private set
+    var actionLabel by mutableStateOf<String?>(null)
+        private set
+    var action: (() -> Unit)? = null
+        private set
 
-    fun show(value: String) {
+    fun show(value: String, label: String? = null, onAction: (() -> Unit)? = null) {
         text = value
+        actionLabel = label?.takeIf { onAction != null }
+        action = onAction
         seq++
     }
 
     fun dismiss() {
         text = null
+    }
+
+    fun runAction() {
+        val run = action
+        action = null
+        actionLabel = null
+        text = null
+        run?.invoke()
     }
 }
 
@@ -64,7 +78,11 @@ internal fun ControlHelpOverlay(state: ControlHelpState, orientation: Orientatio
     val current = state.text
     // Keep the last text while the card fades out.
     var shown by remember { mutableStateOf("") }
-    if (current != null) shown = current
+    var shownAction by remember { mutableStateOf<String?>(null) }
+    if (current != null) {
+        shown = current
+        shownAction = state.actionLabel
+    }
     LaunchedEffect(state.seq) {
         val text = state.text ?: return@LaunchedEffect
         kotlinx.coroutines.delay(maxOf(HELP_MIN_MS, text.length * HELP_MS_PER_CHAR))
@@ -110,6 +128,20 @@ internal fun ControlHelpOverlay(state: ControlHelpState, orientation: Orientatio
                 textAlign = TextAlign.Start,
                 style = ViewfinderTextStyle
             )
+            shownAction?.let { label ->
+                Text(
+                    label,
+                    color = CaptureColors.AccentSoft,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp,
+                    style = ViewfinderTextStyle,
+                    modifier = Modifier
+                        .padding(top = 10.dp)
+                        .clickable { state.runAction() }
+                        .padding(vertical = 6.dp, horizontal = 2.dp)
+                )
+            }
         }
     }
 }

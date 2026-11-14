@@ -46,7 +46,9 @@ internal fun CaptureTopBar(
     state: CaptureUiState,
     dispatch: CaptureDispatch,
     onOpenSettings: () -> Unit,
-    videoLocked: Boolean = false
+    videoLocked: Boolean = false,
+    /** Some viewfinder control group is hidden: the eye stays lit so it is easy to bring them back. */
+    vfControlsHidden: Boolean = false
 ) {
     val haptics = LocalCaptureHaptics.current
     Row(
@@ -179,7 +181,7 @@ internal fun CaptureTopBar(
         TopBarSlot {
             IconToggleButton(
                 checked = state.monitorPanelOpen || state.armedOverlays.isNotEmpty() ||
-                    state.falseColorManual || state.activeScopes.isNotEmpty(),
+                    state.falseColorManual || state.activeScopes.isNotEmpty() || vfControlsHidden,
                 onCheckedChange = {
                     haptics.selection()
                     dispatch(ToggleMonitorPanel)

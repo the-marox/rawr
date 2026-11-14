@@ -7,6 +7,7 @@ import com.rawr.camera.settings.model.editActiveMultiframeTuning
 import com.rawr.camera.settings.model.multiframeTuningFor
 import com.rawr.camera.settings.model.withOwnLookForActiveLens
 import com.rawr.camera.settings.model.withMaster
+import com.rawr.camera.settings.model.withVfControl
 import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
@@ -261,9 +262,24 @@ class CaptureViewModel(application: Application) : AndroidViewModel(application)
         previewCoordinator.setFilmSimLook(next.filmSimLook.toFloatArray(), next.filmSimLook.toIntArray())
     }
 
+    @Volatile private var lastControlsBeforeReset: String? = null
+
     /** Rail edits go through settings; CaptureSettingsSync projects them onto the preview and stills. */
     fun onQuickEvent(event: CaptureQuickEvent) {
         if (latestSettings.isVideo && videoSelectionLocked()) return
+        // Camera control memory lives in native, not in settings.
+        when (event) {
+            is CaptureQuickEvent.ResetCameraControls -> {
+                previewCoordinator.resetCameraControls(event.allCameras) { lastControlsBeforeReset = it }
+                return
+            }
+            CaptureQuickEvent.UndoCameraControlsReset -> {
+                lastControlsBeforeReset?.let(previewCoordinator::undoCameraControlsReset)
+                lastControlsBeforeReset = null
+                return
+            }
+            else -> Unit
+        }
         settingsEditor.update { c ->
             val video = c.isVideo
             when (event) {
@@ -300,6 +316,9 @@ class CaptureViewModel(application: Application) : AndroidViewModel(application)
                 is CaptureQuickEvent.SetMaxShutter -> c.copy(rawrAe = c.rawrAe.copy(maxShutter = event.value))
                 is CaptureQuickEvent.SetSharpening ->
                     c.copy(photoCaptureSharpeningEnabled = event.enabled, photoCaptureSharpeningLevel = event.level)
+                is CaptureQuickEvent.ResetCameraControls, CaptureQuickEvent.UndoCameraControlsReset -> c
+                is CaptureQuickEvent.SetVfControlVisible -> c.withVfControl(event.control, event.visible)
+                CaptureQuickEvent.ShowAllVfControls -> c.copy(vfShowLook = true, vfShowExposure = true, vfShowInfoBar = true)
                 CaptureQuickEvent.ToggleDenoise ->
                     if (video) c.copy(videoDenoiseEnabled = !c.videoDenoiseEnabled)
                     else c.copy(photoDenoise = c.photoDenoise.withMaster(

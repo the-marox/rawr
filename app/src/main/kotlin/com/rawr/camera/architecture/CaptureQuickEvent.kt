@@ -25,4 +25,10 @@ sealed interface CaptureQuickEvent {
     data class SetSharpening(val enabled: Boolean, val level: CaptureSharpeningLevel) : CaptureQuickEvent
     /** Denoise master switch of the current capture mode. */
     data object ToggleDenoise : CaptureQuickEvent
+    /** Exposure mode, ISO, shutter, EV, WB and focus back to automatic: the open camera, or every camera. */
+    data class ResetCameraControls(val allCameras: Boolean) : CaptureQuickEvent
+    data object UndoCameraControlsReset : CaptureQuickEvent
+    data class SetVfControlVisible(val control: com.rawr.camera.settings.model.VfControl, val visible: Boolean) :
+        CaptureQuickEvent
+    data object ShowAllVfControls : CaptureQuickEvent
 }

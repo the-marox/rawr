@@ -27,6 +27,34 @@ internal fun DisplayControlsSettings(state: SettingsUiState, dispatch: SettingsD
                 testTag = SettingsTestTags.row("DisplayControls", "dcp_quick_select")
             ) { dispatch.invoke(SetShowDcpQuickSelect(it)) }
             SettingDivider()
+            SettingsSwitchRow(
+                title = "Look · Params on viewfinder",
+                checked = state.values.vfShowLook,
+                supportingText = "LOOK / FILM and PARAMS buttons over the preview.",
+                testTag = SettingsTestTags.row("DisplayControls", "vf_show_look")
+            ) { dispatch.invoke(SetViewfinderControlVisible(VfControl.Look, it)) }
+            SettingDivider()
+            SettingsSwitchRow(
+                title = "Exposure row on viewfinder",
+                checked = state.values.vfShowExposure,
+                supportingText = "ISO, shutter, EV, WB and AF buttons over the preview.",
+                testTag = SettingsTestTags.row("DisplayControls", "vf_show_exposure")
+            ) { dispatch.invoke(SetViewfinderControlVisible(VfControl.Exposure, it)) }
+            SettingDivider()
+            SettingsSwitchRow(
+                title = "Info bar",
+                checked = state.values.vfShowInfoBar,
+                supportingText = "The exposure readout under the top bar.",
+                testTag = SettingsTestTags.row("DisplayControls", "vf_show_info_bar")
+            ) { dispatch.invoke(SetViewfinderControlVisible(VfControl.InfoBar, it)) }
+            SettingDivider()
+            SettingsSwitchRow(
+                title = "Eye button shows/hides these",
+                checked = state.values.vfEyeControls,
+                supportingText = "Adds VF CONTROLS to the MONITORING panel (eye) to toggle them while shooting.",
+                testTag = SettingsTestTags.row("DisplayControls", "vf_eye_controls")
+            ) { dispatch.invoke(SetEyeControlsViewfinder(it)) }
+            SettingDivider()
             ViewfinderResolutionRow(state.values.viewfinderDivisor) { dispatch.invoke(SetViewfinderDivisor(it)) }
             SettingDivider()
             SettingsRow(

@@ -61,6 +61,9 @@ class CameraControlSurface final {
     // a debug setprop pins a built-in profile.
     bool setCameraProfile(const std::string& json);
     std::string cameraControlSnapshot() const;
+    std::string exportCameraControls();
+    void importCameraControls(const std::string& text, bool applyOpen);
+    void resetCameraControls(bool allCameras);
     int videoRotationDegrees(int deviceRotationDegrees) const;
     void setPreferredCameraId(const std::string& cameraId);
     void setCameraAccessRoute(const std::string& route);
