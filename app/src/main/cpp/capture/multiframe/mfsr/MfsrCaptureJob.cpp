@@ -295,21 +295,32 @@ void MfsrCaptureJob::runStages(Published& published) {
         const auto* src = reinterpret_cast<const std::uint16_t*>(full.pixels.data());
         auto* dst = reinterpret_cast<std::uint16_t*>(half.pixels.data());
         const float toSensor = 1.0f / (4.0f * codeScale);
-        for (std::uint32_t y = 0; y < h; ++y) {
-            const std::uint32_t sy = (y >> 1) * 4u + (y & 1u);
-            // Uniform half-size grid (output x at sensor 2x + 0.5): same-colour samples weighted 3:1 towards
-            // the nearer one; a plain 2x2 mean leaves a 2-pixel pattern ("little squares") in the JPEG.
-            const bool yOdd = (y & 1u) != 0u;
-            const std::uint16_t* rn = src + std::size_t(yOdd ? sy + 2u : sy) * inW;
-            const std::uint16_t* rf = src + std::size_t(yOdd ? sy : sy + 2u) * inW;
-            std::uint16_t* o = dst + std::size_t(y) * w;
-            for (std::uint32_t x = 0; x < w; ++x) {
-                const std::uint32_t sx = (x >> 1) * 4u + (x & 1u);
-                const std::uint32_t xn = (x & 1u) ? sx + 2u : sx, xf = (x & 1u) ? sx : sx + 2u;
-                const float sum = (9.0f * float(rn[xn]) + 3.0f * (float(rn[xf]) + float(rf[xn])) + float(rf[xf])) *
-                                  0.25f;
-                o[x] = std::uint16_t(std::clamp(sum * toSensor + 0.5f, 0.0f, 65535.0f));
+        {
+            // Rows split across threads (~1 s single-threaded at 50 MP).
+            const std::uint32_t n = std::max(1u, std::min(6u, std::thread::hardware_concurrency()));
+            std::vector<std::thread> pool;
+            for (std::uint32_t t = 0; t < n; ++t) {
+                const std::uint32_t y0 = h * t / n, y1 = h * (t + 1) / n;
+                pool.emplace_back([&, y0, y1]() {
+                    for (std::uint32_t y = y0; y < y1; ++y) {
+                        const std::uint32_t sy = (y >> 1) * 4u + (y & 1u);
+                        // Uniform half-size grid (output x at sensor 2x + 0.5): same-colour samples weighted 3:1 towards
+                        // the nearer one; a plain 2x2 mean leaves a 2-pixel pattern ("little squares") in the JPEG.
+                        const bool yOdd = (y & 1u) != 0u;
+                        const std::uint16_t* rn = src + std::size_t(yOdd ? sy + 2u : sy) * inW;
+                        const std::uint16_t* rf = src + std::size_t(yOdd ? sy : sy + 2u) * inW;
+                        std::uint16_t* o = dst + std::size_t(y) * w;
+                        for (std::uint32_t x = 0; x < w; ++x) {
+                            const std::uint32_t sx = (x >> 1) * 4u + (x & 1u);
+                            const std::uint32_t xn = (x & 1u) ? sx + 2u : sx, xf = (x & 1u) ? sx : sx + 2u;
+                            const float sum = (9.0f * float(rn[xn]) + 3.0f * (float(rn[xf]) + float(rf[xn])) + float(rf[xf])) *
+                                              0.25f;
+                            o[x] = std::uint16_t(std::clamp(sum * toSensor + 0.5f, 0.0f, 65535.0f));
+                        }
+                    }
+                });
             }
+            for (auto& th : pool) th.join();
         }
         auto captured = makeCaptured(std::move(half));
         if (captured->metadata.cameraContext) {
@@ -420,6 +431,28 @@ void MfsrCaptureJob::runStages(Published& published) {
             LOGE("POST_SHUTTER_RZSL_FAIL %s", e.what());
         }
     };
+    // Strip merges: lay out the merge arena (~2.5 GB at 200 MP, ~2.5 s while Android reclaims memory) on a
+    // helper thread while the base frame is read back and its DNG starts, instead of inside the first strip.
+    struct ArenaWarm {
+        std::thread thread;
+        double ms = 0.0;
+        void join() {
+            if (thread.joinable()) thread.join();
+        }
+        ~ArenaWarm() { join(); }
+    } arenaWarm;
+    if (stripMode) {
+        arenaWarm.thread = std::thread([&ctx, &arenaWarm, w = ctx.rawWidth, rows = strips.front().rows]() {
+            const auto begin = std::chrono::steady_clock::now();
+            try {
+                ctx.burstCoordinator.warmAll(ctx.vulkan.physicalDevice(), ctx.vulkan.device(),
+                                             ctx.vulkan.queueFamily(), w, rows);
+            } catch (const std::exception& e) {
+                LOGE("MULTIFRAME_STRIP_ARENA_WARM_FAIL %s", e.what());
+            }
+            arenaWarm.ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - begin).count();
+        });
+    }
     MultiframeOutputAdapter outputAdapter;
     bool outputAdapterReady = false;
     if (baseRequested) try {
@@ -485,6 +518,12 @@ void MfsrCaptureJob::runStages(Published& published) {
     };
     try {
         auto& coordinator = ctx.burstCoordinator;
+        if (stripMode) {
+            const auto waitBegin = std::chrono::steady_clock::now();
+            arenaWarm.join();
+            LOGI("MULTIFRAME_STRIP_ARENA_WARM requestId=%llu warmMs=%.1f waitedMs=%.1f",
+                 static_cast<unsigned long long>(requestId), arenaWarm.ms, wallMs(waitBegin));
+        }
         if (stripMode) {
             // Each window: its rows of every frame from the journal, merged and
             // projected like a whole burst, then crossfaded into the full CFA.
