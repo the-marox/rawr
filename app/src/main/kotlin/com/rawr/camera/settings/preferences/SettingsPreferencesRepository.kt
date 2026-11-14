@@ -32,6 +32,7 @@ import com.rawr.camera.model.TonemapControlContract
 import com.rawr.camera.settings.model.DenoiseConfig
 import com.rawr.camera.settings.model.MultiframeTuning
 import com.rawr.camera.settings.model.SettingsValues
+import com.rawr.camera.settings.model.LensLook
 import com.rawr.camera.settings.model.KeyframeInterval
 import com.rawr.camera.settings.model.VideoAudioCodec
 import com.rawr.camera.settings.model.VideoAudioRoute
@@ -987,7 +988,7 @@ class SettingsPreferencesRepository(context: Context, private val defaults: Sett
     }
 
     private fun decodeLensLook(o: org.json.JSONObject): LensLook {
-        val d = SettingsValues.Defaults
+        val d = defaults
         return LensLook(
             colorRenderProfile = enumOrDefault(o.optString("profile"), d.colorRenderProfile),
             selectedUserLutProfileId = o.optString("lut").takeIf { it.isNotBlank() },
