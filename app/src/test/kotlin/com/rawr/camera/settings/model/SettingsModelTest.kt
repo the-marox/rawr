@@ -642,6 +642,29 @@ class SettingsModelTest {
         assertEquals(13f, MultiframeTuning().copy(hdrPlusStrength = 0f).sanitized().hdrPlusStrength)
     }
 
+    @Test fun multiframeTuningCanBeSetPerLens() {
+        val base = PersistentSettingsController(onValuesChanged = {}).state.value
+        var state = base.withValues(base.values.copy(lastLensId = "3.2x 200MP"))
+        // No entry: edits go to the shared tuning.
+        state = reduceMultiframeSettings(state, SetMultiframeNumericValue(MultiframeNumericParameter.MaxFrames, 8f))
+        assertEquals(8, state.values.multiframeTuning.maxFrames)
+        assertFalse(state.values.activeLensHasOwnMultiframeTuning)
+        // Own entry starts from the shared values, then edits stay on that lens.
+        state = reduceMultiframeSettings(state, SetMultiframeLensOverride(true))
+        state = reduceMultiframeSettings(state, SetMultiframeNumericValue(MultiframeNumericParameter.MaxFrames, 4f))
+        state = reduceMultiframeSettings(state, SetMultiframeMergeAlgorithm(MultiframeMergeAlgorithm.HdrPlusQuality))
+        assertEquals(4, state.values.activeMultiframeTuning.maxFrames)
+        assertEquals(MultiframeMergeAlgorithm.HdrPlusQuality, state.values.activeMultiframeTuning.mergeAlgorithm)
+        assertEquals(8, state.values.multiframeTuning.maxFrames)
+        assertEquals(MultiframeMergeAlgorithm.Rexture, state.values.multiframeTuning.mergeAlgorithm)
+        // Another lens reads the shared tuning.
+        assertEquals(8, state.values.copy(lastLensId = "1x 50MP").activeMultiframeTuning.maxFrames)
+        // Dropping the entry falls back to the shared tuning.
+        state = reduceMultiframeSettings(state, SetMultiframeLensOverride(false))
+        assertEquals(8, state.values.activeMultiframeTuning.maxFrames)
+        assertTrue(state.values.multiframeTuningByLens.isEmpty())
+    }
+
     @Test fun multiframeDefaultsFollowResearchedOperatingPoint() {
         val defaults = MultiframeTuning()
         assertEquals(MultiframeMergeAlgorithm.Rexture, defaults.mergeAlgorithm)

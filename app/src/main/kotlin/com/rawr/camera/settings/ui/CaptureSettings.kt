@@ -50,7 +50,7 @@ internal fun CaptureSettings(state: SettingsUiState, dispatch: SettingsDispatch)
                 checked = state.values.experimentalMultiframeEnabled,
                 value =
                     if (state.values.experimentalMultiframeEnabled) {
-                        state.values.multiframeTuning.mergeAlgorithm.label
+                        state.values.activeMultiframeTuning.mergeAlgorithm.label
                     } else {
                         "Off"
                     },

@@ -586,6 +586,26 @@ data class MultiframeTuning(
         floatArrayOf(mergeAlgorithm.nativeId.toFloat(), hdrPlusStrength, hdrPlusTileSize.toFloat(), -3f, 0f, 0f)
 }
 
+/** Multiframe tuning for [lensId]: the lens's own entry when it has one, else the global tuning. */
+fun SettingsValues.multiframeTuningFor(lensId: String?): MultiframeTuning =
+    lensId?.let { multiframeTuningByLens[it] } ?: multiframeTuning
+
+/** Multiframe tuning of the lens in use ([SettingsValues.lastLensId]). */
+val SettingsValues.activeMultiframeTuning: MultiframeTuning
+    get() = multiframeTuningFor(lastLensId)
+
+/** Whether the lens in use has its own multiframe tuning. */
+val SettingsValues.activeLensHasOwnMultiframeTuning: Boolean
+    get() = lastLensId?.let { it in multiframeTuningByLens } == true
+
+/** Applies [edit] to the tuning that the lens in use reads: its own entry, or the global one. */
+fun SettingsValues.editActiveMultiframeTuning(edit: (MultiframeTuning) -> MultiframeTuning): SettingsValues {
+    val lens = lastLensId
+    val own = lens?.let { multiframeTuningByLens[it] }
+    return if (lens != null && own != null) copy(multiframeTuningByLens = multiframeTuningByLens + (lens to edit(own)))
+    else copy(multiframeTuning = edit(multiframeTuning))
+}
+
 data class SettingsValues(
     val saveLocationId: String,
     val falseColorPresetId: String,
@@ -671,6 +691,8 @@ data class SettingsValues(
     // Rexture only: render the JPEG from the merged RGB (no re-mosaic, no demosaic setting). The DNG is unaffected.
     val multiframeRextureNativeRgb: Boolean = false,
     val multiframeTuning: MultiframeTuning = MultiframeTuning(),
+    /** Per-lens multiframe tuning keyed by lens id (profile name); lenses without an entry use [multiframeTuning]. */
+    val multiframeTuningByLens: Map<String, MultiframeTuning> = emptyMap(),
     val customGpuDriverEnabled: Boolean = false,
     val customGpuDriverName: String? = null,
     val persistZslRingEnabled: Boolean = false,

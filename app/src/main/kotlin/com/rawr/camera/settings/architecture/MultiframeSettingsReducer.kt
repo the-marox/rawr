@@ -23,18 +23,23 @@ internal fun reduceMultiframeSettings(
         if (!spec.accepts(action.value)) {
             state
         } else {
-            val values = state.values
-            state.withValues(
-                values.copy(
-                    multiframeTuning = values.multiframeTuning.withValue(action.parameter, action.value)
-                )
-            )
+            state.withValues(state.values.editActiveMultiframeTuning { it.withValue(action.parameter, action.value) })
         }
     }
 
     is SetMultiframeMergeAlgorithm -> {
-        val values = state.values
-        state.withValues(values.copy(multiframeTuning = values.multiframeTuning.copy(mergeAlgorithm = action.value)))
+        state.withValues(state.values.editActiveMultiframeTuning { it.copy(mergeAlgorithm = action.value) })
     }
+    is SetMultiframeLensOverride -> {
+        val values = state.values
+        val lens = values.lastLensId
+        when {
+            lens == null -> state
+            action.enabled -> state.withValues(values.copy(
+                multiframeTuningByLens = values.multiframeTuningByLens + (lens to values.multiframeTuningFor(lens))))
+            else -> state.withValues(values.copy(multiframeTuningByLens = values.multiframeTuningByLens - lens))
+        }
+    }
+
     else -> error("Unsupported multiframe settings action: $action")
 }

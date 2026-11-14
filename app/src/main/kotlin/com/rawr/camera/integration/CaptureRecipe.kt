@@ -5,6 +5,7 @@ import com.rawr.camera.model.TonemapCatalog
 import com.rawr.camera.model.valueFor
 import com.rawr.camera.settings.model.MultiframeMergeAlgorithm
 import com.rawr.camera.settings.model.SettingsValues
+import com.rawr.camera.settings.model.activeMultiframeTuning
 import com.rawr.camera.settings.model.toLegacy
 import org.json.JSONObject
 
@@ -75,7 +76,7 @@ internal object CaptureRecipe {
         put("defringeLumaFloor", v.photoDefringeLumaFloor)
         put("captureSharpeningEnabled", v.photoCaptureSharpeningEnabled)
         put("rextureNativeRgb",
-            v.multiframeRextureNativeRgb && v.multiframeTuning.mergeAlgorithm == MultiframeMergeAlgorithm.Rexture)
+            v.multiframeRextureNativeRgb && v.activeMultiframeTuning.mergeAlgorithm == MultiframeMergeAlgorithm.Rexture)
         put("captureSharpeningLevel", v.photoCaptureSharpeningLevel.name)
         // Photo denoise writes the stable recipe keys from the sealed value.
         val legacyDenoise = v.photoDenoise.toLegacy()
@@ -242,7 +243,7 @@ internal object CaptureRecipe {
             put("printDiffusionBloomSize", value.printDiffusionBloomSize)
         })
         put("multiframe", JSONObject().apply {
-            val value = v.multiframeTuning.sanitized()
+            val value = v.activeMultiframeTuning.sanitized()
             put("mergeAlgorithm", value.mergeAlgorithm.name)
             put("hdrPlusStrength", value.hdrPlusStrength)
             put("hdrPlusTileSize", value.hdrPlusTileSize)

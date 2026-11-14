@@ -582,6 +582,7 @@ class SettingsPreferencesRepository(context: Context, private val defaults: Sett
                     hdrPlusTileSize = p[Keys.multiframeHdrPlusTileSize] ?: d.multiframeTuning.hdrPlusTileSize,
                     maxFrames = p[Keys.multiframeMaxFrames] ?: d.multiframeTuning.maxFrames
                 ).sanitized(d.multiframeTuning),
+            multiframeTuningByLens = decodeMultiframeByLens(p[Keys.multiframeTuningByLens], d.multiframeTuning),
             customGpuDriverEnabled = p[Keys.customGpuDriverEnabled] ?: d.customGpuDriverEnabled,
             customGpuDriverName = p[Keys.customGpuDriverName] ?: d.customGpuDriverName,
             persistZslRingEnabled = p[Keys.persistZslRingEnabled] ?: d.persistZslRingEnabled,
@@ -803,6 +804,8 @@ class SettingsPreferencesRepository(context: Context, private val defaults: Sett
         p[Keys.multiframeHdrPlusStrength] = v.multiframeTuning.hdrPlusStrength
         p[Keys.multiframeHdrPlusTileSize] = v.multiframeTuning.hdrPlusTileSize
         p[Keys.multiframeMaxFrames] = v.multiframeTuning.maxFrames
+        if (v.multiframeTuningByLens.isEmpty()) p.remove(Keys.multiframeTuningByLens)
+        else p[Keys.multiframeTuningByLens] = encodeMultiframeByLens(v.multiframeTuningByLens)
         p[Keys.customGpuDriverEnabled] = v.customGpuDriverEnabled
         if (v.customGpuDriverName ==
             null
@@ -945,6 +948,32 @@ class SettingsPreferencesRepository(context: Context, private val defaults: Sett
             }
         }.toMap()
 
+    /** `{"<lens id>": {"mergeAlgorithm", "hdrPlusStrength", "hdrPlusTileSize", "maxFrames"}}`. */
+    private fun encodeMultiframeByLens(values: Map<String, MultiframeTuning>): String =
+        org.json.JSONObject().apply {
+            values.toSortedMap().forEach { (lens, t) ->
+                put(lens, org.json.JSONObject()
+                    .put("mergeAlgorithm", t.mergeAlgorithm.name)
+                    .put("hdrPlusStrength", t.hdrPlusStrength.toDouble())
+                    .put("hdrPlusTileSize", t.hdrPlusTileSize)
+                    .put("maxFrames", t.maxFrames))
+            }
+        }.toString()
+
+    private fun decodeMultiframeByLens(raw: String?, defaults: MultiframeTuning): Map<String, MultiframeTuning> {
+        if (raw.isNullOrBlank()) return emptyMap()
+        val json = runCatching { org.json.JSONObject(raw) }.getOrNull() ?: return emptyMap()
+        return json.keys().asSequence().filter { it.isNotBlank() }.mapNotNull { lens ->
+            val o = json.optJSONObject(lens) ?: return@mapNotNull null
+            lens to MultiframeTuning(
+                mergeAlgorithm = enumOrDefault(o.optString("mergeAlgorithm"), defaults.mergeAlgorithm),
+                hdrPlusStrength = o.optDouble("hdrPlusStrength", defaults.hdrPlusStrength.toDouble()).toFloat(),
+                hdrPlusTileSize = o.optInt("hdrPlusTileSize", defaults.hdrPlusTileSize),
+                maxFrames = o.optInt("maxFrames", defaults.maxFrames)
+            ).sanitized(defaults)
+        }.toMap()
+    }
+
     private companion object {
         const val LEGACY_SCHEMA_VERSION = 0
         const val CURRENT_SCHEMA_VERSION = 38
@@ -1070,6 +1099,7 @@ class SettingsPreferencesRepository(context: Context, private val defaults: Sett
         val multiframeHdrPlusStrength = floatPreferencesKey("multiframe_hdrplus_strength")
         val multiframeHdrPlusTileSize = intPreferencesKey("multiframe_hdrplus_tile_size")
         val multiframeMaxFrames = intPreferencesKey("multiframe_max_frames")
+        val multiframeTuningByLens = stringPreferencesKey("multiframe_tuning_by_lens")
         val customGpuDriverEnabled = booleanPreferencesKey("debug_custom_gpu_driver_enabled")
         val customGpuDriverName = stringPreferencesKey("debug_custom_gpu_driver_name")
         val retiredPersistentDiagnosticsEnabled = booleanPreferencesKey("debug_persistent_diagnostics_enabled")

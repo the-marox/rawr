@@ -11,6 +11,7 @@ import androidx.core.content.ContextCompat
 import com.rawr.camera.model.CaptureOutputFormat
 import com.rawr.camera.settings.model.SettingsValues
 import com.rawr.camera.settings.model.StillPath
+import com.rawr.camera.settings.model.activeMultiframeTuning
 import com.rawr.camera.settings.model.describeFilm
 import com.rawr.camera.settings.model.resolve
 import com.rawr.camera.settings.model.toModesArray
@@ -172,7 +173,7 @@ class StillCaptureCoordinator(
         if (BuildConfig.DEBUG) Log.i(TAG, "CAPTURE_TIMING stage=acquire event=begin token=${input.requestedAtNs} monoMs=${System.nanoTime() / 1e6}")
         val multiframeFrames =
             if (current.experimentalMultiframeEnabled) {
-                preview.prepareExperimentalMultiframe(current.multiframeTuning.maxFrames).also { frames ->
+                preview.prepareExperimentalMultiframe(current.activeMultiframeTuning.maxFrames).also { frames ->
                     check(frames >= 0) { "Full-resolution acquisition failed; no replacement capture was submitted" }
                 }.coerceAtMost(30)
             } else {
@@ -289,7 +290,7 @@ class StillCaptureCoordinator(
                     mergedDngDisplayName = output.mergedDng?.displayName ?: "${output.baseName}_MF$namedFrames.dng",
                     jpegDisplayName = jpegDisplayName,
                     dumpRzslRequested = zslPersistRequested,
-                    multiframeTuning = current.multiframeTuning,
+                    multiframeTuning = current.activeMultiframeTuning,
                     multiframeBaseFrameMode = current.multiframeBaseFrameMode,
                     multiframeChromaDenoise = current.multiframeChromaDenoise
                 )

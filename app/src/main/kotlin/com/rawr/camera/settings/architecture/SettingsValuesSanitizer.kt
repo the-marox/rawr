@@ -128,6 +128,9 @@ internal fun sanitizeSettingsValues(persisted: SettingsValues, defaults: Setting
             videoColorRenderProfile = persisted.videoColorRenderProfile.takeUnless { it == ColorRenderProfile.SRgb } ?: ColorRenderProfile.RawrBase,
             userLutProfiles = cleanProfiles,
             multiframeTuning = persisted.multiframeTuning.sanitized(defaults.multiframeTuning),
+            multiframeTuningByLens = persisted.multiframeTuningByLens
+                .filterKeys { it.isNotBlank() }
+                .mapValues { (_, tuning) -> tuning.sanitized(defaults.multiframeTuning) },
             photoFccSteps = persisted.photoFccSteps.coerceIn(1, 8),
             photoDefringeStrength = persisted.photoDefringeStrength.coerceIn(0f, 1f),
             photoDefringeEdgeThreshold = persisted.photoDefringeEdgeThreshold.coerceIn(0.005f, 0.2f),

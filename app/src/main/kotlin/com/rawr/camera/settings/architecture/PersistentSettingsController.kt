@@ -65,7 +65,7 @@ class PersistentSettingsController(
             is RevertFilmPreset, is UpdateFilmPreset, is ImportFilmPreset -> reduceFilmSettings(state, action)
 
             is SetMultiframeChromaDenoise, is SetMultiframeRextureNativeRgb, is SetMultiframeBaseFrameMode, is SetMultiframeNumericValue,
-            is SetMultiframeMergeAlgorithm -> reduceMultiframeSettings(state, action)
+            is SetMultiframeMergeAlgorithm, is SetMultiframeLensOverride -> reduceMultiframeSettings(state, action)
 
             is SetPhotoDenoiseEnabled, is SetPhotoDenoiseStrength, is SetPhotoDenoiseDetail,
             is SetPhotoDenoiseLuma, is SetPhotoDenoiseScales,

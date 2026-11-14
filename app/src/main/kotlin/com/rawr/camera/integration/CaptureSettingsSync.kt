@@ -58,7 +58,7 @@ internal class CaptureSettingsSync(
         // on the local tone lift matches the still's.
         syncSetting({
             if (!it.isVideo && it.experimentalMultiframeEnabled)
-                it.multiframeTuning.maxFrames.coerceIn(1, 30)
+                it.activeMultiframeTuning.maxFrames.coerceIn(1, 30)
             else 1
         }) { previewCoordinator.setExpectedMergeFrames(it) }
         syncSetting({ it.maxPostGainId }) {

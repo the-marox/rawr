@@ -8,7 +8,9 @@ import com.rawr.camera.settings.model.*
 @Composable
 internal fun MultiframeSettings(state: SettingsUiState, dispatch: SettingsDispatch) {
     val enabled = state.values.experimentalMultiframeEnabled
-    val tuning = state.values.multiframeTuning
+    val tuning = state.values.activeMultiframeTuning
+    val lensId = state.values.lastLensId
+    val ownTuning = state.values.activeLensHasOwnMultiframeTuning
     val spec = { parameter: MultiframeNumericParameter -> MultiframeSpecs.forParameter(parameter) }
     val rexture = tuning.mergeAlgorithm == MultiframeMergeAlgorithm.Rexture
     SettingsPageContainer {
@@ -19,6 +21,20 @@ internal fun MultiframeSettings(state: SettingsUiState, dispatch: SettingsDispat
                 title = "Multiframe",
                 checked = enabled
             ) { dispatch.invoke(SetExperimentalMultiframeEnabled(it)) }
+        }
+        if (lensId != null) {
+            SettingsGroup(
+                title = "Lens",
+                description = "Off: this lens uses the shared settings below, like every lens without its own. " +
+                    "On: the algorithm and sliders below apply to $lensId only (starting from the shared values). " +
+                    "Switch lenses on the capture screen to set up another one."
+            ) {
+                SettingsSwitchRow(
+                    title = "Own settings for $lensId",
+                    checked = ownTuning,
+                    enabled = enabled
+                ) { dispatch.invoke(SetMultiframeLensOverride(it)) }
+            }
         }
         SettingsGroup {
             SettingsSwitchRow(
