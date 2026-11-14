@@ -28,6 +28,7 @@
 #include "capture/persistence/FrameRecipe.h"
 #include "capture/persistence/ProcessingRecipe.h"
 #include "capture/single/SingleFrameCaptureContextBuilder.h"
+#include "capture/single/SingleFrameCaptureDevelop.h"
 #include "color/ColorMath.h"
 #include "color/FilmExposure.h"
 #include "color/WhiteBalance.h"
@@ -247,10 +248,10 @@ void MfsrCaptureJob::runStages(Published& published) {
         done.error = error;
         publishJpeg(done);
     };
-    if (stripMode && work->jpegRequested) {
-        mergedJpeg.output.outputFd.reset();
-        failJpeg("strip_merge_dng_only");
-    }
+    // Strip merges (200 MP) never hold the whole merged CFA on the GPU: their JPEG develops on the CPU-stitched
+    // CFA, binned to half size like a single 200 MP still (developStripJpeg below).
+    const bool stripJpeg = stripMode && work->jpegRequested;
+    bool stripJpegPublished = !stripJpeg;
     auto makeCaptured = [&](rawr::raw_multiframe_output::PackedRaw16 packed) {
         auto captured = std::make_shared<rawrcam::imaging::RawSnapshot>();
         captured->requestId = requestId;
@@ -264,6 +265,84 @@ void MfsrCaptureJob::runStages(Published& published) {
         captured->colorState = job->referenceColor;
         captured->raw16 = std::move(packed.pixels);
         return captured;
+    };
+    // Half-size Bayer of the stitched merge (each output pixel: the four same-colour pixels of its 4x4
+    // neighbourhood), back in sensor codes, developed and written like a single still.
+    auto developStripJpeg = [&](const rawr::raw_multiframe_output::PackedRaw16& full) {
+        const auto begin = std::chrono::steady_clock::now();
+        const float codeScale =
+            rawr::raw_multiframe_output::sixteenBitCodeScale(job->referenceMetadata.effectiveWhiteLevel);
+        const std::uint32_t w = full.width / 2, h = full.height / 2;
+        const std::uint32_t inW = full.rowStrideBytes / std::uint32_t(sizeof(std::uint16_t));
+        rawr::raw_multiframe_output::PackedRaw16 half;
+        half.width = w;
+        half.height = h;
+        half.rowStrideBytes = w * std::uint32_t(sizeof(std::uint16_t));
+        half.pixels.resize(std::size_t(half.rowStrideBytes) * h);
+        const auto* src = reinterpret_cast<const std::uint16_t*>(full.pixels.data());
+        auto* dst = reinterpret_cast<std::uint16_t*>(half.pixels.data());
+        const float toSensor = 1.0f / (4.0f * codeScale);
+        for (std::uint32_t y = 0; y < h; ++y) {
+            const std::uint32_t sy = (y >> 1) * 4u + (y & 1u);
+            const std::uint16_t* r0 = src + std::size_t(sy) * inW;
+            const std::uint16_t* r1 = src + std::size_t(sy + 2u) * inW;
+            std::uint16_t* o = dst + std::size_t(y) * w;
+            for (std::uint32_t x = 0; x < w; ++x) {
+                const std::uint32_t sx = (x >> 1) * 4u + (x & 1u);
+                const float sum = float(r0[sx]) + float(r0[sx + 2u]) + float(r1[sx]) + float(r1[sx + 2u]);
+                o[x] = std::uint16_t(std::clamp(sum * toSensor + 0.5f, 0.0f, 65535.0f));
+            }
+        }
+        auto captured = makeCaptured(std::move(half));
+        if (captured->metadata.cameraContext) {
+            auto context =
+                std::make_shared<rawrcam::metadata::CameraContextMetadata>(*captured->metadata.cameraContext);
+            context->geometry.rawBufferWidth = w;
+            context->geometry.rawBufferHeight = h;
+            context->cfaBlock = 1;
+            captured->metadata.cameraContext = context;
+        }
+        captured->metadata.hotPixelMap.clear();  // full-size coordinates
+        LOGI("MULTIFRAME_STRIP_JPEG_BIN requestId=%llu jpeg=%ux%u ms=%.1f", static_cast<unsigned long long>(requestId),
+             w, h, wallMs(begin));
+        rawrcam::capture::SingleFrameCaptureDevelop develop(
+            ctx.vulkan, ctx.queue0Mutex, ctx.filesDir,
+            [](const std::string& line) { __android_log_print(ANDROID_LOG_INFO, "RawrCamNative", "%s", line.c_str()); });
+        develop.setAssetManager(ctx.assetManager);
+        if (!develop.start(captured, frozenTonemap, frozenTonemap.aePostGain, work->filmEnabled, work->filmLook,
+                           mergedJpeg)) {
+            throw std::runtime_error("strip_jpeg_develop_rejected");
+        }
+        std::optional<rawrcam::capture::SingleFrameDevelopResult> result;
+        while (!(result = develop.pollCompletion())) std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        const auto& completed = result->completion;
+        if (!completed.success) {
+            develop.shutdown();
+            throw std::runtime_error("strip_jpeg_render_failed: " + completed.error);
+        }
+        auto jpegContext = std::move(mergedJpeg);
+        jpegContext.output.appliedLensShadingCorrection = jpegContext.develop.lensShadingCorrectionEnabled;
+        jpegContext.output.appliedFccSteps = jpegContext.develop.fccSteps;
+        JpegCaptureWriter writer;
+        const auto& px = result->pixels;
+        const bool ultraHdr = jpegContext.output.ultraHdr.enabled && px.gainmapPixels && px.gainmapBytes > 0;
+        const bool accepted =
+            ultraHdr ? writer.startUltraHdr(requestId, px.pixels, px.bytes, completed.width, completed.height,
+                                            px.gainmapPixels, px.gainmapBytes, px.gainmapWidth, px.gainmapHeight,
+                                            std::move(jpegContext.output))
+                     : writer.start(requestId, px.pixels, px.bytes, completed.width, completed.height,
+                                    std::move(jpegContext.output));
+        if (!accepted) {
+            develop.shutdown();
+            throw std::runtime_error("strip_jpeg_writer_start_rejected");
+        }
+        std::optional<JpegWriteCompletion> done;
+        while (!(done = writer.pollCompletion())) std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        develop.releasePixels();
+        develop.shutdown();
+        publishJpeg(*done);
+        LOGI("MULTIFRAME_STRIP_JPEG_DONE requestId=%llu success=%d totalMs=%.1f",
+             static_cast<unsigned long long>(requestId), done->success ? 1 : 0, wallMs(begin));
     };
     auto queueSubmit = [&](const VkSubmitInfo& info, VkFence fence) {
         vkCheck(ctx.vulkan.primaryQueue().submit(info, fence), "multiframe output queue submit");
@@ -438,6 +517,16 @@ void MfsrCaptureJob::runStages(Published& published) {
                                               tuning, dumpRzslRequested, queueSubmit, mergeSubmit);
         }
         if (work->awaitDurable) work->awaitDurable();  // outputs follow: the journal must be durable first
+        if (stripJpeg && stitched) {
+            try {
+                developStripJpeg(*stitched);
+            } catch (const std::exception& e) {
+                mergedJpeg.output.outputFd.reset();
+                failJpeg(std::string("strip_jpeg_failed: ") + e.what());
+                LOGE("MULTIFRAME_STRIP_JPEG_FAIL %s", e.what());
+            }
+            stripJpegPublished = true;
+        }
         // Merge timings feed both horizons (merged DNG and JPEG). Populate
         // here — not inside the merged-DNG gate below — so JPEG-only captures
         // (no merged DNG requested) still report the merge/alignment stages
@@ -1057,6 +1146,10 @@ void MfsrCaptureJob::runStages(Published& published) {
     if (!jpegPublished && jpegRequested) {
         mergedJpeg.output.outputFd.reset();
         failJpeg("merged_jpeg_not_started");
+    }
+    if (!stripJpegPublished) {
+        mergedJpeg.output.outputFd.reset();
+        failJpeg("strip_jpeg_not_started");
     }
     job->snapshot.reset();
 }
