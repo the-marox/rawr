@@ -209,6 +209,7 @@ internal fun LensSettings(state: SettingsUiState, dispatch: SettingsDispatch) {
         )
     }
     if (confirmReset) {
+        val context = androidx.compose.ui.platform.LocalContext.current
         AlertDialog(
             onDismissRequest = { confirmReset = false },
             title = { Text("Reset lenses?") },
@@ -216,6 +217,9 @@ internal fun LensSettings(state: SettingsUiState, dispatch: SettingsDispatch) {
             confirmButton = {
                 TextButton(onClick = {
                     dispatch.invoke(SetLensProfiles(null))
+                    // Each lens button starts on its first variant (Normal) again, not the one last used.
+                    context.getSharedPreferences("rawr_lens_groups", android.content.Context.MODE_PRIVATE)
+                        .edit().clear().apply()
                     confirmReset = false
                 }) { Text("Reset") }
             },

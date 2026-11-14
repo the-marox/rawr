@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 #include "color/FrameColorTransform.h"
@@ -21,6 +22,9 @@ struct RawSnapshot {
     metadata::FrameMetadataSnapshot metadata{};
     color::FrameColorTransform colorState{};
     std::vector<uint8_t> raw16;
+    // Block-CFA stills too large for a full-size JPEG: the half-size Bayer made straight from the blocks
+    // (before the in-place remosaic), which the JPEG develops from. Null otherwise.
+    std::shared_ptr<const RawSnapshot> jpegBayer;
 };
 
 }  // namespace rawrcam::imaging

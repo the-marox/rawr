@@ -9,6 +9,7 @@
 #include "imaging/CfaRemosaic.h"
 #include "imaging/CfaRemosaicFast.h"
 #include "imaging/RawSnapshot.h"
+#include "capture/single/StillBinning.h"
 
 namespace rawrcam::capture {
 // A block-CFA lens (CameraContextMetadata::cfaBlock > 1) hands stills over as
@@ -33,11 +34,28 @@ inline void remosaicBlockCfaStill(imaging::RawSnapshot& frame) {
     // 4x4 blocks at Standard (Xiaomi 200 MP): the generic remosaic takes ~16 s there, the fast path well under 1 s.
     const bool fast = context->cfaBlock == 4u && quality == imaging::CfaRemosaicQuality::Standard &&
                       frame.raw16.size() >= size_t(frame.width) * frame.height * 2u;
+    long long jpegMs = -1;
     if (fast) {
         const auto& b = context->baselineBlackLevelPhysicalRggb;
-        imaging::remosaicBlockCfaFast(reinterpret_cast<uint16_t*>(frame.raw16.data()), frame.width, frame.height,
-                                      context->cfaBlock, context->rawPreviewCfa, 0.25f * (b[0] + b[1] + b[2] + b[3]),
-                                      context->baselineWhiteLevel, threads);
+        auto* raw = reinterpret_cast<uint16_t*>(frame.raw16.data());
+        const auto model = imaging::buildBlockCfaModel(raw, frame.width, frame.height, context->cfaBlock,
+                                                       context->rawPreviewCfa, 0.25f * (b[0] + b[1] + b[2] + b[3]),
+                                                       context->baselineWhiteLevel, threads);
+        // Too large for a full-size JPEG (200 MP). Experimental, `adb shell setprop debug.rawr.jpeg_from_blocks 1`:
+        // its 50 MP Bayer comes straight from the blocks, before the remosaic below rewrites them for the DNG.
+        // Sharper and +2.5 dB on synthetic scenes, but it keeps sub-block colour texture (moire on a TV screen),
+        // so it stays opt-in until compared on real scenes. Default: the JPEG bins the remosaicked frame.
+        char fromBlocks[PROP_VALUE_MAX] = {};
+        if (jpegNeedsBinning(frame) && __system_property_get("debug.rawr.jpeg_from_blocks", fromBlocks) > 0 &&
+            fromBlocks[0] == '1') {
+            const auto jpegStart = std::chrono::steady_clock::now();
+            auto half = halfSizeBayerSnapshot(frame);
+            imaging::binBlockCfaToBayer(raw, model, reinterpret_cast<uint16_t*>(half->raw16.data()), threads);
+            frame.jpegBayer = std::move(half);
+            jpegMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - jpegStart)
+                         .count();
+        }
+        imaging::remosaicBlockCfaWithModel(raw, model, threads);
     } else {
         imaging::remosaicBlockCfa(frame.raw16, frame.width, frame.height, context->cfaBlock, context->rawPreviewCfa,
                                   threads, quality);
@@ -45,8 +63,8 @@ inline void remosaicBlockCfaStill(imaging::RawSnapshot& frame) {
     [[maybe_unused]] const long long ms =
         std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
     __android_log_print(ANDROID_LOG_INFO, "RawrCamNative",
-                        "STILL_CFA_REMOSAIC requestId=%llu raw=%ux%u block=%u quality=%s ms=%lld",
+                        "STILL_CFA_REMOSAIC requestId=%llu raw=%ux%u block=%u quality=%s ms=%lld jpegBayerMs=%lld",
                         static_cast<unsigned long long>(frame.requestId), frame.width, frame.height, context->cfaBlock,
-                        fast ? "fast" : quality == imaging::CfaRemosaicQuality::High ? "high" : "standard", ms);
+                        fast ? "fast" : quality == imaging::CfaRemosaicQuality::High ? "high" : "standard", ms, jpegMs);
 }
 }  // namespace rawrcam::capture

@@ -19,9 +19,8 @@ inline bool jpegNeedsBinning(const imaging::RawSnapshot& frame) {
            frame.raw16.size() >= size_t(frame.width) * frame.height * 2u;
 }
 
-// Bayer in, Bayer out at half size: each output pixel averages the four same-colour input pixels of its
-// 4x4 neighbourhood, so the CFA order, black and white levels are unchanged.
-inline std::shared_ptr<imaging::RawSnapshot> binBayerStill2x(const imaging::RawSnapshot& in) {
+// Half-size snapshot with the same metadata (geometry halved, Bayer); pixels allocated, not filled.
+inline std::shared_ptr<imaging::RawSnapshot> halfSizeBayerSnapshot(const imaging::RawSnapshot& in) {
     auto out = std::make_shared<imaging::RawSnapshot>();
     const uint32_t w = in.width / 2, h = in.height / 2;
     out->requestId = in.requestId;
@@ -41,6 +40,14 @@ inline std::shared_ptr<imaging::RawSnapshot> binBayerStill2x(const imaging::RawS
         out->metadata.cameraContext = context;
     }
     out->raw16.resize(size_t(w) * h * 2u);
+    return out;
+}
+
+// Bayer in, Bayer out at half size: each output pixel averages the four same-colour input pixels of its
+// 4x4 neighbourhood, so the CFA order, black and white levels are unchanged.
+inline std::shared_ptr<imaging::RawSnapshot> binBayerStill2x(const imaging::RawSnapshot& in) {
+    auto out = halfSizeBayerSnapshot(in);
+    const uint32_t w = out->width, h = out->height;
     const auto* src = reinterpret_cast<const uint16_t*>(in.raw16.data());
     auto* dst = reinterpret_cast<uint16_t*>(out->raw16.data());
     const uint32_t inW = in.width;

@@ -84,7 +84,13 @@ void SingleFrameCaptureJob::startCapturedOutputs(SingleFrameSnapshot snapshot) {
     if (const auto* jpeg = outputs_.jpegRequest()) {
         // 200 MP: the JPEG develops from a 50 MP binned copy; the DNG below keeps the full frame.
         auto developFrame = frame;
-        if (jpegNeedsBinning(*frame)) {
+        if (frame->jpegBayer) {
+            // Made from the block CFA before the remosaic (StillCfaRemosaic).
+            developFrame = frame->jpegBayer;
+            emit("STILL_JPEG_BINNED requestId=" + std::to_string(frame->requestId) + " raw=" +
+                 std::to_string(frame->width) + "x" + std::to_string(frame->height) + " jpeg=" +
+                 std::to_string(developFrame->width) + "x" + std::to_string(developFrame->height) + " source=blocks");
+        } else if (jpegNeedsBinning(*frame)) {
             const auto start = std::chrono::steady_clock::now();
             developFrame = binBayerStill2x(*frame);
             const long long ms =
