@@ -69,6 +69,10 @@ class MultiframeOutputAdapter final {
     // mergedView: the RGBA16F merge output, or (parameters.sourceIsCfaR32f) a
     // normalized R32F CFA plane of the same extent.
     PackedRaw16 projectMerged(VkImage mergedImage, VkImageView mergedView, const CfaProjectionParameters& parameters);
+    // Same projection without the host copy: the packed rows stay in the mapped readback buffer, valid until the
+    // next call on this adapter (strip merges stitch straight from it instead of allocating a copy per strip).
+    const std::uint16_t* projectMergedMapped(VkImage mergedImage, VkImageView mergedView,
+                                             const CfaProjectionParameters& parameters);
     // Copies full camera-linear RGB, applying LSC once and deriving clip evidence
     // before LSC/WB. When sensorClip.refRawView is set and geometry matches
     // (scale 1x), reference sensor bits are ORed into the mask (1A). The
@@ -94,6 +98,7 @@ class MultiframeOutputAdapter final {
    private:
     std::uint32_t memoryType(std::uint32_t bits, VkMemoryPropertyFlags flags) const;
     void recordReadback(VkImage source, bool sourceIsProjection);
+    void runProjection(VkImage mergedImage, VkImageView mergedView, const CfaProjectionParameters& parameters);
     PackedRaw16 copyMapped() const;
     void prepare(VkImageView mergedView, std::uint32_t lscWidth, std::uint32_t lscHeight,
                  const std::vector<float>& lscGains, const SensorClipParams& sensorClip, bool packedCfa);

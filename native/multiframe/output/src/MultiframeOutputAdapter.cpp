@@ -287,6 +287,18 @@ PackedRaw16 MultiframeOutputAdapter::readBase(VkImage rawR16Uint) {
 
 PackedRaw16 MultiframeOutputAdapter::projectMerged(VkImage mergedImage, VkImageView mergedView,
                                                    const CfaProjectionParameters& parameters) {
+    runProjection(mergedImage, mergedView, parameters);
+    return copyMapped();
+}
+
+const std::uint16_t* MultiframeOutputAdapter::projectMergedMapped(VkImage mergedImage, VkImageView mergedView,
+                                                                  const CfaProjectionParameters& parameters) {
+    runProjection(mergedImage, mergedView, parameters);
+    return static_cast<const std::uint16_t*>(mapped_);
+}
+
+void MultiframeOutputAdapter::runProjection(VkImage mergedImage, VkImageView mergedView,
+                                            const CfaProjectionParameters& parameters) {
     if (!device_ || !mergedImage || !mergedView || parameters.cfa > 3u ||
         !(std::isfinite(parameters.codeScale) && parameters.codeScale >= 1.0f)) {
         throw std::invalid_argument("multiframe output: invalid merged image");
@@ -352,7 +364,6 @@ PackedRaw16 MultiframeOutputAdapter::projectMerged(VkImage mergedImage, VkImageV
     submitInfo.pCommandBuffers = &command_;
     submit_(submitInfo, fence_);
     check(vkWaitForFences(device_, 1, &fence_, VK_TRUE, UINT64_MAX), "multiframe output projection fence");
-    return copyMapped();
 }
 
 void MultiframeOutputAdapter::prepareRgb(VkImageView mergedView, std::uint32_t lscWidth,

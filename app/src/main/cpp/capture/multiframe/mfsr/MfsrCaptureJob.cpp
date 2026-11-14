@@ -536,12 +536,6 @@ void MfsrCaptureJob::runStages(Published& published) {
     try {
         auto& coordinator = ctx.burstCoordinator;
         if (stripMode) {
-            const auto waitBegin = std::chrono::steady_clock::now();
-            arenaWarm.join();
-            LOGI("MULTIFRAME_STRIP_ARENA_WARM requestId=%llu warmMs=%.1f waitedMs=%.1f",
-                 static_cast<unsigned long long>(requestId), arenaWarm.ms, wallMs(waitBegin));
-        }
-        if (stripMode) {
             // Each window: its rows of every frame from the journal, merged and
             // projected like a whole burst, then crossfaded into the full CFA.
             const auto stripsBegin = std::chrono::steady_clock::now();
@@ -549,16 +543,16 @@ void MfsrCaptureJob::runStages(Published& published) {
             packed.width = ctx.rawWidth;
             packed.height = ctx.rawHeight;
             packed.rowStrideBytes = ctx.rawWidth * sizeof(std::uint16_t);
-            // The 400 MB stitch target: zero-filling it took ~1.8 s under memory pressure before the first strip
-            // could start. Allocate it on a helper thread while the first strip merges on the GPU.
-            auto fullAlloc = std::async(std::launch::async, [&packed, bytes = std::size_t(packed.rowStrideBytes) *
-                                                                            ctx.rawHeight]() {
-                const auto begin = std::chrono::steady_clock::now();
-                packed.pixels.resize(bytes);
-                return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - begin).count();
-            });
-            std::uint16_t* full = nullptr;
-            auto& fullPacked = packed;  // the loop's own `packed` (one strip's projection) shadows it
+            // The 400 MB stitch target. Allocating it on a helper thread during the first strip slowed the merge
+            // (memory reclaim competing with the GPU); it is filled here instead, while the arena warm finishes.
+            const auto allocBegin = std::chrono::steady_clock::now();
+            packed.pixels.resize(std::size_t(packed.rowStrideBytes) * ctx.rawHeight);
+            const double allocMs = wallMs(allocBegin);
+            const auto waitBegin = std::chrono::steady_clock::now();
+            arenaWarm.join();
+            LOGI("MULTIFRAME_STRIP_PREP requestId=%llu allocMs=%.1f warmMs=%.1f warmWaitedMs=%.1f",
+                 static_cast<unsigned long long>(requestId), allocMs, arenaWarm.ms, wallMs(waitBegin));
+            auto* full = reinterpret_cast<std::uint16_t*>(packed.pixels.data());
             const auto hotPixels = job->referenceMetadata.hotPixelMap;
             rawr::raw_gpu_pipeline::BurstStageTimings total{};
             for (const auto& window : strips) {
@@ -597,16 +591,15 @@ void MfsrCaptureJob::runStages(Published& published) {
                     outputAdapterReady = true;
                 }
                 const auto projectBegin = std::chrono::steady_clock::now();
-                const auto packed = projectMerged(merged);
+                // Stitch straight from the mapped readback: a host copy per strip (80 MB allocated and freed)
+                // cost ~0.36 s a strip under memory pressure.
+                const auto projection = projectionFor(merged);
+                const std::uint16_t* stripRows =
+                    projection.sourceIsCfaR32f
+                        ? outputAdapter.projectMergedMapped(merged.cfaImage, merged.cfaView, projection)
+                        : outputAdapter.projectMergedMapped(merged.output, merged.outputView, projection);
                 projectMs += wallMs(projectBegin);
-                if (!full) {
-                    const auto waitBegin = std::chrono::steady_clock::now();
-                    const double allocMs = fullAlloc.get();
-                    full = reinterpret_cast<std::uint16_t*>(fullPacked.pixels.data());
-                    LOGI("MULTIFRAME_STRIP_ALLOC requestId=%llu allocMs=%.1f waitedMs=%.1f",
-                         static_cast<unsigned long long>(requestId), allocMs, wallMs(waitBegin));
-                }
-                writeStrip(full, ctx.rawWidth, window, reinterpret_cast<const std::uint16_t*>(packed.pixels.data()));
+                writeStrip(full, ctx.rawWidth, window, stripRows);
                 projectionTiming.finish();
                 const auto& t = merged.timings;
                 CAPTURE_DEBUG_LOG("MERGE_STRIP_STAGES requestId=%llu y0=%u initMs=%.3f noiseMs=%.3f refMs=%.3f prepMs=%.3f alignMs=%.3f kernelMs=%.3f robustMs=%.3f accumMs=%.3f finalizeMs=%.3f totalMs=%.3f",
