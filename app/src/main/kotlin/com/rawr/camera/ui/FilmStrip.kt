@@ -3,6 +3,7 @@ package com.rawr.camera.ui
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -86,22 +87,16 @@ internal fun FilmStrip(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         when (mode) {
-            FilmStripMode.Collapsed -> {
-                FilmCollapsedRow(
-                    presetName = quick.activePresetName,
-                    modified = quick.modified,
-                    onOpenProfiles = { mode = FilmStripMode.Profiles },
-                    onOpenParams = { mode = FilmStripMode.Config }
-                )
-            }
-            FilmStripMode.Profiles -> {
-                FilmProfilesRow(
+            FilmStripMode.Collapsed, FilmStripMode.Profiles -> {
+                // Same layout as LOOK/PARAMS: FILM above PARAMS; FILM opens a preset grid above it.
+                FilmFixedColumn(
                     quick = quick,
-                    onBack = { mode = FilmStripMode.Collapsed },
-                    onSelect = {
-                        onSelectPreset(it)
-                        // Stay in place (sticky) for rapid A/B comparison.
+                    presetsOpen = mode == FilmStripMode.Profiles,
+                    onToggleProfiles = {
+                        mode = if (mode == FilmStripMode.Profiles) FilmStripMode.Collapsed else FilmStripMode.Profiles
                     },
+                    // Stays open after a pick (sticky) for quick A/B comparison; tap FILM to close.
+                    onSelect = onSelectPreset,
                     onOpenParams = { mode = FilmStripMode.Config }
                 )
             }
@@ -141,108 +136,108 @@ internal fun FilmStrip(
 }
 
 @Composable
-private fun FilmCollapsedRow(
-    presetName: String,
-    modified: Boolean,
-    onOpenProfiles: () -> Unit,
+private fun FilmFixedColumn(
+    quick: FilmSimQuickState,
+    presetsOpen: Boolean,
+    onToggleProfiles: () -> Unit,
+    onSelect: (String) -> Unit,
     onOpenParams: () -> Unit
 ) {
     val haptics = LocalCaptureHaptics.current
-    // Same five-column grid as the exposure row below: the look sits over WB, PARAMS over AF.
+    val showHelp = rememberControlHelp()
     BoxWithConstraints(
         Modifier
             .fillMaxWidth()
             .padding(horizontal = CaptureDimens.CompactParamRowEdgeInset)
             .padding(bottom = CaptureDimens.ControlGap)
     ) {
-    val cells = paramsCellWidths(maxWidth)
-    Row(
-        Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(CaptureDimens.ControlGap, Alignment.End),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            Modifier
-                .width(cells[3])
-                .height(StripDimens.ParamRowHeight)
-                .viewfinderChip()
-                .testTag(CaptureTestTags.FILM_STRIP_PROFILE)
-                .captureClickable(shape = CaptureTextRippleShape) {
-                    haptics.selection()
-                    onOpenProfiles()
-                }.semantics {
-                    contentDescription = "Film preset $presetName. Tap to choose preset."
-                    onClick {
-                        haptics.selection()
-                        onOpenProfiles()
-                        true
-                    }
-                },
-            contentAlignment = Alignment.Center
+        val cells = paramsCellWidths(maxWidth)
+        val gap = CaptureDimens.ControlGap
+        Column(
+            Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.End,
+            verticalArrangement = Arrangement.spacedBy(gap)
         ) {
-            StripTwoLineItem(
-                valueText = if (modified) "$presetName •" else presetName,
-                valueColor = if (modified) CaptureColors.AccentSoft else Color.White.copy(alpha = .95f),
-                labelText = "FILM"
-            )
-        }
-        StripParamsEntry(onOpenParams, Modifier.width(cells[4]).height(StripDimens.ParamRowHeight))
-    }
-    }
-}
-
-@Composable
-private fun FilmProfilesRow(
-    quick: FilmSimQuickState,
-    onBack: () -> Unit,
-    onSelect: (String) -> Unit,
-    onOpenParams: () -> Unit
-) {
-    val haptics = LocalCaptureHaptics.current
-    StripNavigationRow(onBack, Modifier.padding(bottom = 2.dp)) {
-        LazyRow(
-            Modifier
-                .weight(1f)
-                .height(CaptureDimens.CompactParamRowHeight),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(StripDimens.ParamSpacing, Alignment.End)
-        ) {
-            items(quick.presets, key = { it.id }) { preset ->
-                val isSelected = preset.id == quick.selectedPresetId
-                Box(
+            if (presetsOpen) {
+                val gridWidth = cells[1] + cells[2] + cells[3] + cells[4] + gap * 3
+                val cellWidth = (gridWidth - gap * 2) / 3
+                Column(
                     Modifier
-                        .height(CaptureDimens.CompactParamRowHeight)
-                        .viewfinderChip(active = isSelected)
-                        .testTag(CaptureTestTags.filmPreset(preset.id))
-                        .captureClickable(shape = CaptureTextRippleShape) {
-                            haptics.selection()
-                            onSelect(preset.id)
-                        }.semantics {
-                            contentDescription = "Film preset ${preset.label}" +
-                                if (isSelected) ", active" else ""
-                            role = Role.RadioButton
-                            selected = isSelected
-                            onClick {
-                                haptics.selection()
-                                onSelect(preset.id)
-                                true
-                            }
-                        }.padding(horizontal = 10.dp),
-                    contentAlignment = Alignment.Center
+                        .width(gridWidth)
+                        .background(Color.Black.copy(alpha = .62f), androidx.compose.foundation.shape.RoundedCornerShape(14.dp))
+                        .padding(gap),
+                    verticalArrangement = Arrangement.spacedBy(gap)
                 ) {
-                    Text(
-                        preset.label,
-                        color = if (isSelected) CaptureColors.Accent else Color.White.copy(alpha = .62f),
-                        fontFamily = CaptureMono,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 10.sp,
-                        maxLines = 1,
-                        style = ViewfinderTextStyle
-                    )
+                    quick.presets.chunked(3).forEach { rowPresets ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
+                            rowPresets.forEach { preset ->
+                                val isSelected = preset.id == quick.selectedPresetId
+                                Box(
+                                    Modifier
+                                        .width(cellWidth)
+                                        .height(CaptureDimens.CompactParamRowHeight)
+                                        .viewfinderChip(active = isSelected)
+                                        .testTag(CaptureTestTags.filmPreset(preset.id))
+                                        .captureClickable(shape = CaptureTextRippleShape) {
+                                            haptics.selection()
+                                            onSelect(preset.id)
+                                        }.semantics {
+                                            contentDescription = "Film preset ${preset.label}" +
+                                                if (isSelected) ", active" else ""
+                                            role = Role.RadioButton
+                                            selected = isSelected
+                                        }.padding(horizontal = 6.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        preset.label,
+                                        color = if (isSelected) CaptureColors.Accent else Color.White.copy(alpha = .85f),
+                                        fontFamily = CaptureMono,
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 10.sp,
+                                        maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                        style = ViewfinderTextStyle
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
+            val presetName = quick.activePresetName
+            Box(
+                Modifier
+                    .width(cells[4])
+                    .height(StripDimens.ParamRowHeight)
+                    .testTag(CaptureTestTags.FILM_STRIP_PROFILE)
+                    .captureCombinedClickable(
+                        shape = CaptureTextRippleShape,
+                        onLongClickLabel = "Explain",
+                        onLongClick = {
+                            showHelp(
+                                "Film: the film stock preset used for the JPEG and preview. A dot means its " +
+                                    "parameters were changed. Tap to pick another; PARAMS edits the current one."
+                            )
+                        }
+                    ) {
+                        haptics.selection()
+                        onToggleProfiles()
+                    }.semantics {
+                        contentDescription = "Film preset $presetName. " +
+                            if (presetsOpen) "Tap to close." else "Tap to choose preset."
+                    }
+                    .viewfinderChip(active = presetsOpen),
+                contentAlignment = Alignment.Center
+            ) {
+                StripTwoLineItem(
+                    valueText = if (quick.modified) "$presetName •" else presetName,
+                    valueColor = if (quick.modified) CaptureColors.AccentSoft else Color.White.copy(alpha = .95f),
+                    labelText = "FILM"
+                )
+            }
+            StripParamsEntry(onOpenParams, Modifier.width(cells[4]).height(StripDimens.ParamRowHeight))
         }
-        StripParamsEntry(onOpenParams, Modifier.padding(start = StripDimens.ParamSpacing))
     }
 }
 
