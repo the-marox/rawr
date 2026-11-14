@@ -598,6 +598,19 @@ val SettingsValues.activeMultiframeTuning: MultiframeTuning
 val SettingsValues.activeLensHasOwnMultiframeTuning: Boolean
     get() = lastLensId?.let { it in multiframeTuningByLens } == true
 
+/** Most full-size frames the lens in use may merge per its profile ([lenses] = device defaults); 0 = no limit. */
+fun SettingsValues.activeLensMergeFrameLimit(lenses: List<LensProfile>): Int {
+    val id = lastLensId ?: return 0
+    return effectiveLensProfiles(lenses).firstOrNull { it.name.trim() == id }?.streams?.photo?.mergeFrameLimit ?: 0
+}
+
+/** Frames the next merged photo on the lens in use takes: the setting, capped by the lens profile. */
+fun SettingsValues.activeMultiframeFrames(lenses: List<LensProfile>): Int {
+    val wanted = activeMultiframeTuning.maxFrames
+    val limit = activeLensMergeFrameLimit(lenses)
+    return if (limit > 0) minOf(wanted, limit) else wanted
+}
+
 /** Applies [edit] to the tuning that the lens in use reads: its own entry, or the global one. */
 fun SettingsValues.editActiveMultiframeTuning(edit: (MultiframeTuning) -> MultiframeTuning): SettingsValues {
     val lens = lastLensId

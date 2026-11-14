@@ -77,7 +77,7 @@ internal fun SettingsValues.withCapturePreferenceChanges(
     selfTimer = if (before.selfTimer != after.selfTimer) after.selfTimer else selfTimer
 )
 
-internal fun SettingsValues.capturePreferences() = com.rawr.camera.architecture.RestoreCapturePreferences(
+internal fun SettingsValues.capturePreferences(lenses: List<LensProfile> = emptyList()) = com.rawr.camera.architecture.RestoreCapturePreferences(
     jpegEnabled = jpegEnabled,
     dngEnabled = dngEnabled,
     grid = gridMode,
@@ -88,6 +88,7 @@ internal fun SettingsValues.capturePreferences() = com.rawr.camera.architecture.
     filmSimEnabled = filmSimEnabled,
     experimentalMultiframeEnabled = experimentalMultiframeEnabled,
     multiframeAlgorithm = activeMultiframeTuning.mergeAlgorithm,
+    multiframeFrames = activeMultiframeFrames(lenses),
     captureLayout = captureControlLayout,
     captureMode = captureModeForId(captureModeId),
     videoResolution = videoResolutionForId(videoResolutionId),

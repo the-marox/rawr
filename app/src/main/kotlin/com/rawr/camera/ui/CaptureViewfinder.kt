@@ -207,7 +207,13 @@ internal fun CaptureViewfinder(
                 orientation = state.orientation,
                 modifier = Modifier.align(Alignment.TopCenter).padding(top = 56.dp),
                 fullSizeBinnedStills = state.fullSizeBinnedStills,
-                fullSizeBurstsToSingle = state.fullSizeBurstsToSingle
+                fullSizeBurstsToSingle = state.fullSizeBurstsToSingle,
+                multiframeHint =
+                    if (state.experimentalMultiframeEnabled && state.captureMode == CaptureMode.Photo)
+                        multiframeHintText(state.multiframeAlgorithm, state.multiframeFrames)
+                    else null,
+                multiframeHintKey = listOf(state.selectedLensId, state.experimentalMultiframeEnabled,
+                    state.multiframeAlgorithm, state.multiframeFrames)
             )
         }
         state.selfTimerRemainingMs?.let { remaining ->

@@ -18,6 +18,7 @@ object CaptureReducer {
                 filmSimEnabled = action.filmSimEnabled,
                 experimentalMultiframeEnabled = action.experimentalMultiframeEnabled,
                 multiframeAlgorithm = action.multiframeAlgorithm,
+                multiframeFrames = action.multiframeFrames,
                 captureLayout = action.captureLayout,
                 captureMode = action.captureMode,
                 videoResolution = action.videoResolution,

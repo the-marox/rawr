@@ -84,7 +84,7 @@ class CaptureViewModel(application: Application) : AndroidViewModel(application)
             videoResolutionId = resolution?.persistedId() ?: current.videoResolutionId,
             videoFps = fps?.takeIf { it == 24 || it == 30 } ?: current.videoFps
         ) }
-        controller.dispatch(next.capturePreferences())
+        controller.dispatch(next.capturePreferences(DeviceLensDefaults.lenses))
         settingsSync.updatePreviewCrop(controller.state.value.captureMode, controller.state.value.videoResolution)
     }
 
@@ -187,7 +187,7 @@ class CaptureViewModel(application: Application) : AndroidViewModel(application)
         refreshLatestGalleryImage()
         viewModelScope.launch { recordingBackend.recoverInterrupted() }
         viewModelScope.launch {
-            settingsEditor.values.map { it.capturePreferences() }.distinctUntilChanged().collect { preferences ->
+            settingsEditor.values.map { it.capturePreferences(DeviceLensDefaults.lenses) }.distinctUntilChanged().collect { preferences ->
                 controller.dispatch(preferences)
                 settingsSync.updatePreviewCrop(controller.state.value.captureMode, controller.state.value.videoResolution)
             }

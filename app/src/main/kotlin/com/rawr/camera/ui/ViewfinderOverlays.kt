@@ -268,6 +268,11 @@ internal fun ProfileErrorNotice(error: String, orientation: Orientation, modifie
 }
 
 private const val FULL_SIZE_FALLBACK_NOTICE_MS = 3_000L
+private const val MULTIFRAME_HINT_MS = 1_200L
+
+/** The brief multiframe note after a lens switch: algorithm and frame count, or a single photo. */
+internal fun multiframeHintText(algorithm: com.rawr.camera.settings.model.MultiframeMergeAlgorithm, frames: Int): String =
+    if (frames <= 1) "Single photo · lens limit" else "${algorithm.label} · $frames frames"
 
 /**
  * The one capture status pill, in priority order: a long exposure's countdown
@@ -285,8 +290,23 @@ internal fun CaptureStatusNotice(
     orientation: Orientation,
     modifier: Modifier = Modifier,
     fullSizeBinnedStills: Long = 0L,
-    fullSizeBurstsToSingle: Long = 0L
+    fullSizeBurstsToSingle: Long = 0L,
+    multiframeHint: String? = null,
+    multiframeHintKey: Any? = null
 ) {
+    // A moment's multiframe note when the lens (or the multiframe setup) changes; not on first show.
+    var lensHint by remember { mutableStateOf<String?>(null) }
+    var hintPrimed by remember { mutableStateOf(false) }
+    LaunchedEffect(multiframeHintKey) {
+        if (!hintPrimed) {
+            hintPrimed = true
+            return@LaunchedEffect
+        }
+        lensHint = multiframeHint
+        if (multiframeHint == null) return@LaunchedEffect
+        kotlinx.coroutines.delay(MULTIFRAME_HINT_MS)
+        lensHint = null
+    }
     var seenStills by remember { mutableLongStateOf(fullSizeBinnedStills) }
     var seenBursts by remember { mutableLongStateOf(fullSizeBurstsToSingle) }
     var fallback by remember { mutableStateOf<String?>(null) }
@@ -323,6 +343,7 @@ internal fun CaptureStatusNotice(
         holdActive -> "Hold still"
         restoringPreview -> "Restoring preview…"
         fallback != null -> fallback
+        lensHint != null -> lensHint
         longExposure.deferredNs > 0L -> buildString {
             append("Long exposure · ")
             append(ExposureFormat.formatShutterNs(longExposure.deferredNs))

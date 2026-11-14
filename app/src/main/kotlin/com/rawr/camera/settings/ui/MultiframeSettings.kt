@@ -2,6 +2,7 @@ package com.rawr.camera.settings.ui
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
 import com.rawr.camera.settings.architecture.*
 import com.rawr.camera.settings.model.*
 
@@ -11,6 +12,7 @@ internal fun MultiframeSettings(state: SettingsUiState, dispatch: SettingsDispat
     val tuning = state.values.activeMultiframeTuning
     val lensId = state.values.lastLensId
     val ownTuning = state.values.activeLensHasOwnMultiframeTuning
+    val lensFrameLimit = state.values.activeLensMergeFrameLimit(LocalLensHardware.current.deviceDefaults)
     val spec = { parameter: MultiframeNumericParameter -> MultiframeSpecs.forParameter(parameter) }
     val rexture = tuning.mergeAlgorithm == MultiframeMergeAlgorithm.Rexture
     SettingsPageContainer {
@@ -102,6 +104,15 @@ internal fun MultiframeSettings(state: SettingsUiState, dispatch: SettingsDispat
             }
             SettingDivider()
             MultiframeSlider(spec(MultiframeNumericParameter.MaxFrames), tuning, enabled, dispatch)
+            if (lensFrameLimit in 1 until tuning.maxFrames) {
+                androidx.compose.material3.Text(
+                    if (lensFrameLimit == 1) "Limited to 1 frame by this lens profile (single photo)."
+                    else "Limited to $lensFrameLimit frames by this lens profile.",
+                    style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = SettingsRowHorizontalPadding, vertical = SettingsSliderVerticalPadding)
+                )
+            }
         }
     }
 }
