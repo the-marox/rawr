@@ -451,6 +451,20 @@ void MfsrCaptureJob::runStages(Published& published) {
                                           : outputAdapter.projectMerged(merged.output, merged.outputView, projection);
     };
     std::optional<rawr::raw_multiframe_output::PackedRaw16> stitched;
+    // Binned 50 MP snapshot for the strip JPEG; with a merged DNG it waits until the DNG is written.
+    std::shared_ptr<rawrcam::imaging::RawSnapshot> stripHalf;
+    auto runStripJpeg = [&]() {
+        if (!stripHalf) return;
+        try {
+            renderStripJpeg(std::move(stripHalf));
+        } catch (const std::exception& e) {
+            mergedJpeg.output.outputFd.reset();
+            failJpeg(std::string("strip_jpeg_failed: ") + e.what());
+            LOGE("MULTIFRAME_STRIP_JPEG_FAIL %s", e.what());
+        }
+        stripHalf.reset();
+        stripJpegPublished = true;
+    };
     try {
         auto& coordinator = ctx.burstCoordinator;
         if (stripMode) {
@@ -525,7 +539,6 @@ void MfsrCaptureJob::runStages(Published& published) {
         }
         if (work->awaitDurable) work->awaitDurable();  // outputs follow: the journal must be durable first
         if (stripMode) {
-            std::shared_ptr<rawrcam::imaging::RawSnapshot> stripHalf;
             if (stripJpeg && stitched) try {
                     stripHalf = binStripHalf(*stitched);
                 } catch (const std::exception& e) {
@@ -544,16 +557,9 @@ void MfsrCaptureJob::runStages(Published& published) {
             LOGI("MULTIFRAME_STRIP_RELEASE requestId=%llu arenaMB=%.0f stitchedKept=%d availMB=%.0f",
                  static_cast<unsigned long long>(requestId), arenaMb, stitched ? 1 : 0,
                  double(readMemAvailableBytes()) / (1024.0 * 1024.0));
-            if (stripHalf) {
-                try {
-                    renderStripJpeg(std::move(stripHalf));
-                } catch (const std::exception& e) {
-                    mergedJpeg.output.outputFd.reset();
-                    failJpeg(std::string("strip_jpeg_failed: ") + e.what());
-                    LOGE("MULTIFRAME_STRIP_JPEG_FAIL %s", e.what());
-                }
-                stripJpegPublished = true;
-            }
+            // Without a merged DNG the JPEG renders now; with one, the 400 MB stitched CFA is written and
+            // freed first (runStripJpeg after the DNG await) so the render never sits on top of it.
+            if (!mergedRequested) runStripJpeg();
         }
         // Merge timings feed both horizons (merged DNG and JPEG). Populate
         // here — not inside the merged-DNG gate below — so JPEG-only captures
@@ -1166,6 +1172,13 @@ void MfsrCaptureJob::runStages(Published& published) {
     };
     awaitDng(baseWriter, baseStarted, basePublished);
     awaitDng(mergedWriter, mergedStarted, mergedPublished);
+    if (stripHalf) {
+        mergedFrame.reset();
+        stitched.reset();
+        LOGI("MULTIFRAME_STRIP_JPEG_AFTER_DNG requestId=%llu availMB=%.0f", static_cast<unsigned long long>(requestId),
+             double(readMemAvailableBytes()) / (1024.0 * 1024.0));
+        runStripJpeg();
+    }
     if (!basePublished) failDng(baseDisplayName, "base_dng_not_started");
     if (!mergedPublished) {
         mergedDng.outputFd.reset();
