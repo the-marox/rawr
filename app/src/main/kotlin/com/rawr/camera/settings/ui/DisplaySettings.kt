@@ -8,6 +8,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 import com.rawr.camera.model.CaptureControlLayout
 import com.rawr.camera.model.ControlSurfaceStyle
 import com.rawr.camera.model.GridMode
@@ -139,6 +146,91 @@ internal fun ControlStyleSettings(state: SettingsUiState, dispatch: SettingsDisp
                 }
             )
         }
+        SettingsGroup(
+            title = "Theme",
+            description = "LEICA is the default. The others only change the accent; editing any colour below makes it CUSTOM."
+        ) {
+            com.rawr.camera.ui.ThemePreset.entries.forEachIndexed { index, preset ->
+                if (index > 0) SettingDivider()
+                SettingsSelectionRow(
+                    title = preset.label,
+                    selected = com.rawr.camera.ui.CapturePalette.preset == preset,
+                    testTag = SettingsTestTags.row("ControlStyle", "theme_${preset.name.lowercase()}"),
+                    onClick = {
+                        haptics.detent()
+                        com.rawr.camera.ui.CapturePalette.selectPreset(preset)
+                    }
+                )
+            }
+        }
+        SettingsGroup(title = "Colours", description = "Tap a colour to enter its hex value (RRGGBB).") {
+            com.rawr.camera.ui.ThemeColor.entries.forEachIndexed { index, color ->
+                if (index > 0) SettingDivider()
+                ThemeColorRow(color)
+            }
+            SettingDivider()
+            SettingsRow(
+                "Reset to LEICA",
+                testTag = SettingsTestTags.row("ControlStyle", "theme_reset"),
+                onClick = {
+                    haptics.detent()
+                    com.rawr.camera.ui.CapturePalette.reset()
+                }
+            )
+        }
+    }
+}
+
+@Composable
+private fun ThemeColorRow(color: com.rawr.camera.ui.ThemeColor) {
+    val palette = com.rawr.camera.ui.CapturePalette
+    val current = palette.color(color)
+    var editing by remember { mutableStateOf(false) }
+    SettingsRow(
+        title = color.label,
+        value = "#" + palette.hex(current),
+        supportingText = color.description,
+        testTag = SettingsTestTags.row("ControlStyle", "theme_color_${color.name.lowercase()}"),
+        onClick = { editing = true },
+        trailing = {
+            val shape = RoundedCornerShape(6.dp)
+            Box(
+                Modifier
+                    .size(28.dp)
+                    .background(current, shape)
+                    .border(1.dp, Color(0xFF5A5A5A), shape)
+            )
+        }
+    )
+    if (editing) {
+        var text by remember { mutableStateOf(palette.hex(current)) }
+        val parsed = palette.parseHex(text)
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { editing = false },
+            title = { Text(color.label) },
+            text = {
+                androidx.compose.material3.OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it.take(7) },
+                    singleLine = true,
+                    isError = parsed == null,
+                    prefix = { Text("#") },
+                    supportingText = { Text(if (parsed == null) "6 hex digits, e.g. E2001A" else color.description) }
+                )
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(
+                    enabled = parsed != null,
+                    onClick = {
+                        parsed?.let { palette.setColor(color, it) }
+                        editing = false
+                    }
+                ) { Text("OK") }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { editing = false }) { Text("Cancel") }
+            }
+        )
     }
 }
 

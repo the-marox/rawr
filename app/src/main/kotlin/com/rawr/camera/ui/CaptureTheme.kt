@@ -24,6 +24,7 @@ private fun ExposeTestTags(content: @Composable () -> Unit) {
 
 @Composable
 fun CaptureTheme(content: @Composable () -> Unit) {
+    CapturePalette.init(androidx.compose.ui.platform.LocalContext.current)
     MaterialTheme(
         colorScheme =
             darkColorScheme(
