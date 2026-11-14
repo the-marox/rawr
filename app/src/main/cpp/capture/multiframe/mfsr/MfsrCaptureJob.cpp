@@ -297,12 +297,17 @@ void MfsrCaptureJob::runStages(Published& published) {
         const float toSensor = 1.0f / (4.0f * codeScale);
         for (std::uint32_t y = 0; y < h; ++y) {
             const std::uint32_t sy = (y >> 1) * 4u + (y & 1u);
-            const std::uint16_t* r0 = src + std::size_t(sy) * inW;
-            const std::uint16_t* r1 = src + std::size_t(sy + 2u) * inW;
+            // Uniform half-size grid (output x at sensor 2x + 0.5): same-colour samples weighted 3:1 towards
+            // the nearer one; a plain 2x2 mean leaves a 2-pixel pattern ("little squares") in the JPEG.
+            const bool yOdd = (y & 1u) != 0u;
+            const std::uint16_t* rn = src + std::size_t(yOdd ? sy + 2u : sy) * inW;
+            const std::uint16_t* rf = src + std::size_t(yOdd ? sy : sy + 2u) * inW;
             std::uint16_t* o = dst + std::size_t(y) * w;
             for (std::uint32_t x = 0; x < w; ++x) {
                 const std::uint32_t sx = (x >> 1) * 4u + (x & 1u);
-                const float sum = float(r0[sx]) + float(r0[sx + 2u]) + float(r1[sx]) + float(r1[sx + 2u]);
+                const std::uint32_t xn = (x & 1u) ? sx + 2u : sx, xf = (x & 1u) ? sx : sx + 2u;
+                const float sum = (9.0f * float(rn[xn]) + 3.0f * (float(rn[xf]) + float(rf[xn])) + float(rf[xf])) *
+                                  0.25f;
                 o[x] = std::uint16_t(std::clamp(sum * toSensor + 0.5f, 0.0f, 65535.0f));
             }
         }
@@ -570,8 +575,7 @@ void MfsrCaptureJob::runStages(Published& published) {
             LOGI("MULTIFRAME_STRIP_RELEASE requestId=%llu arenaMB=%.0f stitchedKept=%d availMB=%.0f",
                  static_cast<unsigned long long>(requestId), arenaMb, stitched ? 1 : 0,
                  double(readMemAvailableBytes()) / (1024.0 * 1024.0));
-            // Without a merged DNG the JPEG renders now; with one, the 400 MB stitched CFA is written and
-            // freed first (runStripJpeg after the DNG await) so the render never sits on top of it.
+            // Without a merged DNG the JPEG renders now; with one, once the DNG write has started (below).
             if (!mergedRequested) runStripJpeg();
         }
         // Merge timings feed both horizons (merged DNG and JPEG). Populate
@@ -1183,15 +1187,19 @@ void MfsrCaptureJob::runStages(Published& published) {
         publishDng(*done);
         published = true;
     };
-    awaitDng(baseWriter, baseStarted, basePublished);
-    awaitDng(mergedWriter, mergedStarted, mergedPublished);
+    // Strip JPEG develops while the merged DNG writes: the arena is gone by now and the render only needs the
+    // 50 MP half-size copy. (The "1.3 GB free" read right after the arena release was the kernel lagging; a
+    // moment later 4.8+ GB were free with the 400 MB stitched CFA still held.) The DNG writer keeps its own ref.
     if (stripHalf) {
         mergedFrame.reset();
         stitched.reset();
-        LOGI("MULTIFRAME_STRIP_JPEG_AFTER_DNG requestId=%llu availMB=%.0f", static_cast<unsigned long long>(requestId),
+        LOGI("MULTIFRAME_STRIP_JPEG_WITH_DNG requestId=%llu dngWriting=%d availMB=%.0f",
+             static_cast<unsigned long long>(requestId), mergedStarted && !mergedPublished ? 1 : 0,
              double(readMemAvailableBytes()) / (1024.0 * 1024.0));
         runStripJpeg();
     }
+    awaitDng(baseWriter, baseStarted, basePublished);
+    awaitDng(mergedWriter, mergedStarted, mergedPublished);
     if (!basePublished) failDng(baseDisplayName, "base_dng_not_started");
     if (!mergedPublished) {
         mergedDng.outputFd.reset();

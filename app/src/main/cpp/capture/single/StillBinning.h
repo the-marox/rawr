@@ -63,9 +63,17 @@ inline std::shared_ptr<imaging::RawSnapshot> binBayerStill2x(const imaging::RawS
                 const uint16_t* r0 = src + size_t(sy) * inW;
                 const uint16_t* r1 = src + size_t(sy + 2u) * inW;
                 uint16_t* o = dst + size_t(y) * w;
+                // Uniform half-size grid: output pixel x sits at sensor 2x + 0.5, so the two same-colour
+                // samples are weighted 3:1 towards the nearer one (a plain mean puts pairs 1 px apart and
+                // the next pair 3 px away: a visible 2-pixel pattern / "little squares").
+                const bool yOdd = (y & 1u) != 0u;
+                const uint16_t* rn = yOdd ? r1 : r0;  // nearer row, weight 3
+                const uint16_t* rf = yOdd ? r0 : r1;
                 for (uint32_t x = 0; x < w; ++x) {
                     const uint32_t sx = (x >> 1) * 4u + (x & 1u);
-                    o[x] = uint16_t((uint32_t(r0[sx]) + r0[sx + 2] + r1[sx] + r1[sx + 2] + 2u) >> 2);
+                    const uint32_t xn = (x & 1u) ? sx + 2u : sx, xf = (x & 1u) ? sx : sx + 2u;
+                    const uint32_t v = 9u * rn[xn] + 3u * (uint32_t(rn[xf]) + rf[xn]) + rf[xf];
+                    o[x] = uint16_t((v + 8u) >> 4);
                 }
             }
         });
