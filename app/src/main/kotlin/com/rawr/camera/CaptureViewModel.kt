@@ -1,6 +1,11 @@
 package com.rawr.camera
 
 import com.rawr.camera.settings.model.withLensSelected
+import com.rawr.camera.settings.model.MultiframeNumericParameter
+import com.rawr.camera.settings.model.activeLensHasOwnLook
+import com.rawr.camera.settings.model.editActiveMultiframeTuning
+import com.rawr.camera.settings.model.multiframeTuningFor
+import com.rawr.camera.settings.model.withOwnLookForActiveLens
 import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
@@ -283,6 +288,14 @@ class CaptureViewModel(application: Application) : AndroidViewModel(application)
                 is CaptureQuickEvent.SetHighlightCompression -> event.value.coerceIn(0f, 300f).let {
                     if (video) c.copy(videoHighlightCompression = it) else c.copy(photoHighlightCompression = it)
                 }
+                is CaptureQuickEvent.SetMultiframeFrames -> c.editActiveMultiframeTuning {
+                    it.withValue(MultiframeNumericParameter.MaxFrames, event.frames.coerceIn(1, 30).toFloat())
+                }
+                CaptureQuickEvent.ToggleOwnMultiframe -> c.lastLensId?.let { lens ->
+                    if (lens in c.multiframeTuningByLens) c.copy(multiframeTuningByLens = c.multiframeTuningByLens - lens)
+                    else c.copy(multiframeTuningByLens = c.multiframeTuningByLens + (lens to c.multiframeTuningFor(lens)))
+                } ?: c
+                CaptureQuickEvent.ToggleOwnLook -> c.withOwnLookForActiveLens(!c.activeLensHasOwnLook)
             }
         }
     }

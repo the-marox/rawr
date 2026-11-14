@@ -2,6 +2,10 @@ package com.rawr.camera.model
 
 import com.rawr.camera.settings.model.RawrMetering
 import com.rawr.camera.settings.model.SettingsValues
+import com.rawr.camera.settings.model.activeLensHasOwnLook
+import com.rawr.camera.settings.model.activeLensHasOwnMultiframeTuning
+import com.rawr.camera.settings.model.activeLensMergeFrameLimit
+import com.rawr.camera.settings.model.activeMultiframeTuning
 
 /** Highlight reconstruction as the viewfinder rail presents it: off, or one of the two methods. */
 enum class HighlightQuickMode { Off, Propagation, Opposed }
@@ -27,7 +31,15 @@ data class ViewfinderQuickState(
     val highlight: HighlightQuickState = HighlightQuickState(),
     val dcps: List<DcpQuickState> = emptyList(),
     /** Recording locks the rail like it locks the render profile. */
-    val locked: Boolean = false
+    val locked: Boolean = false,
+    // Quick panel, second row (photo only): frames of the lens in use and its per-lens switches.
+    val isVideo: Boolean = false,
+    val multiframeEnabled: Boolean = false,
+    val frames: Int = 17,
+    /** Profile cap for the lens in use (0 = none). */
+    val frameLimit: Int = 0,
+    val ownMultiframe: Boolean = false,
+    val ownLook: Boolean = false
 )
 
 internal const val HIGHLIGHT_THRESHOLD_DEFAULT = 1f
@@ -54,6 +66,12 @@ internal fun SettingsValues.toViewfinderQuickState(
             threshold = if (isVideo) videoHighlightThreshold else photoHighlightThreshold,
             compression = if (isVideo) videoHighlightCompression else photoHighlightCompression,
             compressionDefault = compressionDefault
-        )
+        ),
+        isVideo = isVideo,
+        multiframeEnabled = experimentalMultiframeEnabled,
+        frames = activeMultiframeTuning.maxFrames,
+        frameLimit = activeLensMergeFrameLimit(deviceDefaults),
+        ownMultiframe = activeLensHasOwnMultiframeTuning,
+        ownLook = activeLensHasOwnLook
     )
 }

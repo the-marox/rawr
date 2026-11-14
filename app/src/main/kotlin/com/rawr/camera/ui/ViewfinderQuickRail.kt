@@ -312,6 +312,50 @@ internal fun ViewfinderQuickPanel(
                 help = HELP_HL
             ) { onEvent(CaptureQuickEvent.SetHighlightMode(nextMode)) }
         }
+        if (!quick.isVideo) {
+            androidx.compose.foundation.layout.Row(
+                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(gap)
+            ) {
+                // Frames for the lens in use, capped by its profile limit (a 1-frame lens has nothing to pick).
+                val maxFrames = if (quick.frameLimit > 0) quick.frameLimit else 30
+                val framesEnabled = enabled && quick.multiframeEnabled && maxFrames > 1
+                val frames = quick.frames.coerceIn(1, maxFrames)
+                val defaultFrames = minOf(17, maxFrames)
+                StripNumericItem(
+                    key = "panel_frames",
+                    shortLabel = "FR",
+                    value = frames.toFloat(),
+                    display = frames.toString(),
+                    isDefault = frames == defaultFrames,
+                    defaultValue = defaultFrames.toFloat(),
+                    min = 1f, max = maxOf(2, maxFrames).toFloat(), step = 1f, decimals = 0,
+                    onScrub = { if (framesEnabled) onEvent(CaptureQuickEvent.SetMultiframeFrames(it.toInt())) },
+                    onReset = { if (framesEnabled) onEvent(CaptureQuickEvent.SetMultiframeFrames(defaultFrames)) },
+                    modifier = Modifier.width(chipWidth).alpha(if (framesEnabled) 1f else .4f),
+                    testTag = "quick_panel_frames"
+                )
+                RailChip(
+                    value = if (quick.ownMultiframe) "ON" else "OFF",
+                    label = "OWN MF",
+                    active = quick.ownMultiframe,
+                    enabled = enabled && quick.multiframeEnabled,
+                    description = "Own multiframe settings for this lens: ${if (quick.ownMultiframe) "on" else "off"}. Tap to switch.",
+                    tag = "quick_panel_own_mf",
+                    width = chipWidth,
+                    help = HELP_OWN_MF
+                ) { onEvent(CaptureQuickEvent.ToggleOwnMultiframe) }
+                RailChip(
+                    value = if (quick.ownLook) "ON" else "OFF",
+                    label = "OWN LOOK",
+                    active = quick.ownLook,
+                    enabled = enabled,
+                    description = "Own look for this lens: ${if (quick.ownLook) "on" else "off"}. Tap to switch.",
+                    tag = "quick_panel_own_look",
+                    width = chipWidth,
+                    help = HELP_OWN_LOOK
+                ) { onEvent(CaptureQuickEvent.ToggleOwnLook) }
+            }
+        }
         if (highlight.mode == HighlightQuickMode.Opposed) {
             androidx.compose.foundation.layout.Row(
                 horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(gap)
@@ -354,3 +398,10 @@ internal fun ViewfinderQuickPanel(
         )
     }
 }
+
+private const val HELP_OWN_MF =
+    "Own multiframe: ON gives this lens its own merge settings and frame count (FR then changes only this " +
+        "lens); OFF uses the shared ones. FR is capped by the lens limit (200 MP: 3)."
+private const val HELP_OWN_LOOK =
+    "Own look: ON keeps a separate profile, tone, AgX choice and film look for this lens (it starts from the " +
+        "current look); OFF returns the lens to the shared look."

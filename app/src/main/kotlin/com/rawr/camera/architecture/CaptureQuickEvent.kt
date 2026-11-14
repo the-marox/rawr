@@ -14,4 +14,8 @@ sealed interface CaptureQuickEvent {
     data class SetHighlightMode(val mode: HighlightQuickMode) : CaptureQuickEvent
     data class SetHighlightThreshold(val value: Float) : CaptureQuickEvent
     data class SetHighlightCompression(val value: Float) : CaptureQuickEvent
+    /** Frames for the lens in use (its own multiframe tuning when it has one, else the shared one). */
+    data class SetMultiframeFrames(val frames: Int) : CaptureQuickEvent
+    data object ToggleOwnMultiframe : CaptureQuickEvent
+    data object ToggleOwnLook : CaptureQuickEvent
 }
