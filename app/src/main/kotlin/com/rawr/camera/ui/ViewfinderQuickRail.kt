@@ -99,6 +99,7 @@ internal fun ViewfinderQuickRail(
                 enabled = enabled,
                 description = "Highlight reconstruction ${highlight.mode.name}. Tap for ${nextMode.name}.",
                 tag = CaptureTestTags.RAIL_HIGHLIGHT_MODE,
+                help = HELP_HL_MODE,
                 modifier = Modifier.railRank(2),
                 width = chipWidth
             ) { onEvent(CaptureQuickEvent.SetHighlightMode(nextMode)) }
@@ -113,6 +114,7 @@ internal fun ViewfinderQuickRail(
                     description = "Metering ${quick.metering.label}" +
                         (if (spotActive) ", overridden by spot" else "") + ". Tap for ${next.label}.",
                     tag = CaptureTestTags.RAIL_METERING,
+                help = HELP_METERING,
                     modifier = Modifier.railRank(2),
                     width = chipWidth
                 ) { onEvent(CaptureQuickEvent.SetMetering(next)) }
@@ -124,6 +126,7 @@ internal fun ViewfinderQuickRail(
                 enabled = enabled,
                 description = "Auto exposure ${if (quick.rawrAeEnabled) "Rawr" else "Device"}. Tap to switch.",
                 tag = CaptureTestTags.RAIL_AE,
+                help = HELP_AE,
                 modifier = Modifier.railRank(0),
                 width = chipWidth
             ) { onEvent(CaptureQuickEvent.ToggleRawrAe) }
@@ -136,6 +139,7 @@ internal fun ViewfinderQuickRail(
             description = if (highlightOpen) "Back from highlight reconstruction."
             else "Highlight reconstruction ${highlight.mode.name}. Tap to adjust.",
             tag = CaptureTestTags.RAIL_HIGHLIGHT,
+                help = HELP_HL,
             modifier = Modifier.railRank(1),
             width = chipWidth
         ) { highlightOpen = !highlightOpen }
@@ -182,10 +186,12 @@ private fun RailChip(
     description: String,
     tag: String,
     width: Dp,
+    help: String,
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
     val haptics = LocalCaptureHaptics.current
+    val showHelp = rememberControlHelp()
     Box(
         modifier
             .width(width)
@@ -193,7 +199,13 @@ private fun RailChip(
             .alpha(if (enabled) 1f else .4f)
             .testTag(tag)
             .viewfinderChip()
-            .captureClickable(shape = CaptureTextRippleShape, enabled = enabled, role = Role.Button) {
+            .captureCombinedClickable(
+                shape = CaptureTextRippleShape,
+                enabled = enabled,
+                role = Role.Button,
+                onLongClickLabel = "Explain",
+                onLongClick = { showHelp(help) }
+            ) {
                 haptics.selection()
                 onClick()
             }.semantics { contentDescription = description },
@@ -220,3 +232,15 @@ private fun RawrMetering.railLabel(): String = when (this) {
     RawrMetering.Average -> "AVG"
     RawrMetering.Highlight -> "HIGH"
 }
+
+private const val HELP_METERING =
+    "Metering: how Rawr AE reads the scene. Matrix weighs the whole frame, Centre favours the middle, " +
+        "Avg is a plain average, High protects the highlights. Tap the viewfinder for spot."
+private const val HELP_AE =
+    "Auto exposure: RAWR solves exposure in the app (with its own metering); DEVICE uses the phone's Camera2 AE."
+private const val HELP_HL =
+    "Highlight reconstruction: rebuilds clipped highlights. PROP spreads colour from unclipped neighbours, " +
+        "OPP estimates the clipped channel from the others. Tap to change mode and strength."
+private const val HELP_HL_MODE =
+    "Highlight mode: OFF, PROP (propagation from neighbours) or OPP (opposed channels). " +
+        "OPP adds THR (where clipping starts) and CMP (highlight compression)."

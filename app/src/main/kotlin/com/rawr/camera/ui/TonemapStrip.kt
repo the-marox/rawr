@@ -147,6 +147,7 @@ private fun TonemapFixedRow(
     onToggle: (TonemapStripMode) -> Unit
 ) {
     val haptics = LocalCaptureHaptics.current
+    val showHelp = rememberControlHelp()
     BoxWithConstraints(
         Modifier
             .fillMaxWidth()
@@ -254,7 +255,16 @@ private fun TonemapFixedRow(
                     .width(widths[3])
                     .height(StripDimens.ParamRowHeight)
                     .testTag(CaptureTestTags.TONEMAP_STRIP_PROFILE)
-                    .captureClickable(shape = CaptureTextRippleShape) {
+                    .captureCombinedClickable(
+                        shape = CaptureTextRippleShape,
+                        onLongClickLabel = "Explain",
+                        onLongClick = {
+                            showHelp(
+                                "Look: the render profile (tone curve and colour) used for the JPEG and preview. " +
+                                    "A dot means its parameters were changed. Tap to pick another."
+                            )
+                        }
+                    ) {
                         haptics.selection()
                         onToggle(TonemapStripMode.Profiles)
                     }.semantics {

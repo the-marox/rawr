@@ -58,11 +58,21 @@ import com.rawr.camera.model.formatFilmStripValue
 @Composable
 internal fun StripParamsEntry(onOpen: () -> Unit, modifier: Modifier = Modifier, active: Boolean = false) {
     val haptics = LocalCaptureHaptics.current
+    val showHelp = rememberControlHelp()
     Row(
         modifier
             .height(CaptureDimens.CompactParamRowHeight)
             .testTag(CaptureTestTags.FILM_STRIP_PARAMS)
-            .captureClickable(shape = CaptureTextRippleShape) {
+            .captureCombinedClickable(
+                shape = CaptureTextRippleShape,
+                onLongClickLabel = "Explain",
+                onLongClick = {
+                    showHelp(
+                        "Parameters of the current look or film: contrast, shadows, highlights, colour and more. " +
+                            "Drag a value to change it; double-tap resets it."
+                    )
+                }
+            ) {
                 haptics.selection()
                 onOpen()
             }.semantics {

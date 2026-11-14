@@ -102,3 +102,21 @@ internal fun Modifier.captureCombinedClickable(
             onClick = onClick
         )
 }
+
+/**
+ * Long-press help for viewfinder controls: a short explanation, like the
+ * Settings "!" notes. A new hint replaces the one still showing.
+ */
+@Composable
+internal fun rememberControlHelp(): (String) -> Unit {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val haptics = LocalCaptureHaptics.current
+    val last = remember { arrayOfNulls<android.widget.Toast>(1) }
+    return remember(context, haptics) {
+        { text: String ->
+            haptics.longPress()
+            last[0]?.cancel()
+            last[0] = android.widget.Toast.makeText(context, text, android.widget.Toast.LENGTH_LONG).also { it.show() }
+        }
+    }
+}
