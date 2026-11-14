@@ -484,6 +484,9 @@ void MfsrCaptureJob::runStages(Published& published) {
                 CAPTURE_DEBUG_LOG("MERGE_STRIP_BEGIN requestId=%llu y0=%u rows=%u frames=%zu algorithm=%u",
                      static_cast<unsigned long long>(requestId), window.y0, window.rows, job->frames.size(), tuning.mergeAlgorithm);
                 job->setRowWindow(window.y0, window.rows);
+                const std::size_t stripIndex = std::size_t(&window - strips.data());
+                if (job->prefetchRowWindow && stripIndex + 1 < strips.size())
+                    job->prefetchRowWindow(strips[stripIndex + 1].y0, strips[stripIndex + 1].rows);
                 auto& stripHot = job->referenceMetadata.hotPixelMap;
                 stripHot.clear();
                 for (std::size_t i = 0; i + 1 < hotPixels.size(); i += 2)

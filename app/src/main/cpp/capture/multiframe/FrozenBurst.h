@@ -35,6 +35,9 @@ struct FrozenBurst {
     // Journal-backed: later loads read only rows [y0, y0 + rows) of each
     // frame (strip merge); drops every loaded frame. rows 0 = whole frames.
     std::function<void(std::uint32_t y0, std::uint32_t rows)> setRowWindow;
+    // Journal-backed: starts reading the next strip's rows in the background (after the current window's read),
+    // so they are ready when setRowWindow moves there. Unset or no-op otherwise.
+    std::function<void(std::uint32_t y0, std::uint32_t rows)> prefetchRowWindow;
     // Live bursts merged while their journal is still being written: the ring pins may only be released once this
     // says the journal no longer reads the frames. Unset: release freely.
     std::function<bool()> pinsMayRelease;
