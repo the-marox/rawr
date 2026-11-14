@@ -58,7 +58,7 @@
           "buffers": {
             "usage": "0x100003"
           },
-          "mergeFrameLimit": 4
+          "mergeFrameLimit": 30
         }
       },
       "vendorKeys": [
@@ -225,7 +225,7 @@
           "buffers": {
             "usage": "0x100003"
           },
-          "mergeFrameLimit": 4
+          "mergeFrameLimit": 30
         }
       },
       "vendorKeys": [
@@ -344,7 +344,7 @@
           "buffers": {
             "usage": "0x100003"
           },
-          "mergeFrameLimit": 4
+          "mergeFrameLimit": 30
         }
       },
       "vendorKeys": [
@@ -610,7 +610,7 @@
           "buffers": {
             "usage": "0x100003"
           },
-          "mergeFrameLimit": 4
+          "mergeFrameLimit": 30
         }
       },
       "vendorKeys": [
