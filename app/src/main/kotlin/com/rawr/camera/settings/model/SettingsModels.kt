@@ -550,7 +550,9 @@ object MultiframeSpecs {
         MultiframeNumericSpec(
             MultiframeNumericParameter.StripMegapixels,
             "Split Merge Above",
-            "Off unless the merge runs out of memory on this phone (12 GB devices at 50 MP). Splits the merge into overlapping horizontal strips of this size, which is slower but needs far less memory at once. Lower: less memory, more overhead.",
+            "Off unless merges run out of memory on this phone (12 GB devices at 50 MP). Splits the merge into " +
+                "overlapping horizontal strips of this size. Lower: less memory at once, but more overlap to merge " +
+                "twice, so a slower shot. Higher: fewer strips and less overhead, yet more memory at once.",
             0f,
             56f,
             0f,
