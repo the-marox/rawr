@@ -253,7 +253,11 @@ void RextureRecorder::recordBaseKernel(VkCommandBuffer c, bool debug) const {
     executor_.record(c, ShaderId::RxKernelBlur, {{ib(0, tmpA), ib(1, tmpB)}, {}}, &horizontal, sizeof(horizontal), gx, gy);
     computeWriteBarrier(c);
     if (mark_) mark_("blur_h");
-    executor_.record(c, ShaderId::RxKernelCov, {{ib(0, tmpB), ib(1, tensor), ib(2, cov)}, {}}, nullptr, 0, gx, gy);
+    struct KernelPc {
+        float alpha, beta;
+    } kpc{config_.noiseAlpha, config_.noiseBeta};
+    executor_.record(c, ShaderId::RxKernelCov, {{ib(0, tmpB), ib(1, tensor), ib(2, cov), ib(3, arena_.image("rx_base_mean"))}, {}}, &kpc,
+                     sizeof(kpc), gx, gy);
     computeWriteBarrier(c);
     if (mark_) mark_("cov");
     if (debug) {
@@ -347,11 +351,14 @@ void RextureRecorder::recordAlignmentLevel(VkCommandBuffer c, std::uint32_t l, b
     if (debug) copyFlow(c, flow, arena_.image("rx_dbg_bm_l" + ls));
     // Levels above the coarsest: mode 2 and mode 1 tiles are independent, one dispatch. The coarsest level fills the
     // unconstrained tiles from the constrained ones between the two.
-    LkPc lk{std::int32_t(kTileSize[l]), l == 0 ? 2 : 3, kLkIterations, float(kRadius[l]), kHessianEps};
+    // Level 1 is filled like the coarsest: a tile too faint to measure (a dark wall, wood grain) otherwise keeps the coarser level's estimate, which
+    // for such a tile is far short of the real motion and is refined at no finer level.
+    const bool fillLevel = l == 0u || (l == 1u && tx * ty <= 1024u);
+    LkPc lk{std::int32_t(kTileSize[l]), fillLevel ? 2 : 3, kLkIterations, float(kRadius[l]), kHessianEps};
     executor_.record(c, ShaderId::RxLk, {{ib(0, ref), ib(1, mov), ib(2, flow), ib(3, tiles)}, {}}, &lk, sizeof(lk), tx, ty);
     computeWriteBarrier(c);
     if (mark_) mark_("lk");
-    if (l == 0) {
+    if (fillLevel) {
         executor_.record(c, ShaderId::RxFill, {{ib(0, flow), ib(1, tiles)}, {}}, nullptr, 0, 1, 1);
         computeWriteBarrier(c);
         if (mark_) mark_("fill");
