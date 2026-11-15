@@ -2,13 +2,16 @@
   "id": "xiaomi_15",
   "schema": 2,
   "name": "Xiaomi 15",
-  "version": 4,
+  "version": 5,
   "match": {
     "models": [
       "24129PN74G",
       "24129PN74I",
       "24129PN74C"
-    ]
+    ],
+    "propertyPrefixes": {
+      "ro.product.device": "dada"
+    }
   },
   "lenses": [
     {

@@ -2,7 +2,7 @@
   "id": "xiaomi_17_ultra",
   "schema": 2,
   "name": "Xiaomi 17 Ultra",
-  "version": 1,
+  "version": 2,
   "match": {
     "models": [
       "25128PNA1G",
@@ -13,7 +13,10 @@
     ],
     "verifiedModels": [
       "25128PNA1G"
-    ]
+    ],
+    "propertyPrefixes": {
+      "ro.product.device": "nezha"
+    }
   },
   "lenses": [
     {
