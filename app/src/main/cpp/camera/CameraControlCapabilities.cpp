@@ -91,6 +91,11 @@ CameraControlState readInitialCameraControlState(const ACameraMetadata* characte
         caps.exposureTimeMaxNs =
             std::max(caps.exposureTimeMaxNs, std::min(route.exposure.shutterMaxNs, kExtendedShutterMaxNs));
         caps.maxFrameDurationNs = std::max(caps.maxFrameDurationNs, caps.exposureTimeMaxNs);
+    } else if (route.exposure.isoMax > 0 && caps.sensitivityMax > route.exposure.isoMax &&
+               route.exposure.isoMax >= caps.sensitivityMin) {
+        // Without the extended opt-in, "Highest ISO" caps the range instead: dual-gain modes (17U DCG/DSG/DAG)
+        // advertise the sensor's full ISO but their gain stops lower, and a lock above it is never honoured.
+        caps.sensitivityMax = route.exposure.isoMax;
     }
 
     // Pick the broadest advertised normal-AE FPS range for Camera2 priority

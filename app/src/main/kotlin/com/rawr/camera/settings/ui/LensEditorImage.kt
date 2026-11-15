@@ -284,10 +284,16 @@ internal fun ExtendedExposureGroup(exposure: LensExposure, onChange: (LensExposu
         SettingsSwitchRow(title = "Allow requests outside range", checked = exposure.extended) {
             onChange(exposure.copy(extended = it))
         }
+        // Off: "Highest ISO" caps the range (dual-gain modes stop below the sensor's advertised ISO).
+        LevelField(
+            "Highest ISO",
+            exposure.isoMax.toFloat(),
+            if (exposure.extended) "0 keeps the camera's limit"
+            else "Caps ISO (e.g. DCG 797). 0 keeps the camera's limit"
+        ) { v ->
+            onChange(exposure.copy(isoMax = v.toInt().coerceIn(0, EXTENDED_ISO_MAX)))
+        }
         if (exposure.extended) {
-            LevelField("Highest ISO", exposure.isoMax.toFloat(), "0 keeps the camera's limit") { v ->
-                onChange(exposure.copy(isoMax = v.toInt().coerceIn(0, EXTENDED_ISO_MAX)))
-            }
             LevelField("Longest shutter (s)", exposure.shutterMaxNs / 1e9f, "Up to 25 s. 0 keeps the camera's limit") { v ->
                 onChange(exposure.copy(shutterMaxNs = (v.toDouble() * 1e9).toLong().coerceIn(0L, EXTENDED_SHUTTER_MAX_NS)))
             }

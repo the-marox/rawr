@@ -132,6 +132,11 @@
             1024
           ],
           "white": 16383
+        },
+        "exposure": {
+          "extended": false,
+          "isoMax": 500,
+          "shutterMaxNs": 0
         }
       }
     },
@@ -206,6 +211,11 @@
             1024
           ],
           "white": 16383
+        },
+        "exposure": {
+          "extended": false,
+          "isoMax": 797,
+          "shutterMaxNs": 0
         }
       }
     },
@@ -367,6 +377,11 @@
             1024
           ],
           "white": 16383
+        },
+        "exposure": {
+          "extended": false,
+          "isoMax": 320,
+          "shutterMaxNs": 0
         }
       }
     },
@@ -823,7 +838,12 @@
           ],
           "white": 16383
         },
-        "mirror": "vertical"
+        "mirror": "vertical",
+        "exposure": {
+          "extended": false,
+          "isoMax": 797,
+          "shutterMaxNs": 0
+        }
       }
     }
   ]
