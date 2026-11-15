@@ -488,7 +488,8 @@ enum class MultiframeBaseFrameMode(val nativeId: Int, val label: String) {
 enum class MultiframeNumericParameter {
     MaxFrames,
     HdrPlusStrength,
-    HdrPlusTileSize
+    HdrPlusTileSize,
+    StripMegapixels
 }
 
 data class MultiframeNumericSpec(
@@ -545,7 +546,20 @@ object MultiframeSpecs {
             "px"
         )
 
-    val all = listOf(maxFrames, hdrPlusStrength, hdrPlusTileSize)
+    val stripMegapixels =
+        MultiframeNumericSpec(
+            MultiframeNumericParameter.StripMegapixels,
+            "Split Merge Above",
+            "Off unless the merge runs out of memory on this phone (12 GB devices at 50 MP). Splits the merge into overlapping horizontal strips of this size, which is slower but needs far less memory at once. Lower: less memory, more overhead.",
+            0f,
+            56f,
+            0f,
+            8f,
+            0,
+            "MP"
+        )
+
+    val all = listOf(maxFrames, hdrPlusStrength, hdrPlusTileSize, stripMegapixels)
 
     fun forParameter(parameter: MultiframeNumericParameter): MultiframeNumericSpec =
         all.first { it.parameter == parameter }
@@ -555,18 +569,24 @@ data class MultiframeTuning(
     val mergeAlgorithm: MultiframeMergeAlgorithm = MultiframeMergeAlgorithm.Rexture,
     val hdrPlusStrength: Float = 13f,
     val hdrPlusTileSize: Int = 32,
-    val maxFrames: Int = 17
+    val maxFrames: Int = 17,
+    /** Strip size in MP for merges too big for memory; 0 = off (merge whole). Below 16 MP is off. */
+    val stripMegapixels: Int = 0
 ) {
     fun value(parameter: MultiframeNumericParameter): Float = when (parameter) {
         MultiframeNumericParameter.MaxFrames -> maxFrames.toFloat()
         MultiframeNumericParameter.HdrPlusStrength -> hdrPlusStrength
         MultiframeNumericParameter.HdrPlusTileSize -> hdrPlusTileSize.toFloat()
+        MultiframeNumericParameter.StripMegapixels -> stripMegapixels.toFloat()
     }
 
     fun withValue(parameter: MultiframeNumericParameter, value: Float): MultiframeTuning = when (parameter) {
         MultiframeNumericParameter.MaxFrames -> copy(maxFrames = value.roundToInt())
         MultiframeNumericParameter.HdrPlusStrength -> copy(hdrPlusStrength = value.roundToInt().toFloat())
         MultiframeNumericParameter.HdrPlusTileSize -> copy(hdrPlusTileSize = if (value < 24f) 16 else 32)
+        // The native strip path takes 16..56 MP; anything under that is off rather than a dead slider stop.
+        MultiframeNumericParameter.StripMegapixels ->
+            copy(stripMegapixels = value.roundToInt().let { if (it < 16) 0 else it })
     }
 
     fun sanitized(defaults: MultiframeTuning = MultiframeTuning()): MultiframeTuning {
@@ -592,7 +612,8 @@ data class MultiframeTuning(
 
     // Appended after the multiframe chroma-denoise flag (native indices 23-28); the bracket slots are unused.
     fun nativeMergeValues(): FloatArray =
-        floatArrayOf(mergeAlgorithm.nativeId.toFloat(), hdrPlusStrength, hdrPlusTileSize.toFloat(), -3f, 0f, 0f)
+        floatArrayOf(mergeAlgorithm.nativeId.toFloat(), hdrPlusStrength, hdrPlusTileSize.toFloat(), -3f, 0f, 0f,
+                     stripMegapixels.toFloat())
 }
 
 /** Multiframe tuning for [lensId]: the lens's own entry when it has one, else the global tuning. */

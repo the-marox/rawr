@@ -55,6 +55,9 @@ struct MultiframeTuning {
     float aeLinearExposure = 0.0f;
     // Unused (a reverted tone split); kept so the journal layout is stable.
     float bracketCurveEv = 0.0f;
+    // Appended (journal prefix-compatible). Strip size in MP for a merge whose arena does not fit memory
+    // (12 GB devices at 50 MP); 0 = merge whole. debug.rawr.strip_mp overrides it.
+    std::uint32_t stripMegapixels = 0;
 };
 
 }  // namespace rawrcam::capture::multiframe

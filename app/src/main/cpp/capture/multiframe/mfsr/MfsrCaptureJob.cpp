@@ -148,6 +148,8 @@ void MfsrCaptureJob::runStages(Published& published) {
         char value[PROP_VALUE_MAX] = {};
         const int mp = __system_property_get("debug.rawr.strip_mp", value) > 0 ? std::atoi(value) : 0;
         if (mp >= 16 && mp <= 56) return std::uint64_t(mp) * 1'000'000u;
+        const std::uint32_t setting = work->tuning.stripMegapixels;
+        if (setting >= 16 && setting <= 56) return std::uint64_t(setting) * 1'000'000u;
         if (std::uint64_t(ctx.rawWidth) * ctx.rawHeight <= kStripMergePixels) return kStripMergePixels;
         return kStripSplitPixels;
     }();

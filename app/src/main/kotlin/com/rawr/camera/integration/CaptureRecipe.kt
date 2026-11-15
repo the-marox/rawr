@@ -248,6 +248,7 @@ internal object CaptureRecipe {
             put("hdrPlusStrength", value.hdrPlusStrength)
             put("hdrPlusTileSize", value.hdrPlusTileSize)
             put("maxFrames", value.maxFrames)
+            put("stripMegapixels", value.stripMegapixels)
         })
     }.toString()
 }

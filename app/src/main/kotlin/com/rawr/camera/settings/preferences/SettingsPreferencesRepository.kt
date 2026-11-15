@@ -585,7 +585,8 @@ class SettingsPreferencesRepository(context: Context, private val defaults: Sett
                     mergeAlgorithm = enumOrDefault(p[Keys.multiframeMergeAlgorithm], d.multiframeTuning.mergeAlgorithm),
                     hdrPlusStrength = p[Keys.multiframeHdrPlusStrength] ?: d.multiframeTuning.hdrPlusStrength,
                     hdrPlusTileSize = p[Keys.multiframeHdrPlusTileSize] ?: d.multiframeTuning.hdrPlusTileSize,
-                    maxFrames = p[Keys.multiframeMaxFrames] ?: d.multiframeTuning.maxFrames
+                    maxFrames = p[Keys.multiframeMaxFrames] ?: d.multiframeTuning.maxFrames,
+                    stripMegapixels = p[Keys.multiframeStripMegapixels] ?: d.multiframeTuning.stripMegapixels
                 ).sanitized(d.multiframeTuning),
             multiframeTuningByLens = decodeMultiframeByLens(p[Keys.multiframeTuningByLens], d.multiframeTuning),
             lookByLens = decodeLookByLens(p[Keys.lookByLens]),
@@ -815,6 +816,7 @@ class SettingsPreferencesRepository(context: Context, private val defaults: Sett
         p[Keys.multiframeHdrPlusStrength] = v.multiframeTuning.hdrPlusStrength
         p[Keys.multiframeHdrPlusTileSize] = v.multiframeTuning.hdrPlusTileSize
         p[Keys.multiframeMaxFrames] = v.multiframeTuning.maxFrames
+        p[Keys.multiframeStripMegapixels] = v.multiframeTuning.stripMegapixels
         if (v.multiframeTuningByLens.isEmpty()) p.remove(Keys.multiframeTuningByLens)
         else p[Keys.multiframeTuningByLens] = encodeMultiframeByLens(v.multiframeTuningByLens)
         if (v.lookByLens.isEmpty()) p.remove(Keys.lookByLens)
@@ -965,7 +967,7 @@ class SettingsPreferencesRepository(context: Context, private val defaults: Sett
             }
         }.toMap()
 
-    /** `{"<lens id>": {"mergeAlgorithm", "hdrPlusStrength", "hdrPlusTileSize", "maxFrames"}}`. */
+    /** `{"<lens id>": {"mergeAlgorithm", "hdrPlusStrength", "hdrPlusTileSize", "maxFrames", "stripMegapixels"}}`. */
     private fun encodeTone(t: ProfileTone) = org.json.JSONArray().apply {
         listOf(t.renderExposure, t.blacks, t.shadows, t.contrast, t.midtones, t.highlights, t.whites, t.saturation,
             t.vibrance).forEach { put(it.toDouble()) }
@@ -1027,7 +1029,8 @@ class SettingsPreferencesRepository(context: Context, private val defaults: Sett
                     .put("mergeAlgorithm", t.mergeAlgorithm.name)
                     .put("hdrPlusStrength", t.hdrPlusStrength.toDouble())
                     .put("hdrPlusTileSize", t.hdrPlusTileSize)
-                    .put("maxFrames", t.maxFrames))
+                    .put("maxFrames", t.maxFrames)
+                    .put("stripMegapixels", t.stripMegapixels))
             }
         }.toString()
 
@@ -1040,7 +1043,8 @@ class SettingsPreferencesRepository(context: Context, private val defaults: Sett
                 mergeAlgorithm = enumOrDefault(o.optString("mergeAlgorithm"), defaults.mergeAlgorithm),
                 hdrPlusStrength = o.optDouble("hdrPlusStrength", defaults.hdrPlusStrength.toDouble()).toFloat(),
                 hdrPlusTileSize = o.optInt("hdrPlusTileSize", defaults.hdrPlusTileSize),
-                maxFrames = o.optInt("maxFrames", defaults.maxFrames)
+                maxFrames = o.optInt("maxFrames", defaults.maxFrames),
+                stripMegapixels = o.optInt("stripMegapixels", defaults.stripMegapixels)
             ).sanitized(defaults)
         }.toMap()
     }
@@ -1174,6 +1178,7 @@ class SettingsPreferencesRepository(context: Context, private val defaults: Sett
         val multiframeHdrPlusStrength = floatPreferencesKey("multiframe_hdrplus_strength")
         val multiframeHdrPlusTileSize = intPreferencesKey("multiframe_hdrplus_tile_size")
         val multiframeMaxFrames = intPreferencesKey("multiframe_max_frames")
+        val multiframeStripMegapixels = intPreferencesKey("multiframe_strip_megapixels")
         val multiframeTuningByLens = stringPreferencesKey("multiframe_tuning_by_lens")
         val lookByLens = stringPreferencesKey("look_by_lens")
         val sharedLook = stringPreferencesKey("shared_look")

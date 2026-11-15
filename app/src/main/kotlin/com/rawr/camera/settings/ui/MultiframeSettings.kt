@@ -48,7 +48,7 @@ internal fun MultiframeSettings(state: SettingsUiState, dispatch: SettingsDispat
         SettingsGroup(
             title = "Merge Algorithm",
             description = "HDR+ Quality: per-frequency merge, cleaner with mild sharpening and blends motion more. " +
-                "Rexture: kernel-regression merge of the whole burst at native resolution, aligned and weighted per pixel; the sharpest frame of the last quarter second before the shutter is the base. Equal-exposure bursts. Up to about 56 MP it merges the whole frame (JPEG and DNG); above that it merges in strips and saves DNG only. " +
+                "Rexture: kernel-regression merge of the whole burst at native resolution, aligned and weighted per pixel; the sharpest frame of the last quarter second before the shutter is the base. Equal-exposure bursts. Up to about 56 MP it merges the whole frame; above that it merges in overlapping strips and the JPEG is developed at half size. " +
                 "(Native resolution only.)"
         ) {
             MultiframeMergeAlgorithm.entries.forEachIndexed { index, candidate ->
@@ -104,6 +104,8 @@ internal fun MultiframeSettings(state: SettingsUiState, dispatch: SettingsDispat
             }
             SettingDivider()
             MultiframeSlider(spec(MultiframeNumericParameter.MaxFrames), tuning, enabled, dispatch)
+            SettingDivider()
+            MultiframeSlider(spec(MultiframeNumericParameter.StripMegapixels), tuning, enabled, dispatch)
             if (lensFrameLimit in 1 until tuning.maxFrames) {
                 androidx.compose.material3.Text(
                     if (lensFrameLimit == 1) "Limited to 1 frame by this lens profile (single photo)."
