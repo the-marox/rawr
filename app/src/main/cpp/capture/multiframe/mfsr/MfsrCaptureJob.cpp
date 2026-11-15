@@ -142,10 +142,13 @@ void MfsrCaptureJob::runStages(Published& published) {
     // 56 MP one (3.4 GB) took ~7 s on the 17U while Android killed apps for room. 50 MP frames still merge whole.
     // debug.rawr.strip_mp overrides the strip size in MP (e.g. 56 = previous behaviour).
     const std::uint64_t stripPixels = [&] {
-        if (std::uint64_t(ctx.rawWidth) * ctx.rawHeight <= kStripMergePixels) return kStripMergePixels;
+        // The override is read before the size gate: a 50 MP merge needs strips too on a device with less memory
+        // free than the arena its geometry asks for (17U: arena 3.8 GB against 2.8 GB available), and the gate
+        // below would otherwise put the only lever out of reach for exactly the sizes that hit the limit.
         char value[PROP_VALUE_MAX] = {};
         const int mp = __system_property_get("debug.rawr.strip_mp", value) > 0 ? std::atoi(value) : 0;
         if (mp >= 16 && mp <= 56) return std::uint64_t(mp) * 1'000'000u;
+        if (std::uint64_t(ctx.rawWidth) * ctx.rawHeight <= kStripMergePixels) return kStripMergePixels;
         return kStripSplitPixels;
     }();
     const auto strips = job && job->setRowWindow ? stripWindows(ctx.rawWidth, ctx.rawHeight, stripPixels)
