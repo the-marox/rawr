@@ -317,7 +317,9 @@ internal fun FilmQuickCard(
     onAdvanced: () -> Unit,
     groups: List<Pair<String, List<FilmQuickEntry>>> = FilmQuickGroups,
     tagPrefix: String = "film",
-    advDescription: String = "All film parameters"
+    advDescription: String = "All film parameters",
+    /** Long-press text per key; null keeps the generic hint. */
+    helpFor: (String) -> String? = { null }
 ) {
     val haptics = LocalCaptureHaptics.current
     val gap = CaptureDimens.ControlGap
@@ -365,7 +367,7 @@ internal fun FilmQuickCard(
                                         formatFilmStripValue(it * param.displayScale, param.minimum * param.displayScale,
                                             param.displayDecimals) + param.unit
                                     },
-                                    help = "${param.shortLabel}: drag up/down to adjust; double-tap resets." +
+                                    help = (helpFor(entry.key) ?: "${param.shortLabel}: drag up/down to adjust; double-tap resets.") +
                                         (if (entry.needsFlag != null) " Active when its switch is ON." else "")
                                 )
                             }
@@ -1080,7 +1082,8 @@ internal fun FilmNumericRow(
     widths: List<androidx.compose.ui.unit.Dp>,
     onScrubParam: (String, Float) -> Unit,
     onResetParam: (String) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    helpFor: (String) -> String? = { null }
 ) {
     val gap = CaptureDimens.ControlGap
     LazyRow(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(gap)) {
@@ -1104,7 +1107,8 @@ internal fun FilmNumericRow(
                     format = {
                         formatFilmStripValue(it * param.displayScale, param.minimum * param.displayScale,
                             param.displayDecimals) + param.unit
-                    }
+                    },
+                    help = helpFor(item.key)
                 )
             }
         }

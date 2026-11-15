@@ -122,7 +122,8 @@ internal fun TonemapStrip(
                         onAdvanced = { mode = TonemapStripMode.Adv },
                         groups = AgxQuickGroups,
                         tagPrefix = "agx",
-                        advDescription = "All AgX parameters"
+                        advDescription = "All AgX parameters",
+                        helpFor = ::agxHelp
                     )
                 }
                 TonemapStripMode.Adv -> { cardWidth: Dp ->
@@ -152,7 +153,8 @@ internal fun TonemapStrip(
                         widths = widths,
                         onScrubParam = { key, value -> dispatchAgx(dispatch, key, value) },
                         onResetParam = { key -> dispatchAgx(dispatch, key, null) },
-                        modifier = Modifier.fillMaxSize().testTag(CaptureTestTags.TONEMAP_STRIP_PARAMS)
+                        modifier = Modifier.fillMaxSize().testTag(CaptureTestTags.TONEMAP_STRIP_PARAMS),
+                        helpFor = ::agxHelp
                     )
                 }
             } else null
@@ -466,6 +468,48 @@ private val AgxQuickGroups: List<Pair<String, List<FilmQuickEntry>>> = listOf(
         FilmQuickEntry.Advanced
     )
 )
+
+/** Long-press explanation of each AgX strip control (darktable's AgX meanings), "Title: body". */
+private fun agxHelp(key: String): String? {
+    val tail = " Drag up/down to adjust; double-tap resets."
+    val text = when (key) {
+        AGX_STRIP_EXPOSURE_KEY -> "Exposure: brightens or darkens the render before the AgX curve. The RAW is untouched."
+        "whiteEv" -> "White: how many stops above mid-grey become pure white. Higher keeps more highlight detail but flattens the image."
+        "blackEv" -> "Black: how many stops below mid-grey become pure black. More negative keeps more shadow detail; closer to 0 deepens blacks."
+        "contrast" -> "Contrast: steepness of the curve around the pivot. Higher gives punchier midtones."
+        "toePower" -> "Toe: shape of the shadow roll-off into black. Higher makes the shadows fall off more abruptly."
+        "shoulderPower" -> "Shoulder: shape of the highlight roll-off into white. Higher makes the highlights compress more abruptly."
+        "pivotEv" -> "Pivot: the tone (stops from mid-grey) where contrast is anchored. Move it to centre contrast on darker or brighter tones."
+        "pivotOutput" -> "Pivot output: how bright the pivot tone is rendered. Raise it to brighten the midtones."
+        "shoulderStart" -> "Shoulder start: where the highlight roll-off begins. Lower starts compressing highlights earlier."
+        "toeStart" -> "Toe start: where the shadow roll-off begins. Lower starts compressing shadows earlier."
+        "targetWhite" -> "Target white: output level of the white point. Below 100% gives softer, matte highlights."
+        "targetBlack" -> "Target black: output level of the black point. Above 0 lifts the blacks for a faded look."
+        "gamma" -> "Gamma: gamma of the curve's output. Changes the overall midtone brightness; usually left as is."
+        "lookSlope" -> "Slope: gain applied after the curve (like CDL slope). Higher brightens and adds contrast."
+        "lookLift" -> "Lift: raises or lowers the shadows after the curve (like CDL offset)."
+        "lookBrightness" -> "Brightness: power applied after the curve. Above 1 brightens the midtones."
+        "lookSaturation" -> "Saturation: overall colour intensity after the curve."
+        "preserveHue" -> "Preserve hue: how much original hues are kept through the curve. 100% keeps them; lower lets bright colours drift toward white, like film."
+        "purity" -> "Purity: master saturation restored after the curve, for all primaries."
+        "rotationReversal" -> "Reverse: master undo of the primary rotations after the curve."
+        else -> null
+    } ?: agxPrimaryHelp(key) ?: return null
+    return text + tail
+}
+
+private fun agxPrimaryHelp(key: String): String? {
+    val colour = listOf("red", "green", "blue").firstOrNull { key.startsWith(it) } ?: return null
+    val name = colour.replaceFirstChar { it.uppercase() }
+    val short = name.first()
+    return when (key.removePrefix(colour)) {
+        "Attenuation" -> "$short ATT: pulls the $colour primary toward white before the curve, so bright, saturated ${colour}s desaturate smoothly instead of clipping."
+        "Rotation" -> "$short ROT: rotates the hue of the $colour primary before the curve, shifting how ${colour}s render."
+        "Purity" -> "$short PUR: restores $colour saturation after the curve."
+        "ReverseRotation" -> "$short REV: undoes the $colour hue rotation after the curve."
+        else -> null
+    }
+}
 
 /** AgX strip edits: the RANGE exposure cell is render exposure, every other key an AgX control. */
 private fun dispatchAgx(dispatch: CaptureDispatch, key: String, value: Float?) {
