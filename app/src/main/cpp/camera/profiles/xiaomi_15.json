@@ -2,14 +2,10 @@
   "id": "xiaomi_15",
   "schema": 2,
   "name": "Xiaomi 15",
-  "version": 3,
+  "version": 4,
   "match": {
     "models": [
       "24129PN74G",
-      "24129PN74I",
-      "24129PN74C"
-    ],
-    "verifiedModels": [
       "24129PN74I",
       "24129PN74C"
     ]
