@@ -504,7 +504,9 @@
         },
         "sensorLayout": {
           "photoBlock": 4,
-          "photoRemosaic": "standard"
+          "photoRemosaic": "standard",
+          "photoOutput": "reduced",
+          "photoPhaseFit": false
         }
       }
     },
