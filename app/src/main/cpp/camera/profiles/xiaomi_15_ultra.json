@@ -243,7 +243,17 @@
         "raw": {
           "format": "RAW16",
           "width": 4096,
-          "height": 3072
+          "height": 3072,
+          "highResLive": true
+        },
+        "companion": {
+          "mode": "fixed",
+          "width": 640,
+          "height": 480,
+          "format": "yuv",
+          "targeted": true,
+          "physical": false,
+          "detach": false
         }
       },
       "session": {
@@ -278,7 +288,17 @@
         "raw": {
           "format": "RAW16",
           "width": 4096,
-          "height": 2560
+          "height": 2560,
+          "highResLive": true
+        },
+        "companion": {
+          "mode": "fixed",
+          "width": 640,
+          "height": 480,
+          "format": "yuv",
+          "targeted": true,
+          "physical": false,
+          "detach": false
         }
       },
       "session": {
