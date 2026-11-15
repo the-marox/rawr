@@ -3,6 +3,8 @@ package com.rawr.camera.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.material3.Text
@@ -48,32 +50,39 @@ internal fun ExposureMonitor(state: CaptureMonitorState) {
             .testTag(CaptureTestTags.EXPOSURE_MONITOR)
             .background(CaptureColors.Surface)
             .height(CaptureDimens.MonitorHeight),
-        horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        MonitorMetric("WB", wbValue)
-        MonitorMetric("SS", state.exposureApplied.shutter?.displayLabel ?: "—")
-        MonitorMetric("ISO", state.exposureApplied.iso?.displayLabel ?: "—")
-        MonitorMetric(meterLabel, state.exposureApplied.evOrMeter?.displayLabel ?: "—")
-        MonitorMetric("FOC", focusValue)
-        MonitorMetric("FPS", fpsValue)
+        // Fixed slots sized for each metric's widest value ("4870K +12", "1/8000", "12800", "29.97/29.97"...):
+        // a value changing width never pushes the others, so the bar stays still.
+        Spacer(Modifier.width(2.dp))
+        MonitorMetric("WB", wbValue, modifier = Modifier.weight(12f))
+        MonitorMetric("SS", state.exposureApplied.shutter?.displayLabel ?: "—", modifier = Modifier.weight(8.5f))
+        MonitorMetric("ISO", state.exposureApplied.iso?.displayLabel ?: "—", modifier = Modifier.weight(8.5f))
+        MonitorMetric(meterLabel, state.exposureApplied.evOrMeter?.displayLabel ?: "—", modifier = Modifier.weight(9f))
+        MonitorMetric("FOC", focusValue, modifier = Modifier.weight(8.5f))
+        MonitorMetric("FPS", fpsValue, modifier = Modifier.weight(14f))
         MonitorMetric(
             "BST",
             boostValue,
-            valueColor = if (boostActive) Color.White else Color.White.copy(alpha = .45f)
+            valueColor = if (boostActive) Color.White else Color.White.copy(alpha = .45f),
+            modifier = Modifier.weight(8f)
         )
+        Spacer(Modifier.width(2.dp))
     }
 }
 
 @Composable
-internal fun MonitorMetric(label: String, value: String, valueColor: Color = Color.White) {
+internal fun MonitorMetric(label: String, value: String, valueColor: Color = Color.White, modifier: Modifier = Modifier) {
     // Tight boxes (no font padding) so CenterVertically is also optically
     // centered: caps-only mono glyphs otherwise sit above geometric center.
     val tight = TextStyle(platformStyle = PlatformTextStyle(includeFontPadding = false))
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
         MonitorLabel(label)
         Text(
             " $value",
+            maxLines = 1,
+            softWrap = false,
             color = valueColor,
             fontFamily = CaptureMono,
             fontSize = 8.sp,
