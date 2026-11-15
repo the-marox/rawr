@@ -1,0 +1,589 @@
+{
+  "id": "xiaomi_15",
+  "schema": 2,
+  "name": "Xiaomi 15",
+  "version": 1,
+  "match": {
+    "models": [
+      "24129PN74G",
+      "24129PN74I",
+      "24129PN74C"
+    ],
+    "verifiedModels": [
+      "24129PN74I"
+    ]
+  },
+  "lenses": [
+    {
+      "id": "14mm",
+      "camera": {
+        "id": "3",
+        "physical": ""
+      },
+      "streams": {
+        "raw": {
+          "format": "RAW10",
+          "width": 4080,
+          "height": 3072
+        }
+      },
+      "vendorKeys": [],
+      "image": {
+        "levels": {
+          "static": false,
+          "black": [
+            1024,
+            1024,
+            1024,
+            1024
+          ],
+          "white": 16383
+        },
+        "exposure": {
+          "extended": false,
+          "isoMax": 0,
+          "shutterMaxNs": 0
+        }
+      }
+    },
+    {
+      "id": "14mm 50mp",
+      "camera": {
+        "id": "3",
+        "physical": ""
+      },
+      "streams": {
+        "raw": {
+          "format": "RAW16",
+          "width": 0,
+          "height": 0
+        },
+        "photo": {
+          "format": "RAW16",
+          "width": 8160,
+          "height": 6144,
+          "includePreview": false
+        }
+      },
+      "session": {
+        "frameRate": 10
+      },
+      "vendorKeys": [
+        {
+          "tag": "org.codeaurora.qcamera3.sensor_meta_data.current_mode",
+          "type": "int32",
+          "scope": "still",
+          "values": [
+            0
+          ],
+          "enabled": true
+        }
+      ],
+      "image": {
+        "levels": {
+          "static": false,
+          "black": [
+            1024,
+            1024,
+            1024,
+            1024
+          ],
+          "white": 16383
+        },
+        "exposure": {
+          "extended": false,
+          "isoMax": 0,
+          "shutterMaxNs": 0
+        },
+        "sensorLayout": {
+          "block": 2,
+          "liveRemosaic": "standard",
+          "photoRemosaic": "high",
+          "photoBlock": 2
+        }
+      }
+    },
+    {
+      "id": "23mm",
+      "camera": {
+        "id": "2",
+        "physical": ""
+      },
+      "streams": {
+        "raw": {
+          "format": "RAW10",
+          "width": 4096,
+          "height": 3072
+        }
+      },
+      "vendorKeys": [
+        {
+          "tag": "org.codeaurora.qcamera3.sensor_meta_data.current_mode",
+          "type": "int32",
+          "scope": "request",
+          "values": [
+            1
+          ],
+          "enabled": true
+        },
+        {
+          "tag": "org.codeaurora.qcamera3.sensor_meta_data.current_mode",
+          "type": "int32",
+          "scope": "still",
+          "values": [
+            1
+          ],
+          "enabled": true
+        }
+      ],
+      "image": {
+        "levels": {
+          "static": false,
+          "black": [
+            1024,
+            1024,
+            1024,
+            1024
+          ],
+          "white": 16383
+        },
+        "exposure": {
+          "extended": false,
+          "isoMax": 0,
+          "shutterMaxNs": 33333333
+        }
+      }
+    },
+    {
+      "id": "23mm DCG",
+      "camera": {
+        "id": "2",
+        "physical": ""
+      },
+      "streams": {
+        "raw": {
+          "format": "RAW16",
+          "width": 4096,
+          "height": 3072
+        }
+      },
+      "session": {
+        "opMode": 37379,
+        "frameRate": 24
+      },
+      "vendorKeys": [
+        {
+          "tag": "org.codeaurora.qcamera3.sensor_meta_data.current_mode",
+          "type": "int32",
+          "scope": "request",
+          "values": [
+            20
+          ],
+          "enabled": true
+        },
+        {
+          "tag": "org.codeaurora.qcamera3.sensor_meta_data.current_mode",
+          "type": "int32",
+          "scope": "still",
+          "values": [
+            20
+          ],
+          "enabled": true
+        }
+      ],
+      "image": {
+        "levels": {
+          "static": true,
+          "black": [
+            1024,
+            1024,
+            1024,
+            1024
+          ],
+          "white": 16383
+        },
+        "exposure": {
+          "extended": false,
+          "isoMax": 3200,
+          "shutterMaxNs": 33333333
+        }
+      }
+    },
+    {
+      "id": "23mm 50MP",
+      "camera": {
+        "id": "2",
+        "physical": ""
+      },
+      "streams": {
+        "raw": {
+          "format": "RAW16",
+          "width": 4096,
+          "height": 3072
+        },
+        "photo": {
+          "format": "RAW16",
+          "width": 8192,
+          "height": 6144,
+          "useCase": 524547,
+          "buffers": {
+            "usage": "0x100003"
+          },
+          "mergeFrameLimit": 8
+        }
+      },
+      "vendorKeys": [
+        {
+          "tag": "org.codeaurora.qcamera3.sensor_meta_data.current_mode",
+          "type": "int32",
+          "scope": "still",
+          "values": [
+            0
+          ],
+          "enabled": true
+        }
+      ],
+      "image": {
+        "levels": {
+          "static": false,
+          "black": [
+            1024,
+            1024,
+            1024,
+            1024
+          ],
+          "white": 16383
+        },
+        "exposure": {
+          "extended": false,
+          "isoMax": 0,
+          "shutterMaxNs": 0
+        }
+      }
+    },
+    {
+      "id": "59mm",
+      "camera": {
+        "id": "0",
+        "physical": "4"
+      },
+      "streams": {
+        "raw": {
+          "format": "RAW10",
+          "width": 4096,
+          "height": 3072
+        }
+      },
+      "vendorKeys": [
+        {
+          "tag": "org.codeaurora.qcamera3.sensor_meta_data.current_mode",
+          "type": "int32",
+          "scope": "request",
+          "values": [
+            1
+          ],
+          "enabled": true
+        },
+        {
+          "tag": "org.codeaurora.qcamera3.sensor_meta_data.current_mode",
+          "type": "int32",
+          "scope": "still",
+          "values": [
+            1
+          ],
+          "enabled": true
+        }
+      ],
+      "image": {
+        "levels": {
+          "static": false,
+          "black": [
+            1024,
+            1024,
+            1024,
+            1024
+          ],
+          "white": 16383
+        },
+        "exposure": {
+          "extended": false,
+          "isoMax": 0,
+          "shutterMaxNs": 0
+        }
+      }
+    },
+    {
+      "id": "59mm 50MP",
+      "camera": {
+        "id": "4",
+        "physical": ""
+      },
+      "streams": {
+        "raw": {
+          "format": "RAW16",
+          "width": 4096,
+          "height": 3072
+        },
+        "photo": {
+          "format": "RAW16",
+          "width": 8192,
+          "height": 6144,
+          "useCase": 524547,
+          "buffers": {
+            "usage": "0x100003"
+          },
+          "mergeFrameLimit": 8
+        }
+      },
+      "vendorKeys": [
+        {
+          "tag": "org.codeaurora.qcamera3.sensor_meta_data.current_mode",
+          "type": "int32",
+          "scope": "still",
+          "values": [
+            0
+          ],
+          "enabled": true
+        },
+        {
+          "tag": "xiaomi.remosaic.enabled",
+          "type": "byte",
+          "scope": "still",
+          "values": [
+            1
+          ],
+          "enabled": true
+        }
+      ],
+      "image": {
+        "levels": {
+          "static": false,
+          "black": [
+            1024,
+            1024,
+            1024,
+            1024
+          ],
+          "white": 16383
+        },
+        "exposure": {
+          "extended": false,
+          "isoMax": 0,
+          "shutterMaxNs": 0
+        }
+      }
+    },
+    {
+      "id": "59mm ISZ",
+      "camera": {
+        "id": "4",
+        "physical": ""
+      },
+      "streams": {
+        "raw": {
+          "format": "RAW10",
+          "width": 4096,
+          "height": 3072
+        }
+      },
+      "vendorKeys": [
+        {
+          "tag": "org.codeaurora.qcamera3.sensor_meta_data.current_mode",
+          "type": "int32",
+          "scope": "request",
+          "values": [
+            2
+          ],
+          "enabled": true
+        },
+        {
+          "tag": "org.codeaurora.qcamera3.sensor_meta_data.current_mode",
+          "type": "int32",
+          "scope": "session",
+          "values": [
+            2
+          ],
+          "enabled": true
+        }
+      ],
+      "image": {
+        "levels": {
+          "static": false,
+          "black": [
+            1024,
+            1024,
+            1024,
+            1024
+          ],
+          "white": 16383
+        },
+        "exposure": {
+          "extended": false,
+          "isoMax": 2500,
+          "shutterMaxNs": 33333333
+        },
+        "sensorLayout": {
+          "block": 1,
+          "liveRemosaic": "standard",
+          "photoRemosaic": "high",
+          "colourOrder": "GRBG"
+        }
+      }
+    },
+    {
+      "id": "59mm ISZ 2",
+      "camera": {
+        "id": "4",
+        "physical": ""
+      },
+      "streams": {
+        "raw": {
+          "format": "RAW10",
+          "width": 4096,
+          "height": 3072
+        }
+      },
+      "session": {
+        "opMode": 36877
+      },
+      "vendorKeys": [
+        {
+          "tag": "org.codeaurora.qcamera3.sensor_meta_data.current_mode",
+          "type": "int32",
+          "scope": "request",
+          "values": [
+            2
+          ],
+          "enabled": true
+        },
+        {
+          "tag": "org.codeaurora.qcamera3.sensor_meta_data.current_mode",
+          "type": "int32",
+          "scope": "session",
+          "values": [
+            2
+          ],
+          "enabled": true
+        }
+      ],
+      "image": {
+        "levels": {
+          "static": false,
+          "black": [
+            1024,
+            1024,
+            1024,
+            1024
+          ],
+          "white": 16383
+        },
+        "exposure": {
+          "extended": false,
+          "isoMax": 2500,
+          "shutterMaxNs": 33333333
+        },
+        "sensorLayout": {
+          "block": 1,
+          "liveRemosaic": "standard",
+          "photoRemosaic": "high",
+          "colourOrder": "GRBG"
+        }
+      }
+    },
+    {
+      "id": "Front",
+      "camera": {
+        "id": "1",
+        "physical": ""
+      },
+      "streams": {
+        "raw": {
+          "format": "RAW10",
+          "width": 3264,
+          "height": 2448
+        }
+      },
+      "vendorKeys": [],
+      "image": {
+        "levels": {
+          "static": false,
+          "black": [
+            1024,
+            1024,
+            1024,
+            1024
+          ],
+          "white": 16383
+        },
+        "exposure": {
+          "extended": false,
+          "isoMax": 0,
+          "shutterMaxNs": 0
+        },
+        "mirror": "vertical"
+      }
+    },
+    {
+      "id": "Front 32MP",
+      "camera": {
+        "id": "1",
+        "physical": ""
+      },
+      "streams": {
+        "raw": {
+          "format": "RAW16",
+          "width": 3264,
+          "height": 2448
+        },
+        "photo": {
+          "format": "RAW16",
+          "width": 6528,
+          "height": 4896,
+          "useCase": 524547,
+          "buffers": {
+            "usage": "0x100003"
+          },
+          "mergeFrameLimit": 8
+        }
+      },
+      "vendorKeys": [
+        {
+          "tag": "org.codeaurora.qcamera3.sensor_meta_data.current_mode",
+          "type": "int32",
+          "scope": "still",
+          "values": [
+            0
+          ],
+          "enabled": true
+        },
+        {
+          "tag": "xiaomi.remosaic.enabled",
+          "type": "byte",
+          "scope": "still",
+          "values": [
+            1
+          ],
+          "enabled": true
+        }
+      ],
+      "image": {
+        "levels": {
+          "static": false,
+          "black": [
+            1024,
+            1024,
+            1024,
+            1024
+          ],
+          "white": 16383
+        },
+        "exposure": {
+          "extended": false,
+          "isoMax": 800,
+          "shutterMaxNs": 0
+        },
+        "mirror": "vertical"
+      }
+    }
+  ]
+}
