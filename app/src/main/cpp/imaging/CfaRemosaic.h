@@ -18,8 +18,8 @@ namespace rawrcam::imaging {
 // (keep both in step; the Vulkan host test compares them):
 //  A. green everywhere: at R/B pixels, the two nearest green samples along
 //     each axis (the neighbouring blocks) interpolated linearly, the axes
-//     blended by inverse squared gradient; rounded to whole DN (the GPU
-//     keeps it as 16-bit);
+//     blended by inverse squared gradient; rounded to stored integer codes
+//     (whole DN by default; CPU fixed-point inputs may retain fractional DN);
 //  B. per R/B block, the mean of raw - green;
 //  C. Bayer out: green from A; R/B at their own sites the raw sample, at
 //     foreign sites green plus the colour difference interpolated bilinearly
@@ -32,9 +32,20 @@ inline uint32_t cfaChannel(uint32_t order, uint32_t x, uint32_t y) {
     return kChannels[order & 3u][(y & 1u) * 2u + (x & 1u)];
 }
 
+// Cubic Hermite between p0 and p1 (t in 0..1) with end slopes m0, m1 (per unit
+// t), kept inside [p0, p1] so an edge cannot overshoot. Mirrored by the shader.
+inline float cfaHermite(float p0, float p1, float m0, float m1, float t) {
+    const float t2 = t * t, t3 = t2 * t;
+    const float v = (2.0f * t3 - 3.0f * t2 + 1.0f) * p0 + (t3 - 2.0f * t2 + t) * m0 + (-2.0f * t3 + 3.0f * t2) * p1 +
+                    (t3 - t2) * m1;
+    return std::clamp(v, std::min(p0, p1), std::max(p0, p1));
+}
+
 struct CfaRemosaicGreen {
     // Pass A at (x, y): raw sample when green, else the directional estimate.
-    static float at(const uint16_t* raw, uint32_t w, uint32_t h, uint32_t n, uint32_t order, uint32_t x, uint32_t y) {
+    // `cubic` replaces the two linear estimates by Hermite curves whose end
+    // slopes come from the next green pixel beyond each end (Detail quality).
+    static float at(const uint16_t* raw, uint32_t w, uint32_t h, uint32_t n, uint32_t order, uint32_t x, uint32_t y, float codesPerDn = 1.0f, bool cubic = false) {
         const auto px = [&](int32_t xx, int32_t yy) {
             xx = std::clamp<int32_t>(xx, 0, int32_t(w) - 1);
             yy = std::clamp<int32_t>(yy, 0, int32_t(h) - 1);
@@ -51,13 +62,25 @@ struct CfaRemosaicGreen {
         const float gl = px(xl, Y), gr = px(xr, Y), gt = px(X, yt), gb = px(X, yb);
         const float th = xr != xl ? float(X - xl) / float(xr - xl) : 0.5f;
         const float tv = yb != yt ? float(Y - yt) / float(yb - yt) : 0.5f;
-        const float gh = gl + (gr - gl) * th, gv = gt + (gb - gt) * tv;
+        float gh = gl + (gr - gl) * th, gv = gt + (gb - gt) * tv;
+        if (cubic) {
+            if (xr != xl) {
+                const float len = float(xr - xl);
+                gh = cfaHermite(gl, gr, (gl - px(std::max(xl - 1, 0), Y)) * len,
+                                (px(std::min(xr + 1, int32_t(w) - 1), Y) - gr) * len, th);
+            }
+            if (yb != yt) {
+                const float len = float(yb - yt);
+                gv = cfaHermite(gt, gb, (gt - px(X, std::max(yt - 1, 0))) * len,
+                                (px(X, std::min(yb + 1, int32_t(h) - 1)) - gb) * len, tv);
+            }
+        }
         // Gradients: across the greens, across this block, across the same-colour blocks beyond the greens.
         const float ah = std::abs(gl - gr) + std::abs(px(x0, Y) - px(x0 + N - 1, Y)) +
                          0.5f * std::abs(px(x0 - 2 * N + N - 1, Y) - px(x0 + 2 * N, Y));
         const float av = std::abs(gt - gb) + std::abs(px(X, y0) - px(X, y0 + N - 1)) +
                          0.5f * std::abs(px(X, y0 - 2 * N + N - 1) - px(X, y0 + 2 * N));
-        constexpr float kEps = 1.0f;  // DN; keeps flat areas an even blend
+        const float kEps = codesPerDn;  // One DN in stored units; keeps flat areas an even blend
         const float wh = 1.0f / ((ah + kEps) * (ah + kEps)), wv = 1.0f / ((av + kEps) * (av + kEps));
         return (wh * gh + wv * gv) / (wh + wv);
     }
@@ -93,7 +116,7 @@ inline CfaBlockTap cfaBlockTap(uint32_t n, uint32_t bw, uint32_t bh, uint32_t py
 // bright leaf next to a dark wall) pushes R/B on the dark side to black: a
 // dark green fringe. `tap(bx, by)` returns {diff, block green}.
 template <typename Tap>
-inline float cfaBlendDiff(const CfaBlockTap& t, float green, Tap&& tap) {
+inline float cfaBlendDiff(const CfaBlockTap& t, float green, Tap&& tap, float codesPerDn = 1.0f) {
     const int32_t bxs[2] = {t.bx0, t.bx1}, bys[2] = {t.by0, t.by1};
     const float wx[2] = {1.0f - t.tx, t.tx}, wy[2] = {1.0f - t.ty, t.ty};
     float sum = 0.0f, weight = 0.0f;
@@ -101,7 +124,7 @@ inline float cfaBlendDiff(const CfaBlockTap& t, float green, Tap&& tap) {
         for (int i = 0; i < 2; ++i) {
             const auto [d, g] = tap(bxs[i], bys[j]);
             // Similar within ~10% of the brighter green (plus a few DN of noise).
-            const float sigma = 0.1f * std::max(green, g) + 4.0f;
+            const float sigma = 0.1f * std::max(green, g) + 4.0f * codesPerDn;
             const float r = (g - green) / sigma;
             const float wgt = (wx[i] * wy[j] + 1e-4f) / (1.0f + r * r);
             sum += wgt * d;
@@ -119,7 +142,13 @@ inline float cfaBlendDiff(const CfaBlockTap& t, float green, Tap&& tap) {
 // wanted colour within 2n pixels (the nearest blocks in all directions, a
 // block straddling an edge no longer averaged into one value), weighted by
 // distance and green similarity.
-enum class CfaRemosaicQuality : uint32_t { Fast = 0, Standard = 1, High = 2 };
+//
+// Detail (quad only, block 2; other block sizes run High): the green estimate
+// is cubic, and the colour difference is taken per pixel from the wanted
+// colour's pixels within 3 pixels instead of per 2x2 block. On Hexadeca input
+// reduced by exact 2x2 sums this is the sensor's own 50 MP grid; measured
+// against ground truth it is ~1.3 dB better than High there.
+enum class CfaRemosaicQuality : uint32_t { Fast = 0, Standard = 1, High = 2, Detail = 3 };
 
 // Fast at (x, y) from block means. Mirrored by the shader's fast pass.
 inline float cfaFastAt(const uint16_t* raw, const float* means, uint32_t w, uint32_t bw, uint32_t bh, uint32_t n,
@@ -147,9 +176,14 @@ inline float cfaFastAt(const uint16_t* raw, const float* means, uint32_t w, uint
 // Remosaics `raw` (w x h packed RAW16) in place. n = block side (2 or 4);
 // w and h are multiples of 2n on every sensor this serves (others still work,
 // edge blocks are partial). Single-threaded unless `threads` > 1.
+// codesPerDn scales DN-valued weight constants for fixed-point input (e.g. 4
+// for quarter-DN codes). Caller must keep samples within uint16 range.
+// Output and intermediate green retain the same fixed-point units.
 inline void remosaicBlockCfa(uint16_t* raw, uint32_t w, uint32_t h, uint32_t n, uint32_t order, uint32_t threads = 1,
-                             CfaRemosaicQuality quality = CfaRemosaicQuality::Standard) {
-    if (n < 2 || !raw || w < 2 * n || h < 2 * n) return;
+                             CfaRemosaicQuality quality = CfaRemosaicQuality::Standard, float codesPerDn = 1.0f) {
+    if (n < 2 || !raw || w < 2 * n || h < 2 * n || !std::isfinite(codesPerDn) || codesPerDn <= 0.0f) return;
+    if (quality == CfaRemosaicQuality::Detail && n != 2) quality = CfaRemosaicQuality::High;
+    const bool detail = quality == CfaRemosaicQuality::Detail;
     const uint32_t bw = (w + n - 1) / n, bh = (h + n - 1) / n;
     // Block parity of R and B.
     uint32_t parity[3][2] = {};
@@ -175,10 +209,12 @@ inline void remosaicBlockCfa(uint16_t* raw, uint32_t w, uint32_t h, uint32_t n, 
                     std::lround(cfaFastAt(raw, means.data(), w, bw, bh, n, order, parity, x, y)), 0l, 65535l));
         return;
     }
-    // Whole-DN codes (the GPU keeps pass A as 16-bit too), so half the RAM of
+    // Integer codes in the input units (including fixed-point), so half the RAM of
     // a float plane at 50 MP: this is the largest allocation of the remosaic.
     std::vector<uint16_t> green(size_t(w) * h);
-    std::vector<float> diff(size_t(bw) * bh, 0.0f), blockGreen(size_t(bw) * bh, 0.0f);
+    // High reads only the 2x2 sub-block statistics below. Do not allocate
+    // or compute the Standard block planes for that path.
+    std::vector<float> diff, blockGreen;
     const auto parallelRows = [&](uint32_t rows, auto&& body) {
         threads = std::max(1u, std::min(threads, rows));
         if (threads == 1) {
@@ -190,27 +226,152 @@ inline void remosaicBlockCfa(uint16_t* raw, uint32_t w, uint32_t h, uint32_t n, 
             pool.emplace_back([&, t] { body(rows * t / threads, rows * (t + 1) / threads); });
         for (auto& th : pool) th.join();
     };
-    parallelRows(h, [&](uint32_t y0, uint32_t y1) {
-        for (uint32_t y = y0; y < y1; ++y)
-            for (uint32_t x = 0; x < w; ++x)
-                green[size_t(y) * w + x] =
-                    uint16_t(std::clamp(std::lround(CfaRemosaicGreen::at(raw, w, h, n, order, x, y)), 0l, 65535l));
-    });
-    parallelRows(bh, [&](uint32_t b0, uint32_t b1) {
-        for (uint32_t by = b0; by < b1; ++by)
-            for (uint32_t bx = 0; bx < bw; ++bx) {
-                if (cfaChannel(order, bx, by) == 1u) continue;
-                float sum = 0.0f, greenSum = 0.0f;
-                uint32_t count = 0;
-                for (uint32_t y = by * n; y < std::min(h, by * n + n); ++y)
-                    for (uint32_t x = bx * n; x < std::min(w, bx * n + n); ++x, ++count) {
-                        sum += float(raw[size_t(y) * w + x]) - float(green[size_t(y) * w + x]);
-                        greenSum += float(green[size_t(y) * w + x]);
+    if (!detail)
+        parallelRows(h, [&](uint32_t y0, uint32_t y1) {
+            for (uint32_t y = y0; y < y1; ++y)
+                for (uint32_t x = 0; x < w; ++x)
+                    green[size_t(y) * w + x] =
+                        uint16_t(std::clamp(std::lround(CfaRemosaicGreen::at(raw, w, h, n, order, x, y, codesPerDn)), 0l, 65535l));
+        });
+    if (quality == CfaRemosaicQuality::Standard) {
+        diff.assign(size_t(bw) * bh, 0.0f);
+        blockGreen.assign(size_t(bw) * bh, 0.0f);
+        parallelRows(bh, [&](uint32_t b0, uint32_t b1) {
+            for (uint32_t by = b0; by < b1; ++by)
+                for (uint32_t bx = 0; bx < bw; ++bx) {
+                    if (cfaChannel(order, bx, by) == 1u) continue;
+                    float sum = 0.0f, greenSum = 0.0f;
+                    uint32_t count = 0;
+                    for (uint32_t y = by * n; y < std::min(h, by * n + n); ++y)
+                        for (uint32_t x = bx * n; x < std::min(w, bx * n + n); ++x, ++count) {
+                            sum += float(raw[size_t(y) * w + x]) - float(green[size_t(y) * w + x]);
+                            greenSum += float(green[size_t(y) * w + x]);
+                        }
+                    diff[size_t(by) * bw + bx] = count ? sum / float(count) : 0.0f;
+                    blockGreen[size_t(by) * bw + bx] = count ? greenSum / float(count) : 0.0f;
+                }
+        });
+    }
+    if (detail) {
+        // Colour difference per pixel of red/blue blocks (raw - green), kept
+        // aside because the Bayer output overwrites `raw` in place. Quarter-DN
+        // 10-bit input stays well inside int16.
+        std::vector<int16_t> pixelDiff(size_t(w) * h, 0);
+        // Green (cubic) and the colour difference in one pass per 2x2 group. A
+        // group lies inside one block; the horizontal terms belong to its rows
+        // and the vertical ones to its columns, so each is loaded once for the
+        // group (the shader's greenGroup does the same). Groups within 4 pixels
+        // of an edge use the clamped per-pixel estimate.
+        parallelRows((h + 1) / 2, [&](uint32_t g0, uint32_t g1) {
+            const float eps = codesPerDn;
+            const auto store = [&](uint32_t x, uint32_t y, float v, bool colour) {
+                const size_t i = size_t(y) * w + x;
+                green[i] = uint16_t(std::clamp(std::lround(v), 0l, 65535l));
+                if (colour) pixelDiff[i] = int16_t(std::clamp<int32_t>(int32_t(raw[i]) - int32_t(green[i]), -32768, 32767));
+            };
+            for (uint32_t gy = g0; gy < g1; ++gy)
+                for (uint32_t gx = 0; gx < (w + 1) / 2; ++gx) {
+                    const uint32_t x0 = gx * 2, y0 = gy * 2;
+                    const bool colour = cfaChannel(order, gx, gy) != 1u;
+                    const bool interior = x0 >= 4 && y0 >= 4 && x0 + 5 < w && y0 + 5 < h;
+                    if (!colour) {
+                        for (uint32_t j = 0; j < 2 && y0 + j < h; ++j)
+                            for (uint32_t i = 0; i < 2 && x0 + i < w; ++i) green[size_t(y0 + j) * w + x0 + i] = raw[size_t(y0 + j) * w + x0 + i];
+                        continue;
                     }
-                diff[size_t(by) * bw + bx] = count ? sum / float(count) : 0.0f;
-                blockGreen[size_t(by) * bw + bx] = count ? greenSum / float(count) : 0.0f;
+                    if (!interior) {
+                        for (uint32_t j = 0; j < 2 && y0 + j < h; ++j)
+                            for (uint32_t i = 0; i < 2 && x0 + i < w; ++i)
+                                store(x0 + i, y0 + j, CfaRemosaicGreen::at(raw, w, h, 2, order, x0 + i, y0 + j, codesPerDn, true), true);
+                        continue;
+                    }
+                    float gh[2][2], ah[2], gv[2][2], av[2];
+                    for (uint32_t j = 0; j < 2; ++j) {
+                        const uint16_t* r = raw + size_t(y0 + j) * w;
+                        const float gl = r[x0 - 1], gr = r[x0 + 2];
+                        ah[j] = std::abs(gl - gr) + std::abs(float(r[x0]) - float(r[x0 + 1])) +
+                                0.5f * std::abs(float(r[x0 - 3]) - float(r[x0 + 4]));
+                        for (uint32_t i = 0; i < 2; ++i)
+                            gh[j][i] = cfaHermite(gl, gr, (gl - float(r[x0 - 2])) * 3.0f, (float(r[x0 + 3]) - gr) * 3.0f,
+                                                  float(i + 1) / 3.0f);
+                    }
+                    for (uint32_t i = 0; i < 2; ++i) {
+                        const uint16_t* c = raw + x0 + i;
+                        const float gt = c[size_t(y0 - 1) * w], gb = c[size_t(y0 + 2) * w];
+                        av[i] = std::abs(gt - gb) + std::abs(float(c[size_t(y0) * w]) - float(c[size_t(y0 + 1) * w])) +
+                                0.5f * std::abs(float(c[size_t(y0 - 3) * w]) - float(c[size_t(y0 + 4) * w]));
+                        for (uint32_t j = 0; j < 2; ++j)
+                            gv[j][i] = cfaHermite(gt, gb, (gt - float(c[size_t(y0 - 2) * w])) * 3.0f,
+                                                  (float(c[size_t(y0 + 3) * w]) - gb) * 3.0f, float(j + 1) / 3.0f);
+                    }
+                    for (uint32_t j = 0; j < 2; ++j)
+                        for (uint32_t i = 0; i < 2; ++i) {
+                            const float a = (ah[j] + eps) * (ah[j] + eps), b = (av[i] + eps) * (av[i] + eps);
+                            store(x0 + i, y0 + j, (gh[j][i] * b + gv[j][i] * a) / (a + b), true);
+                        }
+                }
+        });
+        // Taps: wanted-colour pixels within 3 pixels, Gaussian distance weight
+        // and quartic green similarity (same shape as High's, per pixel).
+        // The wanted-colour taps depend only on the pixel's phase (x & 3, y & 3),
+        // so each phase gets its tap list once (same order as the shader's block walk).
+        constexpr int32_t kRadius = 3;
+        struct DetailTap {
+            int32_t dx, dy;
+            float spatial;
+        };
+        std::vector<DetailTap> detailTaps[4][4];
+        for (int32_t py = 0; py < 4; ++py)
+            for (int32_t px = 0; px < 4; ++px) {
+                const uint32_t want = cfaChannel(order, uint32_t(px), uint32_t(py));
+                if (want == 1u || cfaChannel(order, uint32_t(px) / 2, uint32_t(py) / 2) == want) continue;
+                for (int32_t by = (py - kRadius) >> 1; by <= (py + kRadius) >> 1; ++by)
+                    for (int32_t bx = (px - kRadius) >> 1; bx <= (px + kRadius) >> 1; ++bx) {
+                        if (cfaChannel(order, uint32_t(bx) & 1u, uint32_t(by) & 1u) != want) continue;
+                        for (int32_t j = 0; j < 2; ++j)
+                            for (int32_t i = 0; i < 2; ++i) {
+                                const int32_t dx = 2 * bx + i - px, dy = 2 * by + j - py;
+                                if (std::abs(dx) > kRadius || std::abs(dy) > kRadius) continue;
+                                detailTaps[py][px].push_back({dx, dy, std::exp(-float(dx * dx + dy * dy) * 0.25f)});
+                            }
+                    }
             }
-    });
+        const float sigmaFloor = 4.0f * codesPerDn;
+        parallelRows(h, [&](uint32_t y0, uint32_t y1) {
+            for (uint32_t y = y0; y < y1; ++y)
+                for (uint32_t x = 0; x < w; ++x) {
+                    const auto& taps = detailTaps[y & 3u][x & 3u];
+                    const size_t i = size_t(y) * w + x;
+                    const float greenHere = float(green[i]);
+                    float v;
+                    if (taps.empty()) {
+                        if (cfaChannel(order, x, y) != 1u) continue;  // own site: the summed sample stays
+                        v = greenHere;
+                    } else {
+                        const bool interior = x >= uint32_t(kRadius) && y >= uint32_t(kRadius) &&
+                                              x + uint32_t(kRadius) < w && y + uint32_t(kRadius) < h;
+                        float sum = 0.0f, weight = 0.0f;
+                        for (const auto& t : taps) {
+                            if (!interior) {
+                                const int32_t qx = int32_t(x) + t.dx, qy = int32_t(y) + t.dy;
+                                if (qx < 0 || qx >= int32_t(w) || qy < 0 || qy >= int32_t(h)) continue;
+                            }
+                            const size_t b = size_t(int64_t(i) + int64_t(t.dy) * int64_t(w) + t.dx);
+                            const float g = float(green[b]);
+                            // spatial / (1 + (d / s)^4) with one division
+                            const float d = g - greenHere, sg = 0.1f * std::max(greenHere, g) + sigmaFloor;
+                            const float d2 = d * d, s2 = sg * sg, s4 = s2 * s2;
+                            const float wgt = t.spatial * s4 / (s4 + d2 * d2);
+                            sum += wgt * float(pixelDiff[b]);
+                            weight += wgt;
+                        }
+                        v = greenHere + (weight > 0.0f ? sum / weight : 0.0f);
+                    }
+                    raw[i] = uint16_t(std::clamp(std::lround(v), 0l, 65535l));
+                }
+        });
+        return;
+    }
     // High: colour difference and green per 2x2 sub-block (= the block for quad).
     const uint32_t sw = (w + 1) / 2, sh = (h + 1) / 2;
     std::vector<float> subDiff, subGreen;
@@ -220,6 +381,8 @@ inline void remosaicBlockCfa(uint16_t* raw, uint32_t w, uint32_t h, uint32_t n, 
         parallelRows(sh, [&](uint32_t s0, uint32_t s1) {
             for (uint32_t sy = s0; sy < s1; ++sy)
                 for (uint32_t sx = 0; sx < sw; ++sx) {
+                    // High interpolation only requests red/blue sub-blocks.
+                    if (cfaChannel(order, sx * 2 / n, sy * 2 / n) == 1u) continue;
                     float d = 0.0f, g = 0.0f;
                     uint32_t count = 0;
                     for (uint32_t y = sy * 2; y < std::min(h, sy * 2 + 2); ++y)
@@ -270,7 +433,7 @@ inline void remosaicBlockCfa(uint16_t* raw, uint32_t w, uint32_t h, uint32_t n, 
             const int32_t sx = cx + t.ox, sy = cy + t.oy;
             if (sx < 0 || sy < 0 || sx >= int32_t(sw) || sy >= int32_t(sh)) continue;
             const size_t b = size_t(sy) * sw + size_t(sx);
-            const float sigma = 0.1f * std::max(g0, subGreen[b]) + 4.0f;
+            const float sigma = 0.1f * std::max(g0, subGreen[b]) + 4.0f * codesPerDn;
             const float r = (subGreen[b] - g0) / sigma;
             const float wgt = t.spatialWeight / (1.0f + r * r * r * r);
             sum += wgt * subDiff[b];
@@ -297,7 +460,7 @@ inline void remosaicBlockCfa(uint16_t* raw, uint32_t w, uint32_t h, uint32_t n, 
                         v = greenHere + cfaBlendDiff(t, greenHere, [&](int32_t bx, int32_t by) {
                                 const size_t b = size_t(by) * bw + size_t(bx);
                                 return std::pair{diff[b], blockGreen[b]};
-                            });
+                            }, codesPerDn);
                     }
                 }
                 raw[i] = uint16_t(std::clamp(std::lround(v), 0l, 65535l));
@@ -307,9 +470,9 @@ inline void remosaicBlockCfa(uint16_t* raw, uint32_t w, uint32_t h, uint32_t n, 
 
 // Packed RAW16 bytes (little-endian, as the snapshots hold them).
 inline void remosaicBlockCfa(std::vector<uint8_t>& raw16, uint32_t w, uint32_t h, uint32_t n, uint32_t order,
-                             uint32_t threads = 1, CfaRemosaicQuality quality = CfaRemosaicQuality::Standard) {
+                             uint32_t threads = 1, CfaRemosaicQuality quality = CfaRemosaicQuality::Standard, float codesPerDn = 1.0f) {
     if (raw16.size() < size_t(w) * h * 2) return;
-    remosaicBlockCfa(reinterpret_cast<uint16_t*>(raw16.data()), w, h, n, order, threads, quality);
+    remosaicBlockCfa(reinterpret_cast<uint16_t*>(raw16.data()), w, h, n, order, threads, quality, codesPerDn);
 }
 
 }  // namespace rawrcam::imaging

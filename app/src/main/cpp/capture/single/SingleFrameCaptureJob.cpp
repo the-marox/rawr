@@ -12,7 +12,7 @@ SingleFrameCaptureJob::SingleFrameCaptureJob(const vulkan::VulkanContext& vk, st
                                              Diagnostic diagnostic)
     : diagnostic_(std::move(diagnostic)),
       journal_(diagnostic_),
-      acquisition_(journal_, diagnostic_),
+      acquisition_(vk, journal_, diagnostic_),
       develop_(vk, mutex, filesDir, diagnostic_),
       outputs_(std::move(filesDir), diagnostic_) {}
 SingleFrameCaptureJob::~SingleFrameCaptureJob() { shutdown(); }

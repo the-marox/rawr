@@ -46,8 +46,6 @@
 namespace rawrcam::camera {
 namespace {
 constexpr const char* kTag = "RawrCamCameraNDK";
-// 200 MP stills now also save a JPEG (developed from a 50 MP binned copy): only larger ones stay DNG only.
-constexpr uint64_t kDngOnlyPixels = 300'000'000;
 #define CAMI(...) __android_log_print(ANDROID_LOG_INFO, kTag, __VA_ARGS__)
 #define CAME(...) __android_log_print(ANDROID_LOG_ERROR, kTag, __VA_ARGS__)
 
@@ -914,8 +912,7 @@ struct NativeCameraController::Impl final : CameraEventSink {
         control.capabilities.tapAfHoldsUntilNextTap = workarounds.holdTapFocus;
         control.capabilities.keepTemplateRegions = workarounds.keepTemplateRegions;
         control.capabilities.faceAfSteering = !control.capabilities.tapAfHoldsUntilNextTap;
-        control.capabilities.dngOnly =
-            route.photoStream && uint64_t(route.photoStream->width) * route.photoStream->height > kDngOnlyPixels;
+        control.capabilities.dngOnly = photoOutputDngOnly(route);
         control.capabilities.frameRate = route.frameRate;
         control.capabilities.minimalRequestDefaults = route.requestDefaults == RequestDefaults::Minimal;
         if (workarounds.noTapFocus) {

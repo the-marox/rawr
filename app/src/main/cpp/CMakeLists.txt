@@ -444,5 +444,5 @@ set_source_files_properties(capture/single/SingleShotSlot.cpp capture/single/Sin
 
 # Full-size burst remosaic is inline in SessionEngine.cpp. Keep device Debug
 # timing representative of optimized CPU loops without changing the algorithm.
-set_source_files_properties(session/SessionEngine.cpp
+set_source_files_properties(session/SessionEngine.cpp capture/ReducedRaw.cpp
   PROPERTIES COMPILE_OPTIONS "$<$<CONFIG:Debug>:-O2>")

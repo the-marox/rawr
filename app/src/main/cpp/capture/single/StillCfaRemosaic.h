@@ -6,6 +6,7 @@
 #include <chrono>
 #include <thread>
 
+#include "capture/ReducedRawMetadata.h"
 #include "imaging/CfaRemosaic.h"
 #include "imaging/CfaRemosaicFast.h"
 #include "imaging/RawSnapshot.h"
@@ -17,7 +18,7 @@ namespace rawrcam::capture {
 // develop) reads it, like ingress does for the viewfinder.
 inline void remosaicBlockCfaStill(imaging::RawSnapshot& frame) {
     const auto& context = frame.metadata.cameraContext;
-    if (!context || context->cfaBlock <= 1u) return;
+    if (!context || context->cfaBlock <= 1u || reducedRawRequested(*context)) return;
     // Debug: `adb shell setprop debug.rawr.keep_block_cfa 1` keeps the raw block mosaic in the DNG
     // (looks pink in editors) so remosaic methods can be compared offline on real scenes.
     char keep[PROP_VALUE_MAX] = {};
