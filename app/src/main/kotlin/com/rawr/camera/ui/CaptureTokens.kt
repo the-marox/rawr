@@ -1,6 +1,7 @@
 package com.rawr.camera.ui
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 
@@ -23,6 +24,9 @@ internal object CaptureColors {
     val GlassMiddle = Color(0xFF0A0A0A).copy(alpha = .76f)
     val GlassBottom = Color(0xFF030303).copy(alpha = .88f)
     val GlassBorderActive: Color get() = Accent.copy(alpha = .30f)
+    /** Text/icons on a filled accent: black on light accents (MONO, SAGE), white on dark ones (LEICA red). */
+    val OnAccent: Color get() = if (Accent.luminance() > .5f) Color.Black else Color.White
+    val OnAccentSoft: Color get() = if (Accent.luminance() > .5f) Color.Black.copy(alpha = .65f) else Color(0xFFFFD6DB)
     val ViewfinderPanel = Color(0xFF080808).copy(alpha = .66f)
 
     val Line = Color.White.copy(alpha = .085f)

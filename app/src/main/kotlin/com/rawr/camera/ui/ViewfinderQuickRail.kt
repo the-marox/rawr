@@ -409,13 +409,16 @@ internal fun ViewfinderQuickPanel(
                 val maxFrames = if (quick.frameLimit > 0) quick.frameLimit else 30
                 val framesEnabled = enabled && quick.multiframeEnabled && maxFrames > 1
                 val frames = quick.frames.coerceIn(1, maxFrames)
+                // Double-tap on FR / RESET: the default frame count, within this lens's limit.
+                val defaultFrames = com.rawr.camera.settings.model.MultiframeTuning().maxFrames.coerceIn(1, maxFrames)
                 FrameStepper(
                     frames = frames,
                     min = 1,
                     max = maxFrames,
                     enabled = framesEnabled,
                     width = chipWidth,
-                    onChange = { onEvent(CaptureQuickEvent.SetMultiframeFrames(it)) }
+                    onChange = { onEvent(CaptureQuickEvent.SetMultiframeFrames(it)) },
+                    onReset = { onEvent(CaptureQuickEvent.SetMultiframeFrames(defaultFrames)) }
                 )
                 RailChip(
                     value = if (quick.ownMultiframe) "ON" else "OFF",
@@ -437,7 +440,13 @@ internal fun ViewfinderQuickPanel(
                     width = chipWidth,
                     help = HELP_OWN_LOOK
                 ) { onEvent(CaptureQuickEvent.ToggleOwnLook) }
-                ResetChip(lensId = quick.lensId.orEmpty(), enabled = enabled, width = chipWidth, onEvent = onEvent)
+                ResetChip(
+                    lensId = quick.lensId.orEmpty(),
+                    enabled = enabled,
+                    width = chipWidth,
+                    onEvent = onEvent,
+                    resetFrames = if (quick.multiframeEnabled) defaultFrames else null
+                )
             }
         }
         androidx.compose.foundation.layout.Box(
@@ -453,7 +462,13 @@ internal fun ViewfinderQuickPanel(
 
 /** RESET: this camera back to automatic (UNDO on the card); long-press offers RESET ALL CAMERAS. */
 @Composable
-private fun ResetChip(lensId: String, enabled: Boolean, width: Dp, onEvent: (CaptureQuickEvent) -> Unit) {
+private fun ResetChip(
+    lensId: String,
+    enabled: Boolean,
+    width: Dp,
+    onEvent: (CaptureQuickEvent) -> Unit,
+    resetFrames: Int? = null
+) {
     val haptics = LocalCaptureHaptics.current
     val showAction = rememberControlHelpAction()
     val lens = lensId.substringBefore(' ').ifEmpty { "This lens" }
@@ -485,6 +500,7 @@ private fun ResetChip(lensId: String, enabled: Boolean, width: Dp, onEvent: (Cap
             ) {
                 haptics.selection()
                 onEvent(CaptureQuickEvent.ResetCameraControls(allCameras = false))
+                resetFrames?.let { onEvent(CaptureQuickEvent.SetMultiframeFrames(it)) }
                 undo(lens)
             }
             .semantics { contentDescription = "Reset $lens exposure, white balance and focus to automatic" },
@@ -509,7 +525,15 @@ private fun PanelSection(title: String) {
 
 /** FR: frames with − / + taps (long-press: help). */
 @Composable
-private fun FrameStepper(frames: Int, min: Int, max: Int, enabled: Boolean, width: Dp, onChange: (Int) -> Unit) {
+private fun FrameStepper(
+    frames: Int,
+    min: Int,
+    max: Int,
+    enabled: Boolean,
+    width: Dp,
+    onChange: (Int) -> Unit,
+    onReset: () -> Unit = {}
+) {
     val haptics = LocalCaptureHaptics.current
     val showHelp = rememberControlHelp()
     androidx.compose.foundation.layout.Row(
@@ -549,7 +573,13 @@ private fun FrameStepper(frames: Int, min: Int, max: Int, enabled: Boolean, widt
                 .captureCombinedClickable(
                     shape = CaptureTextRippleShape,
                     onLongClickLabel = "Explain",
-                    onLongClick = { showHelp(HELP_FRAMES) }
+                    onLongClick = { showHelp(HELP_FRAMES) },
+                    onDoubleClick = {
+                        if (enabled) {
+                            haptics.selection()
+                            onReset()
+                        }
+                    }
                 ) {},
             contentAlignment = Alignment.Center
         ) {
@@ -583,4 +613,4 @@ private const val HELP_CMP =
         "detail but flatter. Drag up/down; double-tap resets. Active with OPP."
 private const val HELP_FRAMES =
     "Frames merged per multiframe photo on this lens, capped by the lens limit (200 MP: 3). With OWN MF on the " +
-        "count is this lens's own; off, it is shared by the lenses without their own settings."
+        "count is this lens's own; off, it is shared by the lenses without their own settings. Double-tap: default."

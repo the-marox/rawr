@@ -270,6 +270,9 @@ class NativePreviewEngine {
     /** Back to automatic exposure, WB and focus: the open camera, or every camera. */
     external fun resetCameraControls(handle: Long, allCameras: Boolean)
 
+    /** One exposure/WB/focus set for every camera (true) or one per camera (false). */
+    external fun setSharedCameraControls(handle: Long, shared: Boolean)
+
     /** Read-only camera discovery; no preview handle or open camera is required. */
     external fun cameraVideoCapabilitiesSnapshot(): String
 

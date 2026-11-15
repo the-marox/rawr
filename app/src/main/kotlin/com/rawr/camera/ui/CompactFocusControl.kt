@@ -15,6 +15,7 @@ import com.rawr.camera.architecture.CaptureDispatch
 import com.rawr.camera.architecture.SetFocusMode
 import com.rawr.camera.architecture.SetManualFocus
 import com.rawr.camera.model.CaptureUiState
+import com.rawr.camera.model.ExposureFormat
 import com.rawr.camera.model.FocusLadder
 import com.rawr.camera.model.FocusMode
 import com.rawr.camera.model.FocusScrubPosition
@@ -55,6 +56,33 @@ internal fun CompactFocusButton(state: CaptureUiState, dispatch: CaptureDispatch
     var dragging by remember { mutableStateOf(false) }
     var position by remember { mutableStateOf(FocusScrubPosition(0f)) }
 
+    // Single tap: horizontal slider bar across the focus range (near → far); AUTO returns to continuous AF.
+    val barSteps = 60
+    val barLabels = remember(ladder) {
+        if (ladder == null) emptyList()
+        else (0 until barSteps).map { ExposureFormat.formatFocusDistance(ladder.dioptersOf(it / (barSteps - 1f))) }
+    }
+    val barIndex = (state.focus.mfNormalized * (barSteps - 1)).let { kotlin.math.round(it).toInt() }.coerceIn(0, barSteps - 1)
+    androidx.compose.runtime.SideEffect { SliderBar.sync(CaptureTestTags.COMPACT_FOCUS, barIndex) }
+    fun openBar() {
+        val l = ladder ?: return
+        SliderBar.toggle(
+            SliderBarSpec(
+                tag = CaptureTestTags.COMPACT_FOCUS,
+                title = "FOCUS",
+                labels = barLabels,
+                autoLabel = "AF",
+                onAuto = {
+                    dispatch(SetFocusMode(FocusMode.Af))
+                    SliderBar.close()
+                },
+                onSelect = { i -> dispatch(SetManualFocus(l.normalizedOf(l.dioptersOf(i / (barSteps - 1f))))) }
+            ),
+            if (latestMode == FocusMode.Mf) barIndex
+            else (l.normalizedOf(latestSeedDiopters) * (barSteps - 1)).let { kotlin.math.round(it).toInt() }.coerceIn(0, barSteps - 1)
+        )
+    }
+
     CompactParamShell(
         icon = Icons.Outlined.CenterFocusStrong,
         title = title,
@@ -72,6 +100,12 @@ internal fun CompactFocusButton(state: CaptureUiState, dispatch: CaptureDispatch
             .then(if (ladder == null) Modifier.graphicsLayer(alpha = .45f) else Modifier)
             .pointerInput(state.capabilities.tapAfSupported) {
                 detectTapGestures(
+                    onTap = {
+                        if (!dragging && ladder != null && CapturePalette.tapSliderBar) {
+                            haptics.selection()
+                            openBar()
+                        }
+                    },
                     onDoubleTap = {
                         if (!dragging && latestMode != FocusMode.Af) {
                             haptics.selection()

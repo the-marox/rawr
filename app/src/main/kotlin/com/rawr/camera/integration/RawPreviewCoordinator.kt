@@ -25,6 +25,14 @@ class RawPreviewCoordinator(application: Application) : AutoCloseable {
     // Per-camera exposure/WB/focus memory across app restarts (state, not a setting: not in backups).
     private val cameraControlsPrefs =
         application.getSharedPreferences("rawr_camera_controls", android.content.Context.MODE_PRIVATE)
+    // Settings › Control Style writes the exposure memory mode here; the viewfinder follows it live.
+    private val sharedControlsListener =
+        android.content.SharedPreferences.OnSharedPreferenceChangeListener { prefs, key ->
+            if (key == KEY_SHARED_CONTROLS) {
+                val shared = prefs.getBoolean(KEY_SHARED_CONTROLS, false)
+                postNative { native.setSharedCameraControls(nativeHandle, shared) }
+            }
+        }
     private val native = NativePreviewEngine()
     private val nativeHandle: Long
     @Volatile private var currentVideoImageSettings: VideoImageSettings? = null
@@ -86,7 +94,10 @@ class RawPreviewCoordinator(application: Application) : AutoCloseable {
                 }
             )
         native.setAssetManager(nativeHandle, application.assets)
-        // Each camera reopens as it was left (exposure mode, ISO, shutter, EV, WB, focus), before any camera opens.
+        // Exposure memory mode (Settings › Control Style), then each camera reopens as it was left
+        // (exposure mode, ISO, shutter, EV, WB, focus), before any camera opens.
+        native.setSharedCameraControls(nativeHandle, cameraControlsPrefs.getBoolean(KEY_SHARED_CONTROLS, false))
+        cameraControlsPrefs.registerOnSharedPreferenceChangeListener(sharedControlsListener)
         cameraControlsPrefs.getString(KEY_CAMERA_CONTROLS, null)?.takeIf { it.isNotBlank() }?.let {
             native.importCameraControls(nativeHandle, it, false)
         }
@@ -800,6 +811,7 @@ class RawPreviewCoordinator(application: Application) : AutoCloseable {
     private companion object {
         const val TAG = "RawrCamCoordinator"
         const val KEY_CAMERA_CONTROLS = "by_camera"
+        const val KEY_SHARED_CONTROLS = "shared"
         const val FILM_LOOK_DEBOUNCE_MS = 180L
         const val FILM_LIVE_UPDATE_MS = 16L
     }

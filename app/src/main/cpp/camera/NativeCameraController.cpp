@@ -158,6 +158,10 @@ struct NativeCameraController::Impl final : CameraEventSink {
     // Exposure/WB/focus intent each physical camera had when the user left it,
     // restored on return (1x at ISO 100, tele at ISO 800 stay as they were).
     std::map<std::string, CameraControlState> controlByCamera;
+    // Shared exposure memory: one set of exposure/WB/focus intent carried across every camera (one body).
+    bool sharedControls = false;
+    // Shared intent restored at app start (the "*" line), before any camera is open.
+    std::optional<CameraControlState> sharedStartIntent;
     // Built-in profile for this device model until the app supplies the
     // user's lens profile (setProfile).
     const std::string deviceModel = systemProperty("ro.product.model");
@@ -823,7 +827,9 @@ struct NativeCameraController::Impl final : CameraEventSink {
         if (!previousControl.capabilities.cameraId.empty() && !sameCameraRestart)
             controlByCamera[previousControl.capabilities.cameraId] = previousControl;
         const auto saved = controlByCamera.find(route.cameraId);
+        const bool hadCamera = !previousControl.capabilities.cameraId.empty();
         const CameraControlState* restore = sameCameraRestart ? &previousControl
+            : sharedControls ? (hadCamera ? &previousControl : (sharedStartIntent ? &*sharedStartIntent : nullptr))
             : saved != controlByCamera.end() ? &saved->second : nullptr;
         control = deviceSession.initialControls(route);
         // Vendor full-size modes: the HAL's S/I priority AE crashes the camera
@@ -869,13 +875,18 @@ struct NativeCameraController::Impl final : CameraEventSink {
             // Same-sensor restart keeps the manual entry baseline so an
             // in-progress manual session doesn't snap to absolute gains.
             // A new camera gets fresh state from readInitial (above).
-            control.manualWhiteBalanceEntryGains = restore->manualWhiteBalanceEntryGains;
-            control.hasManualWhiteBalanceEntryGains = restore->hasManualWhiteBalanceEntryGains;
-            control.manualWhiteBalanceEntryTempK = restore->manualWhiteBalanceEntryTempK;
-            control.manualWhiteBalanceEntryTint = restore->manualWhiteBalanceEntryTint;
-            control.focusMode = restore->focusMode;
-            control.requestedManualFocusNormalized = restore->requestedManualFocusNormalized;
-            diag(std::string("CAMERA_CONTROL_INTENT_RESTORED source=") + (sameCameraRestart ? "restart" : "lens_return") +
+            // Shared memory carrying another camera's intent: its WB entry gains and focus belong to that sensor
+            // and lens, so only the semantic values (mode, ISO, shutter, EV, temperature/tint) follow.
+            const bool foreignRestore = restore == &previousControl && !sameCameraRestart;
+            if (!foreignRestore) {
+                control.manualWhiteBalanceEntryGains = restore->manualWhiteBalanceEntryGains;
+                control.hasManualWhiteBalanceEntryGains = restore->hasManualWhiteBalanceEntryGains;
+                control.manualWhiteBalanceEntryTempK = restore->manualWhiteBalanceEntryTempK;
+                control.manualWhiteBalanceEntryTint = restore->manualWhiteBalanceEntryTint;
+                control.focusMode = restore->focusMode;
+                control.requestedManualFocusNormalized = restore->requestedManualFocusNormalized;
+            }
+            diag(std::string("CAMERA_CONTROL_INTENT_RESTORED source=") + (sameCameraRestart ? "restart" : foreignRestore ? "shared" : "lens_return") +
                  " cameraId=" + route.cameraId +
                  " exposureMode=" + std::to_string(static_cast<int>(control.exposureMode)) +
                  " shutterNs=" + std::to_string(control.requestedExposureTimeNs) +
@@ -1544,6 +1555,9 @@ struct NativeCameraController::Impl final : CameraEventSink {
         std::lock_guard<std::mutex> lock(mutex);
         auto all = controlByCamera;
         if (!control.capabilities.cameraId.empty()) all[control.capabilities.cameraId] = control;
+        // "*" = the shared intent (the open camera's, else the one restored at start).
+        if (!control.capabilities.cameraId.empty()) all["*"] = control;
+        else if (sharedStartIntent) all["*"] = *sharedStartIntent;
         std::ostringstream out;
         for (const auto& [id, c] : all) {
             if (id.empty() || id.find_first_of(" \t\n") != std::string::npos) continue;
@@ -1572,6 +1586,14 @@ struct NativeCameraController::Impl final : CameraEventSink {
                   c.requestedManualFocusNormalized))
                 continue;
             if (id.empty()) continue;
+            if (id == "*") {
+                c.exposureMode = mode >= 0 && mode <= 3 ? static_cast<ExposureControlMode>(mode) : ExposureControlMode::Auto;
+                c.whiteBalanceMode = wb >= 1 && wb <= 255 ? static_cast<WhiteBalanceControlMode>(wb) : WhiteBalanceControlMode::Auto;
+                // Focus belongs to one lens: the shared start intent opens with continuous AF.
+                c.focusMode = FocusControlMode::Continuous;
+                if (control.capabilities.cameraId.empty()) sharedStartIntent = c;
+                continue;
+            }
             c.exposureMode = mode >= 0 && mode <= 3 ? static_cast<ExposureControlMode>(mode) : ExposureControlMode::Auto;
             c.whiteBalanceMode = wb >= 1 && wb <= 255 ? static_cast<WhiteBalanceControlMode>(wb) : WhiteBalanceControlMode::Auto;
             // A tap-AF lock has no tap point after a restart: continuous AF instead.
@@ -1623,9 +1645,18 @@ struct NativeCameraController::Impl final : CameraEventSink {
         submitRepeatingLocked();
     }
     // Back to automatic exposure, WB and focus: the open camera, or every camera.
+    void setSharedControlsValue(bool shared) {
+        std::lock_guard<std::mutex> lock(mutex);
+        sharedControls = shared;
+        diag(std::string("CAMERA_CONTROL_MEMORY mode=") + (shared ? "shared" : "per_camera"));
+    }
     void resetCameraControlsValue(bool allCameras) {
         std::lock_guard<std::mutex> lock(mutex);
-        if (allCameras) controlByCamera.clear();
+        // Shared memory has one set: a reset is always for every camera.
+        if (allCameras || sharedControls) {
+            controlByCamera.clear();
+            sharedStartIntent.reset();
+        }
         const std::string id = control.capabilities.cameraId;
         if (id.empty()) return;
         controlByCamera.erase(id);
@@ -2151,6 +2182,7 @@ void NativeCameraController::importCameraControls(const std::string& text, bool 
     impl_->importCameraControlsText(text, applyOpen);
 }
 void NativeCameraController::resetCameraControls(bool allCameras) { impl_->resetCameraControlsValue(allCameras); }
+void NativeCameraController::setSharedCameraControls(bool shared) { impl_->setSharedControlsValue(shared); }
 void NativeCameraController::setRawrAeConfig(const RawrAeConfig& config) { impl_->setRawrAeConfigValue(config); }
 NativeCameraController::RawrAeContext NativeCameraController::rawrAeContext() const {
     std::lock_guard<std::mutex> lock(impl_->rawrAeContextMutex);

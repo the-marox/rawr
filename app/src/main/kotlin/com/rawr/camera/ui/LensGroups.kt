@@ -72,23 +72,27 @@ internal fun LensButtonFace(
     outlined: Boolean = false,
     moreVariants: Boolean = false
 ) {
-    val shape = RoundedCornerShape(10.dp)
+    val shape = CapturePalette.shape()
     val filled = selected && !outlined
+    val boxed = CapturePalette.valueBackgrounds || filled || selected
     val (top, bottom) = splitLensName(displayName)
     val dim = if (enabled) 1f else .5f
     Box(
         modifier
             .widthIn(min = 44.dp)
             .height(44.dp)
-            .background(if (filled) CaptureColors.Accent.copy(alpha = dim) else Color(0xFF141414), shape)
-            .border(
-                1.dp,
-                when {
-                    filled -> Color.Transparent
-                    selected -> CaptureColors.Accent
-                    else -> Color(0xFF262626)
-                },
-                shape
+            .then(
+                if (!boxed) Modifier else Modifier
+                    .background(if (filled) CaptureColors.Accent.copy(alpha = dim) else Color(0xFF141414), shape)
+                    .border(
+                        1.dp,
+                        when {
+                            filled -> Color.Transparent
+                            selected -> CaptureColors.Accent
+                            else -> Color(0xFF262626)
+                        },
+                        shape
+                    )
             ),
         contentAlignment = Alignment.Center
     ) {
@@ -99,7 +103,7 @@ internal fun LensButtonFace(
             Text(
                 top,
                 color = when {
-                    filled -> Color.White
+                    filled -> CaptureColors.OnAccent
                     selected -> CaptureColors.Accent
                     else -> Color.White.copy(alpha = .9f)
                 }.copy(alpha = dim),
@@ -112,7 +116,7 @@ internal fun LensButtonFace(
                 Text(
                     bottom,
                     color = when {
-                        filled -> Color(0xFFFFD6DB)
+                        filled -> CaptureColors.OnAccentSoft
                         selected -> Color(0xFFFF8A96)
                         else -> Color(0xFF8C8C8C)
                     }.copy(alpha = dim),
@@ -209,7 +213,7 @@ internal fun LensGroupSelector(
                         .then(
                             if (enabled) {
                                 Modifier.captureCombinedClickable(
-                                    shape = RoundedCornerShape(10.dp),
+                                    shape = CapturePalette.shape(),
                                     onLongClickLabel = "${shown.displayName} lens settings",
                                     onLongClick = {
                                         haptics.selection()
@@ -284,7 +288,7 @@ internal fun LensGroupSelector(
                                         )
                                         .testTag(CaptureTestTags.lens(variant.id) + "_variant")
                                         .captureCombinedClickable(
-                                            shape = RoundedCornerShape(10.dp),
+                                            shape = CapturePalette.shape(),
                                             onLongClickLabel = "${variant.displayName} lens settings",
                                             onLongClick = {
                                                 haptics.selection()

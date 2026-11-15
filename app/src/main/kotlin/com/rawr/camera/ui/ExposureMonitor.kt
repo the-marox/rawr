@@ -44,6 +44,11 @@ internal fun ExposureMonitor(state: CaptureMonitorState) {
     val boost = state.sensitivityBoost
     val boostValue = boost?.let { "×%.2f".format(it / 100f) } ?: "—"
     val boostActive = boost != null && boost > 100
+    // Fixed slots are sized for these glyphs: the system font size must not grow them into each other.
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    androidx.compose.runtime.CompositionLocalProvider(
+        androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(density.density, fontScale = 1f)
+    ) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -69,6 +74,7 @@ internal fun ExposureMonitor(state: CaptureMonitorState) {
             modifier = Modifier.weight(8f)
         )
         Spacer(Modifier.width(2.dp))
+    }
     }
 }
 

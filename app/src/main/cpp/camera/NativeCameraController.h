@@ -63,6 +63,8 @@ class NativeCameraController {
     void importCameraControls(const std::string& text, bool applyOpen);
     // Back to automatic: the open camera, or every camera.
     void resetCameraControls(bool allCameras);
+    // One exposure/WB/focus set for every camera (true) or one per camera (false, default).
+    void setSharedCameraControls(bool shared);
     // Long exposure: the (shutter, ISO) a capture needs when M or rawr S asks
     // for a shutter past the viewfinder cap (ViewfinderExposure.h); nullopt
     // when the viewfinder frames are the capture.

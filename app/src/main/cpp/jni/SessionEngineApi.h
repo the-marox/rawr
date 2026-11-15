@@ -89,6 +89,7 @@ std::string cameraControlSnapshot(EngineHandle handle);
 std::string exportCameraControls(EngineHandle handle) noexcept;
 void importCameraControls(EngineHandle handle, const std::string& text, bool applyOpen) noexcept;
 void resetCameraControls(EngineHandle handle, bool allCameras) noexcept;
+void setSharedCameraControls(EngineHandle handle, bool shared) noexcept;
 int videoRotationDegrees(EngineHandle handle, int deviceRotationDegrees);
 std::string faceDetectionsSnapshot(EngineHandle handle);
 void setExposureMode(EngineHandle handle, int mode) noexcept;

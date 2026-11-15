@@ -144,6 +144,9 @@ void CameraControlSurface::importCameraControls(const std::string& text, bool ap
 void CameraControlSurface::resetCameraControls(bool allCameras) {
     if (cameraController_) cameraController_->resetCameraControls(allCameras);
 }
+void CameraControlSurface::setSharedCameraControls(bool shared) {
+    if (cameraController_) cameraController_->setSharedCameraControls(shared);
+}
 void CameraControlSurface::selectLens(const std::string& lensId) {
     if (cameraController_) cameraController_->setLensId(lensId);
 }

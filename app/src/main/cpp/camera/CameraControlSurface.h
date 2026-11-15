@@ -64,6 +64,7 @@ class CameraControlSurface final {
     std::string exportCameraControls();
     void importCameraControls(const std::string& text, bool applyOpen);
     void resetCameraControls(bool allCameras);
+    void setSharedCameraControls(bool shared);
     int videoRotationDegrees(int deviceRotationDegrees) const;
     void setPreferredCameraId(const std::string& cameraId);
     void setCameraAccessRoute(const std::string& route);

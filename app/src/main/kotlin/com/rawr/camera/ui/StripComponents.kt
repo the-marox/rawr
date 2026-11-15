@@ -486,15 +486,19 @@ internal fun CompactSidePill(
     onLongClickLabel: String? = null
 ) {
     val haptics = LocalCaptureHaptics.current
-    val contentColor = if (active) Color.White else Color.White.copy(alpha = .7f)
+    val contentColor = if (active) CaptureColors.OnAccent else Color.White.copy(alpha = .7f)
     // Boxed toggle (matches the lens buttons): dark when off, solid Leica red when on.
-    val shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp)
+    val shape = CapturePalette.shape()
+    val boxed = active || CapturePalette.valueBackgrounds
     Box(
         modifier
             .widthIn(min = 52.dp)
             .height(52.dp)
-            .background(if (active) CaptureColors.Accent else Color(0xFF141414), shape)
-            .border(1.dp, if (active) CaptureColors.Accent else Color(0xFF262626), shape)
+            .then(
+                if (!boxed) Modifier else Modifier
+                    .background(if (active) CaptureColors.Accent else Color(0xFF141414), shape)
+                    .border(1.dp, if (active) CaptureColors.Accent else Color(0xFF262626), shape)
+            )
             .testTag(testTag)
             .captureCombinedClickable(
                 shape = CapturePillRippleShape,

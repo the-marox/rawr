@@ -63,7 +63,11 @@ internal fun scaleAround(labels: List<String>, index: Int, radius: Int = 3): Pai
 
 /** Translucent rounded backing for a viewfinder control; red outline while it is being scrubbed. */
 internal fun Modifier.viewfinderChip(active: Boolean = false): Modifier {
-    val shape = RoundedCornerShape(10.dp)
+    val shape = CapturePalette.shape()
+    // Ornaments off: an inactive control is just its (shadowed) text; the active one keeps its outline.
+    if (!CapturePalette.valueBackgrounds) {
+        return if (active) this.border(1.dp, CaptureColors.Accent, shape) else this
+    }
     return this
         .background(Color.Black.copy(alpha = .55f), shape)
         .border(1.dp, if (active) CaptureColors.Accent else CaptureColors.Outline, shape)
@@ -111,11 +115,14 @@ internal fun ScrubReadoutOverlay(modifier: Modifier = Modifier) {
         modifier = modifier
     ) {
         val shape = RoundedCornerShape(16.dp)
+        val boxed = CapturePalette.valueBackgrounds
         Column(
             Modifier
                 .widthIn(min = 150.dp)
-                .background(Color.Black.copy(alpha = .62f), shape)
-                .border(1.dp, CaptureColors.Outline, shape)
+                .then(
+                    if (boxed) Modifier.background(Color.Black.copy(alpha = .62f), shape).border(1.dp, CaptureColors.Outline, shape)
+                    else Modifier
+                )
                 .padding(horizontal = 28.dp, vertical = 10.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -135,7 +142,7 @@ internal fun ScrubReadoutOverlay(modifier: Modifier = Modifier) {
                 lineHeight = 38.sp,
                 maxLines = 1
             )
-            if (shownScale.size > 1 && shownIndex in shownScale.indices) {
+            if (CapturePalette.dragScale && shownScale.size > 1 && shownIndex in shownScale.indices) {
                 // Lens-ring style scale: neighbours in grey, the current value in red under an index tick.
                 Box(
                     Modifier

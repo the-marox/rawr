@@ -128,6 +128,47 @@ internal fun CompactExposureButton(
         }
     }
 
+    // Single tap (Settings › Control Style): a horizontal slider bar with this axis's values above the row.
+    val barLabels = capability.candidates.map { it.displayLabel }
+    fun openBar() {
+        var lockedForBar = false
+        SliderBar.toggle(
+            SliderBarSpec(
+                tag = testTag,
+                title = title,
+                labels = barLabels,
+                autoLabel = if (isEv) "0.0" else "AUTO",
+                onAuto = if (isEv) {
+                    zeroEvId?.let { id ->
+                        fun() {
+                            dispatch(SetExposureCandidate(parameter, id))
+                            if (zeroEvIndex != null) SliderBar.index = zeroEvIndex
+                        }
+                    }
+                } else {
+                    fun() {
+                        CaptureTransitions.unlockModeFor(parameter, latestMode, latestSupportedModes)?.let {
+                            dispatch(SetExposureMode(it))
+                        }
+                        SliderBar.close()
+                    }
+                },
+                onSelect = { i ->
+                    if (!lockedForBar) {
+                        ensureLocked()
+                        lockedForBar = true
+                    }
+                    capability.candidates.getOrNull(i)?.let { dispatch(SetExposureCandidate(parameter, it.id)) }
+                }
+            ),
+            latestSeedIndex
+        )
+    }
+    androidx.compose.runtime.SideEffect {
+        val open = SliderBar.spec
+        if (open?.tag == testTag && open.labels != barLabels) SliderBar.close() else SliderBar.sync(testTag, seedIndex)
+    }
+
     CompactParamShell(
         icon = icon,
         title = title,
@@ -142,6 +183,12 @@ internal fun CompactExposureButton(
                 if (isEv && zeroEvId != null && zeroEvIndex != null && !isManualMeter) {
                     Modifier.pointerInput(capability, zeroEvId) {
                         detectTapGestures(
+                            onTap = {
+                                if (!dragging && CapturePalette.tapSliderBar) {
+                                    haptics.selection()
+                                    openBar()
+                                }
+                            },
                             onDoubleTap = {
                                 if (!dragging) {
                                     haptics.selection()
@@ -162,6 +209,12 @@ internal fun CompactExposureButton(
                 } else if (!isEv && interactive) {
                     Modifier.pointerInput(parameter, capability.candidates.size) {
                         detectTapGestures(
+                            onTap = {
+                                if (!dragging && CapturePalette.tapSliderBar) {
+                                    haptics.selection()
+                                    openBar()
+                                }
+                            },
                             onDoubleTap = {
                                 if (!dragging) {
                                     CaptureTransitions.unlockModeFor(parameter, latestMode, latestSupportedModes)?.let {

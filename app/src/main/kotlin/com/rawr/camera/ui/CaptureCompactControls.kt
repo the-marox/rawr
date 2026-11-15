@@ -146,6 +146,8 @@ private fun CompactStripStack(
             )
         }
         if (quick.showExposure) {
+            // Single-tap slider bar (ISO / SS / EV / WB / focus) sits right above the row it edits.
+            SliderBarView()
             CompactParamRow(
                 state = state,
                 dispatch = dispatch,

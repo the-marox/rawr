@@ -832,6 +832,10 @@ extern "C" JNIEXPORT void JNICALL
 Java_com_rawr_camera_integration_NativePreviewEngine_resetCameraControls(JNIEnv*, jobject, jlong h, jboolean all) {
     rawrcam::session::resetCameraControls(handle(h), all == JNI_TRUE);
 }
+extern "C" JNIEXPORT void JNICALL
+Java_com_rawr_camera_integration_NativePreviewEngine_setSharedCameraControls(JNIEnv*, jobject, jlong h, jboolean shared) {
+    rawrcam::session::setSharedCameraControls(handle(h), shared == JNI_TRUE);
+}
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_rawr_camera_integration_NativePreviewEngine_cameraControlSnapshot(JNIEnv* env, jobject, jlong h) {
     auto s = rawrcam::session::cameraControlSnapshot(handle(h));

@@ -61,6 +61,34 @@ internal fun CompactWbButton(state: CaptureUiState, dispatch: CaptureDispatch, m
         dispatch(LockWhiteBalance(latestTemp, latestTint))
     }
 
+    // Single tap: horizontal slider bar of temperatures (100 K steps); AUTO returns to auto WB.
+    val barTemps = remember {
+        (WhiteBalanceMode.TEMP_MIN_K..WhiteBalanceMode.TEMP_MAX_K step 100).toList()
+    }
+    val barLabels = remember(barTemps) { barTemps.map { "${it}K" } }
+    val barIndex = barTemps.indexOfFirst { it >= state.whiteBalanceTemperatureK }.let { if (it < 0) barTemps.lastIndex else it }
+    androidx.compose.runtime.SideEffect { SliderBar.sync(CaptureTestTags.COMPACT_WB, barIndex) }
+    fun openBar() {
+        SliderBar.toggle(
+            SliderBarSpec(
+                tag = CaptureTestTags.COMPACT_WB,
+                title = "WB",
+                labels = barLabels,
+                autoLabel = "AUTO",
+                onAuto = {
+                    dispatch(SetWhiteBalanceMode(WhiteBalanceMode.Auto))
+                    SliderBar.close()
+                },
+                onSelect = { i ->
+                    val temp = barTemps[i]
+                    if (!latestLocked) dispatch(LockWhiteBalance(temp, latestTint))
+                    else dispatch(SetWhiteBalanceTempTint(temp, latestTint))
+                }
+            ),
+            barIndex
+        )
+    }
+
     CompactParamShell(
         icon = Icons.Outlined.Thermostat,
         title = "WB",
@@ -74,6 +102,12 @@ internal fun CompactWbButton(state: CaptureUiState, dispatch: CaptureDispatch, m
         modifier = modifier
             .pointerInput(manualSupported) {
                 detectTapGestures(
+                    onTap = {
+                        if (!dragging && manualSupported && CapturePalette.tapSliderBar) {
+                            haptics.selection()
+                            openBar()
+                        }
+                    },
                     onDoubleTap = {
                         if (!dragging && latestLocked) {
                             haptics.selection()

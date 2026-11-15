@@ -8,6 +8,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.unit.dp
 
 /** Theme presets: LEICA is today's palette; the others only swap the two accents. */
 internal enum class ThemePreset(val label: String, val accent: Long, val accentSoft: Long) {
@@ -17,6 +19,9 @@ internal enum class ThemePreset(val label: String, val accent: Long, val accentS
     Sage("SAGE", 0xFF8FA88A, 0xFFB3C7AE),
     Custom("CUSTOM", 0xFFE2001A, 0xFFFF4D5E)
 }
+
+/** Button corner style: SQUARE is today's Leica look. */
+internal enum class ButtonShapeStyle(val label: String) { Square("Square"), Rounded("Rounded"), Pill("Pill") }
 
 /** Editable theme colours; neutrals default to the Leica greys. */
 internal enum class ThemeColor(val label: String, val description: String, val leica: Long) {
@@ -38,6 +43,29 @@ internal object CapturePalette {
     var preset by mutableStateOf(ThemePreset.Leica)
         private set
     private val overrides = mutableStateMapOf<ThemeColor, Color>()
+    var buttonShape by mutableStateOf(ButtonShapeStyle.Square)
+        private set
+    /** Boxes behind viewfinder values and buttons ("ornaments"); off = text with shadow only. */
+    var valueBackgrounds by mutableStateOf(true)
+        private set
+    /** Scale under the big readout while a value is dragged. */
+    var dragScale by mutableStateOf(true)
+        private set
+    /** A single tap on ISO/SS/EV/WB/focus opens a horizontal slider bar above the row. */
+    var tapSliderBar by mutableStateOf(true)
+        private set
+
+    /** Corner shape for viewfinder buttons; [squareRadius] is the control's own radius in SQUARE. */
+    fun shape(squareRadius: androidx.compose.ui.unit.Dp = 10.dp): androidx.compose.ui.graphics.Shape = when (buttonShape) {
+        ButtonShapeStyle.Square -> RoundedCornerShape(squareRadius)
+        ButtonShapeStyle.Rounded -> RoundedCornerShape(maxOf(squareRadius, 16.dp))
+        ButtonShapeStyle.Pill -> RoundedCornerShape(percent = 50)
+    }
+
+    fun setButtonShape(v: ButtonShapeStyle) { buttonShape = v; save() }
+    fun setValueBackgrounds(v: Boolean) { valueBackgrounds = v; save() }
+    fun setDragScale(v: Boolean) { dragScale = v; save() }
+    fun setTapSliderBar(v: Boolean) { tapSliderBar = v; save() }
 
     fun color(c: ThemeColor): Color = overrides[c] ?: Color(defaultFor(preset, c))
 
@@ -53,6 +81,11 @@ internal object CapturePalette {
         prefs = p
         preset = p.getString(KEY_PRESET, null)?.let { name -> ThemePreset.entries.firstOrNull { it.name == name } }
             ?: ThemePreset.Leica
+        buttonShape = p.getString(KEY_SHAPE, null)?.let { n -> ButtonShapeStyle.entries.firstOrNull { it.name == n } }
+            ?: ButtonShapeStyle.Square
+        valueBackgrounds = p.getBoolean(KEY_BACKGROUNDS, true)
+        dragScale = p.getBoolean(KEY_DRAG_SCALE, true)
+        tapSliderBar = p.getBoolean(KEY_TAP_BAR, true)
         overrides.clear()
         p.getString(KEY_COLORS, null).orEmpty().split(',').forEach { entry ->
             val (name, hex) = entry.split('=').takeIf { it.size == 2 } ?: return@forEach
@@ -86,6 +119,10 @@ internal object CapturePalette {
         val p = prefs ?: return
         p.edit()
             .putString(KEY_PRESET, preset.name)
+            .putString(KEY_SHAPE, buttonShape.name)
+            .putBoolean(KEY_BACKGROUNDS, valueBackgrounds)
+            .putBoolean(KEY_DRAG_SCALE, dragScale)
+            .putBoolean(KEY_TAP_BAR, tapSliderBar)
             .putString(KEY_COLORS, overrides.entries.joinToString(",") { (k, v) ->
                 k.name + "=" + "%08X".format(v.toArgb())
             })
@@ -103,4 +140,8 @@ internal object CapturePalette {
 
     private const val KEY_PRESET = "preset"
     private const val KEY_COLORS = "colors"
+    private const val KEY_SHAPE = "button_shape"
+    private const val KEY_BACKGROUNDS = "value_backgrounds"
+    private const val KEY_DRAG_SCALE = "drag_scale"
+    private const val KEY_TAP_BAR = "tap_slider_bar"
 }

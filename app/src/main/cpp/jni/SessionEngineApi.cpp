@@ -80,6 +80,9 @@ void importCameraControls(EngineHandle h, const std::string& text, bool applyOpe
 void resetCameraControls(EngineHandle h, bool allCameras) noexcept {
     if (h) engine(h)->cameraControls().resetCameraControls(allCameras);
 }
+void setSharedCameraControls(EngineHandle h, bool shared) noexcept {
+    if (h) engine(h)->cameraControls().setSharedCameraControls(shared);
+}
 void selectLens(EngineHandle h, const std::string& v) noexcept {
     if (h) engine(h)->cameraControls().selectLens(v);
 }

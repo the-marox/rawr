@@ -146,6 +146,44 @@ internal fun ControlStyleSettings(state: SettingsUiState, dispatch: SettingsDisp
                 }
             )
         }
+        val palette = com.rawr.camera.ui.CapturePalette
+        SettingsGroup(title = "Button shape", description = "SQUARE is the Leica look. PILL turns square buttons into circles.") {
+            com.rawr.camera.ui.ButtonShapeStyle.entries.forEachIndexed { index, style ->
+                if (index > 0) SettingDivider()
+                SettingsSelectionRow(
+                    title = style.label,
+                    selected = palette.buttonShape == style,
+                    testTag = SettingsTestTags.row("ControlStyle", "shape_${style.name.lowercase()}"),
+                    onClick = {
+                        haptics.detent()
+                        palette.setButtonShape(style)
+                    }
+                )
+            }
+        }
+        SettingsGroup(title = "Viewfinder values") {
+            SettingsSwitchRow(
+                title = "Value backgrounds",
+                checked = palette.valueBackgrounds,
+                supportingText = "Boxes behind ISO, SS, EV, WB, LOOK and the lens buttons. Off: text with shadow only; the active one stays marked.",
+                testTag = SettingsTestTags.row("ControlStyle", "value_backgrounds")
+            ) { palette.setValueBackgrounds(it) }
+            SettingDivider()
+            SettingsSwitchRow(
+                title = "Drag scale",
+                checked = palette.dragScale,
+                supportingText = "Scale of neighbouring values under the big readout while dragging.",
+                testTag = SettingsTestTags.row("ControlStyle", "drag_scale")
+            ) { palette.setDragScale(it) }
+            SettingDivider()
+            SettingsSwitchRow(
+                title = "Tap opens slider bar",
+                checked = palette.tapSliderBar,
+                supportingText = "A single tap on ISO, SS, EV, WB or focus opens a horizontal bar above the row; drag left/right to set.",
+                testTag = SettingsTestTags.row("ControlStyle", "tap_slider_bar")
+            ) { palette.setTapSliderBar(it) }
+        }
+        ExposureMemoryGroup()
         SettingsGroup(
             title = "Theme",
             description = "LEICA is the default. The others only change the accent; editing any colour below makes it CUSTOM."
@@ -285,5 +323,42 @@ private fun ViewfinderResolutionRow(divisor: Int, onSelect: (Int) -> Unit) {
                 )
             }
         }
+    }
+}
+
+/** Exposure memory lives with the camera controls (read by the viewfinder's camera coordinator). */
+@Composable
+private fun ExposureMemoryGroup() {
+    val haptics = LocalSettingsHaptics.current
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val prefs = remember { context.getSharedPreferences("rawr_camera_controls", android.content.Context.MODE_PRIVATE) }
+    var shared by remember { mutableStateOf(prefs.getBoolean("shared", false)) }
+    SettingsGroup(
+        title = "Exposure memory",
+        description = "How exposure mode, ISO, shutter, EV and WB follow lens changes. Both are kept after closing the app."
+    ) {
+        SettingsSelectionRow(
+            title = "Per camera",
+            supportingText = "Each lens keeps its own values.",
+            selected = !shared,
+            testTag = SettingsTestTags.row("ControlStyle", "memory_per_camera"),
+            onClick = {
+                haptics.detent()
+                shared = false
+                prefs.edit().putBoolean("shared", false).apply()
+            }
+        )
+        SettingDivider()
+        SettingsSelectionRow(
+            title = "Shared",
+            supportingText = "One set for every lens, like one camera body (focus stays per lens).",
+            selected = shared,
+            testTag = SettingsTestTags.row("ControlStyle", "memory_shared"),
+            onClick = {
+                haptics.detent()
+                shared = true
+                prefs.edit().putBoolean("shared", true).apply()
+            }
+        )
     }
 }
