@@ -1381,7 +1381,32 @@ struct NativeCameraController::Impl final : CameraEventSink {
             longExposureSubmitMs.store(-1, std::memory_order_relaxed);
         }
         if (actions.fallbackToAuto) {
-            control.exposureMode = ExposureControlMode::Auto;
+            // A HAL S/I priority that ignores the user's axis (17U 1x: ISO priority keeps the HAL's own ISO)
+            // falls back to rawr's app-side priority when it can run, so the lock holds; otherwise Auto.
+            const auto failed = control.exposureMode;
+            const bool coordinateKnown =
+                results.sensitivityReportedPerRequest().has_value() || !deviceSession.sensorModeOverridden();
+            const bool rawrPriority =
+                rawrAeConfig.enabled && control.capabilities.manualExposureSupported && coordinateKnown;
+            // Results still in flight from the HAL-priority requests may report the same violation once more:
+            // after the demotion they are ignored instead of dropping the lock.
+            if (rawrPriority && failed == ExposureControlMode::IsoPriority) {
+                if (halIsoPriority) {
+                    halIsoPriority = false;
+                    applyAePriorityPreferenceLocked();
+                    diag("CAMERA_AE_PRIORITY_HAL_DEMOTED axis=iso cameraId=" + control.capabilities.cameraId +
+                         " now=app_priority");
+                }
+            } else if (rawrPriority && failed == ExposureControlMode::ShutterPriority) {
+                if (halShutterPriority) {
+                    halShutterPriority = false;
+                    applyAePriorityPreferenceLocked();
+                    diag("CAMERA_AE_PRIORITY_HAL_DEMOTED axis=shutter cameraId=" + control.capabilities.cameraId +
+                         " now=app_priority");
+                }
+            } else {
+                control.exposureMode = ExposureControlMode::Auto;
+            }
             submitRepeatingLocked();
         }
         if (actions.expectedStillFocus && actions.frame->optimizedStillRequestId) {
