@@ -159,7 +159,8 @@ class NativeVideoRecorder(private val context: Context, private val preview: Raw
         require(request.fps in com.rawr.camera.architecture.VIDEO_FPS_CHOICES)
         require(request.bitrate in VideoEncoderLimits.MIN_BITRATE_MBPS * 1_000_000..
             VideoEncoderLimits.MAX_BITRATE_MBPS * 1_000_000)
-        require(request.intraFrames in 1..60)
+        // Up to 2 x FPS at the highest rate the recorder takes (VideoEncoderConfig.KeyframeInterval).
+        require(request.intraFrames in 1..480)
         require(request.bitrateMode in -1..2)
         require(request.maxBFrames in -1..4)
         require(request.audioChannels == 1 || request.audioChannels == 2)
