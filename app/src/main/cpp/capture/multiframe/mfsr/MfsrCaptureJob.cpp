@@ -265,8 +265,8 @@ void MfsrCaptureJob::runStages(Published& published) {
         done.error = error;
         publishJpeg(done);
     };
-    // Strip merges (200 MP) never hold the whole merged CFA on the GPU: their JPEG develops on the CPU-stitched
-    // CFA, binned to half size like a single 200 MP still (developStripJpeg below).
+    // Strip merges never hold the whole merged CFA on the GPU: their JPEG develops on the CPU-stitched CFA.
+    // At or below the strip window (50 MP) that is the full merge; a 200 MP one bins to half size first.
     const bool stripJpeg = stripMode && work->jpegRequested;
     bool stripJpegPublished = !stripJpeg;
     auto makeCaptured = [&](rawr::raw_multiframe_output::PackedRaw16 packed) {
@@ -340,7 +340,55 @@ void MfsrCaptureJob::runStages(Published& published) {
              w, h, wallMs(begin));
         return captured;
     };
-    // Develops and writes the binned half-size snapshot; runs after the merge arena is released.
+    // The stitched CFA whole, in sensor codes: same conversion as the half-size path with no resample.
+    // Half size exists because a 200 MP CPU develop is too heavy; binning a 50 MP merge down to 12 MP would
+    // throw away the resolution the merge was for. Runs after the merge arena is released, so the peak here
+    // is the stitched frame plus the develop, not the arena as well.
+    auto stripFullCodes = [&](const rawr::raw_multiframe_output::PackedRaw16& full) {
+        const auto begin = std::chrono::steady_clock::now();
+        const float codeScale =
+            rawr::raw_multiframe_output::sixteenBitCodeScale(job->referenceMetadata.effectiveWhiteLevel);
+        const std::uint32_t w = full.width, h = full.height;
+        const std::uint32_t inW = full.rowStrideBytes / std::uint32_t(sizeof(std::uint16_t));
+        rawr::raw_multiframe_output::PackedRaw16 out;
+        out.width = w;
+        out.height = h;
+        out.rowStrideBytes = w * std::uint32_t(sizeof(std::uint16_t));
+        out.pixels.resize(std::size_t(out.rowStrideBytes) * h);
+        const auto* src = reinterpret_cast<const std::uint16_t*>(full.pixels.data());
+        auto* dst = reinterpret_cast<std::uint16_t*>(out.pixels.data());
+        const float toSensor = 1.0f / codeScale;
+        {
+            const std::uint32_t n = std::max(1u, std::min(6u, std::thread::hardware_concurrency()));
+            std::vector<std::thread> pool;
+            for (std::uint32_t t = 0; t < n; ++t) {
+                const std::uint32_t y0 = h * t / n, y1 = h * (t + 1) / n;
+                pool.emplace_back([&, y0, y1]() {
+                    for (std::uint32_t y = y0; y < y1; ++y) {
+                        const std::uint16_t* r = src + std::size_t(y) * inW;
+                        std::uint16_t* o = dst + std::size_t(y) * w;
+                        for (std::uint32_t x = 0; x < w; ++x)
+                            o[x] = std::uint16_t(std::clamp(float(r[x]) * toSensor + 0.5f, 0.0f, 65535.0f));
+                    }
+                });
+            }
+            for (auto& th : pool) th.join();
+        }
+        auto captured = makeCaptured(std::move(out));
+        if (captured->metadata.cameraContext) {
+            auto context =
+                std::make_shared<rawrcam::metadata::CameraContextMetadata>(*captured->metadata.cameraContext);
+            context->geometry.rawBufferWidth = w;
+            context->geometry.rawBufferHeight = h;
+            context->cfaBlock = 1;
+            captured->metadata.cameraContext = context;
+        }
+        // The hot pixel map keeps its full-size coordinates here, unlike the binned path.
+        LOGI("MULTIFRAME_STRIP_JPEG_FULL requestId=%llu jpeg=%ux%u ms=%.1f",
+             static_cast<unsigned long long>(requestId), w, h, wallMs(begin));
+        return captured;
+    };
+    // Develops and writes the stitched snapshot, full size or binned; runs after the merge arena is released.
     auto renderStripJpeg = [&](std::shared_ptr<rawrcam::imaging::RawSnapshot> captured) {
         const auto begin = std::chrono::steady_clock::now();
         rawrcam::capture::SingleFrameCaptureDevelop develop(
@@ -523,17 +571,17 @@ void MfsrCaptureJob::runStages(Published& published) {
     };
     std::optional<rawr::raw_multiframe_output::PackedRaw16> stitched;
     // Binned 50 MP snapshot for the strip JPEG; with a merged DNG it waits until the DNG is written.
-    std::shared_ptr<rawrcam::imaging::RawSnapshot> stripHalf;
+    std::shared_ptr<rawrcam::imaging::RawSnapshot> stripJpegFrame;
     auto runStripJpeg = [&]() {
-        if (!stripHalf) return;
+        if (!stripJpegFrame) return;
         try {
-            renderStripJpeg(std::move(stripHalf));
+            renderStripJpeg(std::move(stripJpegFrame));
         } catch (const std::exception& e) {
             mergedJpeg.output.outputFd.reset();
             failJpeg(std::string("strip_jpeg_failed: ") + e.what());
             LOGE("MULTIFRAME_STRIP_JPEG_FAIL %s", e.what());
         }
-        stripHalf.reset();
+        stripJpegFrame.reset();
         stripJpegPublished = true;
     };
     try {
@@ -639,7 +687,10 @@ void MfsrCaptureJob::runStages(Published& published) {
         if (work->awaitDurable) work->awaitDurable();  // outputs follow: the journal must be durable first
         if (stripMode) {
             if (stripJpeg && stitched) try {
-                    stripHalf = binStripHalf(*stitched);
+                    // A merge that fits the strip window develops whole; only the larger ones bin.
+                    stripJpegFrame = std::uint64_t(stitched->width) * stitched->height <= kStripMergePixels
+                                         ? stripFullCodes(*stitched)
+                                         : binStripHalf(*stitched);
                 } catch (const std::exception& e) {
                     mergedJpeg.output.outputFd.reset();
                     failJpeg(std::string("strip_jpeg_failed: ") + e.what());
@@ -1271,7 +1322,7 @@ void MfsrCaptureJob::runStages(Published& published) {
     // Strip JPEG develops while the merged DNG writes: the arena is gone by now and the render only needs the
     // 50 MP half-size copy. (The "1.3 GB free" read right after the arena release was the kernel lagging; a
     // moment later 4.8+ GB were free with the 400 MB stitched CFA still held.) The DNG writer keeps its own ref.
-    if (stripHalf) {
+    if (stripJpegFrame) {
         mergedFrame.reset();
         stitched.reset();
         LOGI("MULTIFRAME_STRIP_JPEG_WITH_DNG requestId=%llu dngWriting=%d availMB=%.0f",
