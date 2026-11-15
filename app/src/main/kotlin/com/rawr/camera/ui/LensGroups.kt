@@ -79,7 +79,8 @@ internal fun LensButtonFace(
     val dim = if (enabled) 1f else .5f
     Box(
         modifier
-            .widthIn(min = 44.dp)
+            // One width for every lens (labels fit in 60 dp), so Rounded/Pill buttons are all the same capsule.
+            .widthIn(min = 60.dp)
             .height(44.dp)
             .then(
                 if (!boxed) Modifier else Modifier

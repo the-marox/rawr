@@ -113,8 +113,12 @@ std::optional<CameraPriorityAudit> CameraResultState::observe(CameraControlState
                 ownedAxisMismatch = std::abs(frame.sensitivity - *expectedReportedSensitivity) > *sensitivityTolerance;
             } else if (!forcedSensorMode) {
                 expectedReportedSensitivity = provenance->requestedSensitivity;
-                sensitivityTolerance = 1;
-                ownedAxisMismatch = std::abs(frame.sensitivity - provenance->requestedSensitivity) > 1;
+                // HALs quantize ISO to their own gain steps (17U: 534 requested, 531 reported): same 2% tolerance
+                // as the learned-ratio branch, so rounding is never mistaken for the HAL ignoring the lock.
+                sensitivityTolerance = std::max<int32_t>(
+                    2, static_cast<int32_t>(std::llround(std::abs(provenance->requestedSensitivity) * 0.02)));
+                ownedAxisMismatch =
+                    std::abs(frame.sensitivity - provenance->requestedSensitivity) > *sensitivityTolerance;
             }
             // With sensor-mode keys, a missing learned mapping is not evidence of
             // failure. Priority tag/fps checks still apply, but do not compare

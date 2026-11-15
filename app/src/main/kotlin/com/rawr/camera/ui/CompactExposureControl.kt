@@ -176,7 +176,8 @@ internal fun CompactExposureButton(
         icon = icon,
         title = title,
         valueText = valueText,
-        locked = locked && !isManualMeter,
+        // EV is always the user's axis outside Manual; mark it (red + dot) only when it is off 0.0.
+        locked = (if (isEv) zeroEvId != null && requestedId != zeroEvId else locked) && !isManualMeter,
         testTag = testTag,
         semanticsDescription = compactExposureDescription(title, valueText, locked, isManualMeter),
         scaleLabels = capability.candidates.map { it.displayLabel },
