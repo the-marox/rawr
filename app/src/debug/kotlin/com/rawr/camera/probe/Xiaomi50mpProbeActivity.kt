@@ -27,8 +27,8 @@ import java.util.concurrent.Executor
  * stream use case 0x80103 on the RAW output. This opens the camera the same way and logs how much
  * of each RAW frame the HAL actually filled, so use case 0 and 0x80103 can be compared directly.
  *
- *   adb shell am start -n com.rawr.camera.debug/com.rawr.camera.probe.Xiaomi50mpProbeActivity --el useCase 524547
- *   adb shell am start -n com.rawr.camera.debug/com.rawr.camera.probe.Xiaomi50mpProbeActivity --el useCase 0
+ *   adb shell am start -n x17u.rawr.camera.debug/com.rawr.camera.probe.Xiaomi50mpProbeActivity --el useCase 524547
+ *   adb shell am start -n x17u.rawr.camera.debug/com.rawr.camera.probe.Xiaomi50mpProbeActivity --el useCase 0
  *   adb logcat -s Rawr50Probe
  *
  * Extras (all optional): cameraId (String, "2"), width/height (Int, 8192/6144), useCase (Long, 0x80103),

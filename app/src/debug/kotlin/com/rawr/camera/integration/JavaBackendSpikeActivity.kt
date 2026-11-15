@@ -9,7 +9,7 @@ import java.io.File
 /**
  * Debug-only launcher for [JavaBackendSpike]; writes files/java_backend_spike.txt, then kills its process.
  *
- * adb shell am start -n com.rawr.camera.debug/com.rawr.camera.integration.JavaBackendSpikeActivity \
+ * adb shell am start -n x17u.rawr.camera.debug/com.rawr.camera.integration.JavaBackendSpikeActivity \
  *   --es cam 4 --ei w 4096 --ei h 3072 --ei fmt 32 --ei cw 320 --ei ch 240 --el usecase 0 --ei opmode 0
  */
 class JavaBackendSpikeActivity : Activity() {

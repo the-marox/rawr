@@ -11,7 +11,7 @@ import java.io.File
  * files/encoder_ab_<mode>.json, then kills its own process so nothing keeps
  * running (and heating the phone) after the test.
  *
- * adb shell am start -n com.rawr.camera.debug/com.rawr.camera.video.EncoderAbProbeActivity \
+ * adb shell am start -n x17u.rawr.camera.debug/com.rawr.camera.video.EncoderAbProbeActivity \
  *   --es mode p010|rgb10a2 --ei paced 90 --ei burst 15 [--ei dumpFrames 45]
  */
 class EncoderAbProbeActivity : Activity() {

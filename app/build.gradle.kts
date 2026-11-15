@@ -37,12 +37,16 @@ val filmAssets = tasks.register<FilmAssetsTask>("generateFilmAssets") {
     sourceFile.set(rootProject.layout.projectDirectory.file("native/spektrafilm/assets/SpektraHanatos2025Spectra.f32"))
     outputDirectory.set(layout.buildDirectory.dir("generated/filmAssets"))
 }
-// Rawr 17U: the release build installs as its own app, next to the official Rawr (com.rawr.camera,
-// signed by its author) and Rawr Debug. Code and namespace stay com.rawr.camera.
+// Rawr 17U: both builds install as their own app, next to the official Rawr
+// (com.rawr.camera, signed by its author) and its debug build
+// (com.rawr.camera.debug), so a tester can carry Ed's and this fork's at once.
+// Code and namespace stay com.rawr.camera.
 val releaseApplicationId = "x17u.rawr.camera"
+val debugApplicationId = "x17u.rawr.camera.debug"
 
 androidComponents {
     onVariants(selector().withBuildType("debug")) { variant ->
+        variant.applicationId.set(debugApplicationId)
         variant.outputs.forEach { it.versionName.set(debugVersionName) }
     }
     onVariants(selector().withBuildType("release")) { variant ->
@@ -136,8 +140,8 @@ android {
 
     buildTypes {
         debug {
-            applicationIdSuffix = ".debug"
-            resValue("string", "app_name", "Rawr Debug")
+            // The id itself is set in androidComponents above (debugApplicationId).
+            resValue("string", "app_name", "Rawr 17U Debug")
             // Native EXIF Software tag; must match BuildConfig.VERSION_NAME.
             externalNativeBuild { cmake { arguments += "-DRAWR_VERSION_FILE=${debugNativeVersionFile.absolutePath}" } }
         }

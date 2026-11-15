@@ -9,7 +9,7 @@
         android:shortcutShortLabel="@string/renderer_shortcut_short">
         <intent
             android:action="android.intent.action.VIEW"
-            android:targetPackage="com.rawr.camera.debug"
+            android:targetPackage="x17u.rawr.camera.debug"
             android:targetClass="com.rawr.camera.renderer.RendererActivity" />
     </shortcut>
 </shortcuts>

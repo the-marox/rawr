@@ -9,7 +9,7 @@ import java.io.File
  * Debug-only launcher for [VideoDownscaleProbe]. Never opens the camera; writes
  * files/downscale_probe.json plus the raw outputs, then kills its process.
  *
- * adb shell am start -n com.rawr.camera.debug/com.rawr.camera.video.VideoDownscaleProbeActivity
+ * adb shell am start -n x17u.rawr.camera.debug/com.rawr.camera.video.VideoDownscaleProbeActivity
  */
 class VideoDownscaleProbeActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
