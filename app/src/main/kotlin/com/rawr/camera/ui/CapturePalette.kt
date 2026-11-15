@@ -62,10 +62,10 @@ internal object CapturePalette {
         ButtonShapeStyle.Pill -> RoundedCornerShape(percent = 50)
     }
 
-    fun setButtonShape(v: ButtonShapeStyle) { buttonShape = v; save() }
-    fun setValueBackgrounds(v: Boolean) { valueBackgrounds = v; save() }
-    fun setDragScale(v: Boolean) { dragScale = v; save() }
-    fun setTapSliderBar(v: Boolean) { tapSliderBar = v; save() }
+    fun updateButtonShape(v: ButtonShapeStyle) { buttonShape = v; save() }
+    fun updateValueBackgrounds(v: Boolean) { valueBackgrounds = v; save() }
+    fun updateDragScale(v: Boolean) { dragScale = v; save() }
+    fun updateTapSliderBar(v: Boolean) { tapSliderBar = v; save() }
 
     fun color(c: ThemeColor): Color = overrides[c] ?: Color(defaultFor(preset, c))
 

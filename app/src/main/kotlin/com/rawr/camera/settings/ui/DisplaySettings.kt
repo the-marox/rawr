@@ -156,7 +156,7 @@ internal fun ControlStyleSettings(state: SettingsUiState, dispatch: SettingsDisp
                     testTag = SettingsTestTags.row("ControlStyle", "shape_${style.name.lowercase()}"),
                     onClick = {
                         haptics.detent()
-                        palette.setButtonShape(style)
+                        palette.updateButtonShape(style)
                     }
                 )
             }
@@ -167,21 +167,21 @@ internal fun ControlStyleSettings(state: SettingsUiState, dispatch: SettingsDisp
                 checked = palette.valueBackgrounds,
                 supportingText = "Boxes behind ISO, SS, EV, WB, LOOK and the lens buttons. Off: text with shadow only; the active one stays marked.",
                 testTag = SettingsTestTags.row("ControlStyle", "value_backgrounds")
-            ) { palette.setValueBackgrounds(it) }
+            ) { palette.updateValueBackgrounds(it) }
             SettingDivider()
             SettingsSwitchRow(
                 title = "Drag scale",
                 checked = palette.dragScale,
                 supportingText = "Scale of neighbouring values under the big readout while dragging.",
                 testTag = SettingsTestTags.row("ControlStyle", "drag_scale")
-            ) { palette.setDragScale(it) }
+            ) { palette.updateDragScale(it) }
             SettingDivider()
             SettingsSwitchRow(
                 title = "Tap opens slider bar",
                 checked = palette.tapSliderBar,
                 supportingText = "A single tap on ISO, SS, EV, WB or focus opens a horizontal bar above the row; drag left/right to set.",
                 testTag = SettingsTestTags.row("ControlStyle", "tap_slider_bar")
-            ) { palette.setTapSliderBar(it) }
+            ) { palette.updateTapSliderBar(it) }
         }
         ExposureMemoryGroup()
         SettingsGroup(

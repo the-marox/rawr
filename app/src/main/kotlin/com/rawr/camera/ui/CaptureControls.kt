@@ -568,7 +568,8 @@ internal fun Thumbnail(state: CaptureUiState, imageUri: Uri?, onClick: () -> Uni
                 }
             }
     }
-    val shape = RoundedCornerShape(12.dp)
+    // Follows Settings > Control Style > Button shape (PILL: a circle, the thumbnail is square).
+    val shape = CapturePalette.shape(12.dp)
     // Layout-stable loader: the outer Box is always exactly Thumbnail size.
     // Processing/failed states only change border drawing + semantics, never
     // add/remove measured children, so the MERGED pill and shutter row can't shift.
