@@ -17,6 +17,7 @@ import androidx.activity.viewModels
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
+import com.rawr.camera.architecture.VIDEO_FPS_CHOICES
 import com.rawr.camera.architecture.TriggerCapture
 import com.rawr.camera.integration.NativeCameraUiSnapshot
 import com.rawr.camera.model.CaptureMode
@@ -76,7 +77,7 @@ class MainActivity : ComponentActivity() {
                 null
             },
             fps = if (intent.hasExtra("raw_video_fps")) {
-                intent.getIntExtra("raw_video_fps", 30).takeIf { it == 24 || it == 30 }
+                intent.getIntExtra("raw_video_fps", 30).takeIf { it in VIDEO_FPS_CHOICES }
             } else {
                 null
             }

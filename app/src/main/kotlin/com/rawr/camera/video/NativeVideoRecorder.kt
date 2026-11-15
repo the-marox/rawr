@@ -156,7 +156,7 @@ class NativeVideoRecorder(private val context: Context, private val preview: Raw
         check(context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
             "Microphone permission required"
         }
-        require(request.fps == 24 || request.fps == 30)
+        require(request.fps in com.rawr.camera.architecture.VIDEO_FPS_CHOICES)
         require(request.bitrate in VideoEncoderLimits.MIN_BITRATE_MBPS * 1_000_000..
             VideoEncoderLimits.MAX_BITRATE_MBPS * 1_000_000)
         require(request.intraFrames in 1..60)

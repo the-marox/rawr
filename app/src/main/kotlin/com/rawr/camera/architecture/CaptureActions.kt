@@ -45,6 +45,13 @@ data class SetCaptureMode(val mode: CaptureMode) : PresentationCaptureAction
 
 data object CycleVideoResolution : PresentationCaptureAction
 
+/**
+ * Video frame rates the fps button cycles through. The native side takes any positive value
+ * (CameraCadencePolicy derives the frame period from it), and the camera session opens at the
+ * lens profile's own frame rate, so a rate the lens can't sustain simply records slower than asked.
+ */
+val VIDEO_FPS_CHOICES = listOf(24, 30, 60, 120)
+
 data object CycleVideoFps : PresentationCaptureAction
 
 data object ToggleVideoLog : PresentationCaptureAction

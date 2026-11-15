@@ -12,6 +12,7 @@ import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.rawr.camera.architecture.VIDEO_FPS_CHOICES
 import com.rawr.camera.architecture.CaptureQuickEvent
 import com.rawr.camera.architecture.CaptureScreenController
 import com.rawr.camera.architecture.SyncToneControls
@@ -90,7 +91,7 @@ class CaptureViewModel(application: Application) : AndroidViewModel(application)
         if (resolution == null && fps == null) return
         val next = settingsEditor.update { current -> current.copy(
             videoResolutionId = resolution?.persistedId() ?: current.videoResolutionId,
-            videoFps = fps?.takeIf { it == 24 || it == 30 } ?: current.videoFps
+            videoFps = fps?.takeIf { it in VIDEO_FPS_CHOICES } ?: current.videoFps
         ) }
         controller.dispatch(next.capturePreferences(DeviceLensDefaults.lenses))
         settingsSync.updatePreviewCrop(controller.state.value.captureMode, controller.state.value.videoResolution)

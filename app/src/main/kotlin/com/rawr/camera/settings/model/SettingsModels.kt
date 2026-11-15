@@ -1046,7 +1046,7 @@ fun com.rawr.camera.video.VideoResolutionMode.persistedId(): String = when (this
 }
 
 /** Recording frame rate clamp; only 24 and 30 are supported by the native recorder. */
-fun videoFpsOrDefault(fps: Int): Int = if (fps == 24 || fps == 30) fps else 30
+fun videoFpsOrDefault(fps: Int): Int = if (fps in com.rawr.camera.architecture.VIDEO_FPS_CHOICES) fps else 30
 
 /** Linear AE post-gain cap for an ID (gain.100=1x, gain.200=2x, gain.400=4x). Defaults to 4x. */
 fun maxPostGainForId(id: String): Float = when (id) {

@@ -89,7 +89,8 @@ object CaptureReducer {
         ToggleVideoLog -> if (state.captureMode == CaptureMode.Video) state.copy(videoLogEnabled = !state.videoLogEnabled) else state
 
         CycleVideoFps -> {
-            state.copy(videoFps = if (state.videoFps == 24) 30 else 24)
+            val next = VIDEO_FPS_CHOICES.getOrNull(VIDEO_FPS_CHOICES.indexOf(state.videoFps) + 1)
+            state.copy(videoFps = next ?: VIDEO_FPS_CHOICES.first())
         }
 
         CycleSelfTimer -> {
@@ -204,7 +205,7 @@ object CaptureReducer {
         }
     }
 
-    private fun Int.coerceVideoFps(): Int = if (this == 24 || this == 30) this else 30
+    private fun Int.coerceVideoFps(): Int = if (this in VIDEO_FPS_CHOICES) this else 30
 
     private fun CaptureUiState.toggleScope(scope: ScopeType): CaptureUiState {
         val active = if (scope in activeScopes) activeScopes - scope else activeScopes + scope
