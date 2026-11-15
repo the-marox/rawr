@@ -54,6 +54,7 @@ internal fun CompactExposureButton(
     val isEv = parameter == ExposureParameter.Ev
     val isManualMeter = isEv && state.exposureControl.mode == ExposureMode.Manual
     val locked = CaptureTransitions.isParameterLocked(state, parameter)
+    val latestLocked by rememberUpdatedState(locked)
     val zeroEvId = if (isEv) capability.zeroEvCandidateId() else null
     val zeroEvIndex = if (isEv && zeroEvId != null) capability.indexOf(zeroEvId).takeIf { it >= 0 } else null
     val supportedModes = state.capabilities.supportedExposureModes
@@ -154,7 +155,9 @@ internal fun CompactExposureButton(
                     }
                 },
                 onSelect = { i ->
-                    if (!lockedForBar) {
+                    // Lock on the first pick, and again whenever the axis was returned to auto meanwhile:
+                    // a pick must never be applied to an axis the camera still owns.
+                    if (!lockedForBar || !latestLocked) {
                         ensureLocked()
                         lockedForBar = true
                     }

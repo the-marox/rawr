@@ -62,6 +62,13 @@ internal object CapturePalette {
         ButtonShapeStyle.Pill -> RoundedCornerShape(percent = 50)
     }
 
+    /** Corner radius (px) matching [shape] for code that draws its own outline. */
+    fun cornerPx(squarePx: Float, roundedPx: Float, minDimensionPx: Float): Float = when (buttonShape) {
+        ButtonShapeStyle.Square -> squarePx
+        ButtonShapeStyle.Rounded -> maxOf(squarePx, roundedPx).coerceAtMost(minDimensionPx / 2f)
+        ButtonShapeStyle.Pill -> minDimensionPx / 2f
+    }
+
     fun updateButtonShape(v: ButtonShapeStyle) { buttonShape = v; save() }
     fun updateValueBackgrounds(v: Boolean) { valueBackgrounds = v; save() }
     fun updateDragScale(v: Boolean) { dragScale = v; save() }

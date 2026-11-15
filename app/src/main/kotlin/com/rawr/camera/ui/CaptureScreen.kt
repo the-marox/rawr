@@ -44,7 +44,13 @@ fun CaptureScreen(
     CompositionLocalProvider(
         LocalControlSurfaceStyle provides state.controlSurfaceStyle,
         LocalCaptureHaptics provides haptics,
-        LocalControlHelp provides controlHelp
+        LocalControlHelp provides controlHelp,
+        // The capture screen is a fixed instrument layout: system font size would push labels out of their
+        // buttons ("RAWR …", "PARA"). Settings and dialogs keep following it.
+        androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(
+            androidx.compose.ui.platform.LocalDensity.current.density,
+            fontScale = 1f
+        )
     ) {
         CaptureStateHaptics(state)
         Surface(modifier.fillMaxSize(), color = CaptureColors.Background) {

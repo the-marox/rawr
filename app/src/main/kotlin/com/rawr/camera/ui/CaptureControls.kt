@@ -686,7 +686,7 @@ private fun ThumbnailProcessingGlow() {
             .testTag(CaptureTestTags.THUMBNAIL_PROCESSING)
             .drawBehind {
                 // Must match the Thumbnail clip shape above.
-                val corner = 12.dp.toPx()
+                val corner = CapturePalette.cornerPx(12.dp.toPx(), 16.dp.toPx(), size.minDimension)
                 val rect = Rect(Offset.Zero, size)
                 val path = Path().apply { addRoundRect(RoundRect(rect, CornerRadius(corner, corner))) }
                 // Exact outline length so the traveling segment loops seamlessly.
@@ -738,7 +738,7 @@ private fun ThumbnailSuccessGlow() {
             .testTag(CaptureTestTags.THUMBNAIL_SUCCESS)
             .drawBehind {
                 // Must match the Thumbnail clip shape above.
-                val corner = 12.dp.toPx()
+                val corner = CapturePalette.cornerPx(12.dp.toPx(), 16.dp.toPx(), size.minDimension)
                 val cornerRadius = CornerRadius(corner, corner)
                 drawRoundRect(
                     color = CaptureColors.Success.copy(alpha = .22f),

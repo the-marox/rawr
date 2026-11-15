@@ -132,9 +132,21 @@ internal fun LensButtonFace(
             Box(
                 Modifier
                     .align(Alignment.TopEnd)
-                    .padding(top = 4.dp, end = 4.dp)
+                    // Inside the corner curve of every button shape (Rounded/Pill corners are larger).
+                    .padding(
+                        top = when (CapturePalette.buttonShape) {
+                            ButtonShapeStyle.Square -> 4.dp
+                            ButtonShapeStyle.Rounded -> 5.dp
+                            ButtonShapeStyle.Pill -> 6.dp
+                        },
+                        end = when (CapturePalette.buttonShape) {
+                            ButtonShapeStyle.Square -> 4.dp
+                            ButtonShapeStyle.Rounded -> 6.dp
+                            ButtonShapeStyle.Pill -> 10.dp
+                        }
+                    )
                     .size(4.dp)
-                    .background(if (filled) Color.White else Color(0xFF8C8C8C), CircleShape)
+                    .background(if (filled) CaptureColors.OnAccent else Color(0xFF8C8C8C), CircleShape)
             )
         }
     }
