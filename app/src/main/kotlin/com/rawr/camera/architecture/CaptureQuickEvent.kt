@@ -31,4 +31,8 @@ sealed interface CaptureQuickEvent {
     data class SetVfControlVisible(val control: com.rawr.camera.settings.model.VfControl, val visible: Boolean) :
         CaptureQuickEvent
     data object ShowAllVfControls : CaptureQuickEvent
+    /** Lens bar layout, edited from the eye panel so the bar itself is visible while choosing. */
+    data class SetLensBarGrouping(val value: com.rawr.camera.settings.model.LensBarGrouping) :
+        CaptureQuickEvent
+    data class SetLensBarSize(val value: com.rawr.camera.settings.model.LensBarSize) : CaptureQuickEvent
 }

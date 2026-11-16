@@ -55,7 +55,12 @@ data class ViewfinderQuickState(
     val showLook: Boolean = true,
     val showExposure: Boolean = true,
     val showInfoBar: Boolean = true,
-    val eyeControls: Boolean = true
+    val eyeControls: Boolean = true,
+    /** Lens bar layout, so the eye panel can show which option is live. */
+    val lensBarGrouping: com.rawr.camera.settings.model.LensBarGrouping =
+        com.rawr.camera.settings.model.LensBarGrouping.Auto,
+    val lensBarSize: com.rawr.camera.settings.model.LensBarSize =
+        com.rawr.camera.settings.model.LensBarSize.Normal
 ) {
     val anyVfControlHidden: Boolean get() = !showLook || !showExposure || !showInfoBar
 }
@@ -99,6 +104,8 @@ internal fun SettingsValues.toViewfinderQuickState(
         showLook = vfShowLook,
         showExposure = vfShowExposure,
         showInfoBar = vfShowInfoBar,
-        eyeControls = vfEyeControls
+        eyeControls = vfEyeControls,
+        lensBarGrouping = lensBarGrouping,
+        lensBarSize = lensBarSize
     )
 }

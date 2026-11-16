@@ -320,6 +320,8 @@ class CaptureViewModel(application: Application) : AndroidViewModel(application)
                 is CaptureQuickEvent.ResetCameraControls, CaptureQuickEvent.UndoCameraControlsReset -> c
                 is CaptureQuickEvent.SetVfControlVisible -> c.withVfControl(event.control, event.visible)
                 CaptureQuickEvent.ShowAllVfControls -> c.copy(vfShowLook = true, vfShowExposure = true, vfShowInfoBar = true)
+                is CaptureQuickEvent.SetLensBarGrouping -> c.copy(lensBarGrouping = event.value)
+                is CaptureQuickEvent.SetLensBarSize -> c.copy(lensBarSize = event.value)
                 CaptureQuickEvent.ToggleDenoise ->
                     if (video) c.copy(videoDenoiseEnabled = !c.videoDenoiseEnabled)
                     else c.copy(photoDenoise = c.photoDenoise.withMaster(

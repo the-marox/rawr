@@ -148,7 +148,10 @@ private fun ArmChoice(
     }
 }
 
-/** Under MONITORING: show/hide the viewfinder control groups while shooting (Settings › Display holds the same). */
+/**
+ * Under MONITORING: the viewfinder control groups to show, and the lens bar layout. Both are judged by
+ * eye, and the bar stays visible below this panel, so they live here as well as in Settings › Display.
+ */
 @Composable
 internal fun VfControlsPanel(
     quick: com.rawr.camera.model.ViewfinderQuickState,
@@ -159,7 +162,8 @@ internal fun VfControlsPanel(
     val haptics = LocalCaptureHaptics.current
     val width = if (orientation == Orientation.Landscape) CaptureDimens.TopBarPaletteLandscapeWidth
     else CaptureDimens.TopBarPalettePortraitWidth
-    CaptureTopPanel(title = "VF CONTROLS · SHOW", orientation = orientation, modifier = modifier.width(width)) {
+    CaptureTopPanel(title = "VF CONTROLS", orientation = orientation, modifier = modifier.width(width)) {
+        PanelCaption("SHOW")
         Row(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(CaptureDimens.TopBarPaletteInnerGap)
@@ -189,5 +193,56 @@ internal fun VfControlsPanel(
                 onQuickEvent(com.rawr.camera.architecture.CaptureQuickEvent.ShowAllVfControls)
             }
         }
+        PanelCaption("LENS BAR")
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(CaptureDimens.TopBarPaletteInnerGap)
+        ) {
+            listOf(
+                com.rawr.camera.settings.model.LensBarGrouping.Auto to "AUTO",
+                com.rawr.camera.settings.model.LensBarGrouping.Grouped to "GROUPED",
+                com.rawr.camera.settings.model.LensBarGrouping.Flat to "ALL"
+            ).forEach { (value, label) ->
+                SmallChoice(
+                    label = label,
+                    active = quick.lensBarGrouping == value,
+                    modifier = Modifier.weight(1f).height(CaptureDimens.TopBarPaletteMajorChoiceHeight),
+                    testTag = "lens_bar_grouping_${value.name.lowercase()}"
+                ) {
+                    haptics.selection()
+                    onQuickEvent(com.rawr.camera.architecture.CaptureQuickEvent.SetLensBarGrouping(value))
+                }
+            }
+        }
+        PanelCaption("BUTTON SIZE")
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(CaptureDimens.TopBarPaletteInnerGap)
+        ) {
+            com.rawr.camera.settings.model.LensBarSize.entries.forEach { value ->
+                SmallChoice(
+                    label = value.label.uppercase(),
+                    active = quick.lensBarSize == value,
+                    modifier = Modifier.weight(1f).height(CaptureDimens.TopBarPaletteMajorChoiceHeight),
+                    testTag = "lens_bar_size_${value.name.lowercase()}"
+                ) {
+                    haptics.selection()
+                    onQuickEvent(com.rawr.camera.architecture.CaptureQuickEvent.SetLensBarSize(value))
+                }
+            }
+        }
     }
+}
+
+/** Section caption inside a top panel, same weight as the MONITORING card's own captions. */
+@Composable
+private fun PanelCaption(text: String) {
+    Text(
+        text,
+        color = Color.White.copy(alpha = .35f),
+        fontFamily = CaptureMono,
+        fontWeight = FontWeight.Bold,
+        fontSize = 8.sp,
+        maxLines = 1
+    )
 }
