@@ -13,10 +13,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -124,6 +126,31 @@ internal fun CompactTopBarPalette(
 internal fun Modifier.uprightInLandscape(orientation: Orientation): Modifier =
     if (orientation == Orientation.Landscape) graphicsLayer(rotationZ = 90f) else this
 
+/**
+ * As uprightInLandscape, but the turned size is what the parent reserves. graphicsLayer alone only
+ * rotates the pixels, so a parent stacking two panels keeps reserving their upright boxes and draws
+ * them over one another. Panels are the only place that stacks, hence the separate modifier.
+ */
+internal fun Modifier.uprightPanelInLandscape(orientation: Orientation): Modifier =
+    if (orientation != Orientation.Landscape) this
+    else layout { measurable, constraints ->
+        val turned = Constraints(
+            minWidth = constraints.minHeight,
+            maxWidth = constraints.maxHeight,
+            minHeight = constraints.minWidth,
+            maxHeight = constraints.maxWidth
+        )
+        val placeable = measurable.measure(turned)
+        layout(placeable.height, placeable.width) {
+            // The rotation turns about the content's own centre: offset by half the difference so
+            // it lands inside the turned box.
+            placeable.place(
+                x = (placeable.height - placeable.width) / 2,
+                y = (placeable.width - placeable.height) / 2
+            )
+        }
+    }.graphicsLayer(rotationZ = 90f)
+
 @Composable
 internal fun CaptureTopPanel(
     title: String,
@@ -137,7 +164,7 @@ internal fun CaptureTopPanel(
             modifier
                 .padding(10.dp)
                 .widthIn(max = 360.dp)
-                .uprightInLandscape(orientation),
+                .uprightPanelInLandscape(orientation),
         shape = shape,
         color = CaptureColors.ViewfinderPanel,
         border = BorderStroke(1.dp, CaptureColors.Line),
