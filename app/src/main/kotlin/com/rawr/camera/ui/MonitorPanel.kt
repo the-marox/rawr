@@ -197,41 +197,45 @@ internal fun VfControlsPanel(
                 onQuickEvent(com.rawr.camera.architecture.CaptureQuickEvent.ShowAllVfControls)
             }
         }
-        PanelCaption("LENS BAR")
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(CaptureDimens.TopBarPaletteInnerGap)
-        ) {
-            listOf(
-                com.rawr.camera.settings.model.LensBarGrouping.Auto to "AUTO",
-                com.rawr.camera.settings.model.LensBarGrouping.Grouped to "GROUPED",
-                com.rawr.camera.settings.model.LensBarGrouping.Flat to "ALL"
-            ).forEach { (value, label) ->
-                SmallChoice(
-                    label = label,
-                    active = quick.lensBarGrouping == value,
-                    modifier = Modifier.weight(1f).height(CaptureDimens.TopBarPaletteMinorChoiceHeight),
-                    testTag = "lens_bar_grouping_${value.name.lowercase()}"
-                ) {
-                    haptics.selection()
-                    onQuickEvent(com.rawr.camera.architecture.CaptureQuickEvent.SetLensBarGrouping(value))
+        // Portrait only: in landscape the card is rotated, so these rows would grow across the
+        // screen and run off its edge. Settings › Display still holds both.
+        if (orientation == Orientation.Portrait) {
+            PanelCaption("LENS BAR")
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(CaptureDimens.TopBarPaletteInnerGap)
+            ) {
+                listOf(
+                    com.rawr.camera.settings.model.LensBarGrouping.Auto to "AUTO",
+                    com.rawr.camera.settings.model.LensBarGrouping.Grouped to "GROUPED",
+                    com.rawr.camera.settings.model.LensBarGrouping.Flat to "ALL"
+                ).forEach { (value, label) ->
+                    SmallChoice(
+                        label = label,
+                        active = quick.lensBarGrouping == value,
+                        modifier = Modifier.weight(1f).height(CaptureDimens.TopBarPaletteMinorChoiceHeight),
+                        testTag = "lens_bar_grouping_${value.name.lowercase()}"
+                    ) {
+                        haptics.selection()
+                        onQuickEvent(com.rawr.camera.architecture.CaptureQuickEvent.SetLensBarGrouping(value))
+                    }
                 }
             }
-        }
-        PanelCaption("BUTTON SIZE")
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(CaptureDimens.TopBarPaletteInnerGap)
-        ) {
-            com.rawr.camera.settings.model.LensBarSize.entries.forEach { value ->
-                SmallChoice(
-                    label = value.label.uppercase(),
-                    active = quick.lensBarSize == value,
-                    modifier = Modifier.weight(1f).height(CaptureDimens.TopBarPaletteMinorChoiceHeight),
-                    testTag = "lens_bar_size_${value.name.lowercase()}"
-                ) {
-                    haptics.selection()
-                    onQuickEvent(com.rawr.camera.architecture.CaptureQuickEvent.SetLensBarSize(value))
+            PanelCaption("BUTTON SIZE")
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(CaptureDimens.TopBarPaletteInnerGap)
+            ) {
+                com.rawr.camera.settings.model.LensBarSize.entries.forEach { value ->
+                    SmallChoice(
+                        label = value.label.uppercase(),
+                        active = quick.lensBarSize == value,
+                        modifier = Modifier.weight(1f).height(CaptureDimens.TopBarPaletteMinorChoiceHeight),
+                        testTag = "lens_bar_size_${value.name.lowercase()}"
+                    ) {
+                        haptics.selection()
+                        onQuickEvent(com.rawr.camera.architecture.CaptureQuickEvent.SetLensBarSize(value))
+                    }
                 }
             }
         }
