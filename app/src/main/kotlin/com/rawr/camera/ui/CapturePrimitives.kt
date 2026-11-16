@@ -18,7 +18,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -134,13 +133,9 @@ internal fun Modifier.uprightInLandscape(orientation: Orientation): Modifier =
 internal fun Modifier.uprightPanelInLandscape(orientation: Orientation): Modifier =
     if (orientation != Orientation.Landscape) this
     else layout { measurable, constraints ->
-        val turned = Constraints(
-            minWidth = constraints.minHeight,
-            maxWidth = constraints.maxHeight,
-            minHeight = constraints.minWidth,
-            maxHeight = constraints.maxWidth
-        )
-        val placeable = measurable.measure(turned)
+        // Measured upright: the panel's width is set outside this modifier, so turning the
+        // constraints here would turn that width into a fixed height. Only the reported size turns.
+        val placeable = measurable.measure(constraints)
         layout(placeable.height, placeable.width) {
             // The rotation turns about the content's own centre: offset by half the difference so
             // it lands inside the turned box.

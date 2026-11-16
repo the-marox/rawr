@@ -70,7 +70,9 @@ internal object CaptureDimens {
     // Placement belongs to the viewfinder composition because it is relative to
     // scopes and exposure controls, not to the palette content itself.
     val TopBarPalettePortraitBottomPadding = 88.dp
-    val TopBarPaletteLandscapeStartOffset = (-21).dp
+    // A plain margin from the start edge: the panel's landscape box is now the box it draws in,
+    // so this no longer has to pull back the unturned box's overhang.
+    val TopBarPaletteLandscapeStartOffset = 12.dp
     val TopBarPaletteLandscapeCrossOffset = 12.dp
 
     val ExposureMinorTickHeight = 6.dp
