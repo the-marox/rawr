@@ -67,6 +67,14 @@ internal fun reduceCaptureSettings(
         state.withValues(state.values.copy(captureControlLayout = action.layout))
     }
 
+    is SetLensBarGrouping -> {
+        state.withValues(state.values.copy(lensBarGrouping = action.value))
+    }
+
+    is SetLensBarSize -> {
+        state.withValues(state.values.copy(lensBarSize = action.value))
+    }
+
     is SetGridMode -> {
         state.withValues(state.values.copy(gridMode = action.value))
     }

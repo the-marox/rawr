@@ -104,6 +104,7 @@ class PersistentSettingsController(
             is SetAntiFlicker, is SetExposureStep,
             is SetHighlightProtection, is SetAutoKeyExposure, is SetLocalTone, is SetControlSurfaceStyle, is SetCaptureControlLayout,
             is SetGridMode, is SetViewfinderDivisor, is SetShowDcpQuickSelect, is SetViewfinderControlVisible,
+            is SetLensBarGrouping, is SetLensBarSize,
             is SetEyeControlsViewfinder, is SetLensProfiles -> reduceCaptureSettings(state, action)
 
         }

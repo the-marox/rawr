@@ -201,6 +201,23 @@ enum class RawrNightLook(val label: String, val nativeId: Int) {
  * Slowest shutter rawr AE will use. ISO takes over the rest of the light; the engine starts
  * raising ISO at 1/30 s (or this, if faster). Auto: 1/15 s for photo, the frame time for video.
  */
+/**
+ * How the lens bar lays its buttons out. Auto keeps every lens on one row while they fit and falls back to
+ * one button per optical group when they would not; the other two settle it whatever the device has.
+ */
+enum class LensBarGrouping(val label: String) {
+    Auto("Auto"),
+    Grouped("Grouped"),
+    Flat("All lenses")
+}
+
+/** Lens button scale: the tap target, not just the glyph. */
+enum class LensBarSize(val label: String, val scale: Float) {
+    Compact("Compact", 0.82f),
+    Normal("Normal", 1.0f),
+    Large("Large", 1.18f)
+}
+
 enum class RawrMaxShutter(val label: String, val ns: Long) {
     Auto("Auto (1/15)", 0L),
     S125("1/125", 8_000_000L),
@@ -694,6 +711,8 @@ data class SettingsValues(
     // Preview-only look-stage (tonemap or film) downsample divisor, 1..4.
     // Film always runs at 2 or more. Never touches stills, video, or EXIF.
     val viewfinderDivisor: Int = 2,
+    val lensBarGrouping: LensBarGrouping = LensBarGrouping.Auto,
+    val lensBarSize: LensBarSize = LensBarSize.Normal,
     val armedOverlays: Set<OverlayMode> =
         setOf(OverlayMode.Peaking, OverlayMode.TonemapShadows, OverlayMode.RawHighlights),
     val falseColorManual: Boolean = false,

@@ -64,6 +64,10 @@ internal fun DisplayControlsSettings(state: SettingsUiState, dispatch: SettingsD
             SettingDivider()
             ViewfinderResolutionRow(state.values.viewfinderDivisor) { dispatch.invoke(SetViewfinderDivisor(it)) }
             SettingDivider()
+            LensBarGroupingRow(state.values.lensBarGrouping) { dispatch.invoke(SetLensBarGrouping(it)) }
+            SettingDivider()
+            LensBarSizeRow(state.values.lensBarSize) { dispatch.invoke(SetLensBarSize(it)) }
+            SettingDivider()
             SettingsRow(
                 "Monitoring",
                 "Focus peaking behavior",
@@ -290,6 +294,58 @@ private fun GridModeSettingsRow(selected: GridMode, onSelect: (GridMode) -> Unit
                     text = { Text(labels.getValue(mode)) },
                     onClick = {
                         onSelect(mode)
+                        expanded.value = false
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun LensBarGroupingRow(value: LensBarGrouping, onSelect: (LensBarGrouping) -> Unit) {
+    val expanded = remember { mutableStateOf(false) }
+    Box {
+        SettingsRow(
+            "Lens Bar",
+            value.label,
+            supportingText = "Auto keeps every lens on one row while they fit, and falls back to one button per " +
+                "lens with its modes above it when they don't. Grouped always does that; All lenses never does, " +
+                "and scrolls sideways instead.",
+            testTag = SettingsTestTags.row("DisplayControls", "lens_bar_grouping"),
+            onClick = { expanded.value = true }
+        )
+        DropdownMenu(expanded = expanded.value, onDismissRequest = { expanded.value = false }) {
+            LensBarGrouping.entries.forEach { entry ->
+                DropdownMenuItem(
+                    text = { Text(entry.label) },
+                    onClick = {
+                        onSelect(entry)
+                        expanded.value = false
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun LensBarSizeRow(value: LensBarSize, onSelect: (LensBarSize) -> Unit) {
+    val expanded = remember { mutableStateOf(false) }
+    Box {
+        SettingsRow(
+            "Lens Button Size",
+            value.label,
+            supportingText = "Scales the lens buttons and the area that answers a tap.",
+            testTag = SettingsTestTags.row("DisplayControls", "lens_bar_size"),
+            onClick = { expanded.value = true }
+        )
+        DropdownMenu(expanded = expanded.value, onDismissRequest = { expanded.value = false }) {
+            LensBarSize.entries.forEach { entry ->
+                DropdownMenuItem(
+                    text = { Text(entry.label) },
+                    onClick = {
+                        onSelect(entry)
                         expanded.value = false
                     }
                 )

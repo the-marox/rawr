@@ -35,6 +35,8 @@ internal class CaptureSettingsSync(
         previewCoordinator.setPersistentDiagnosticsEnabled(true)
         previewCoordinator.setInternalTraceCaptureEnabled(true)
         syncSetting({ it.controlSurfaceStyle }) { controller.dispatch(SetControlSurfaceStyle(it)) }
+        syncSetting({ it.lensBarGrouping }) { controller.dispatch(com.rawr.camera.architecture.SetLensBarGrouping(it)) }
+        syncSetting({ it.lensBarSize }) { controller.dispatch(com.rawr.camera.architecture.SetLensBarSize(it)) }
         syncSetting({ it.oisEnabledPreference }) { previewCoordinator.setOisEnabled(it) }
         syncSetting({ it.lensProfiles }) { previewCoordinator.setLensProfiles(it) }
         // Start on the last used lens. Startup only: later values come from

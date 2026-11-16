@@ -28,6 +28,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInParent
+import com.rawr.camera.settings.model.LensBarGrouping
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -77,11 +78,13 @@ internal fun LensButtonFace(
     val boxed = CapturePalette.valueBackgrounds || filled || selected
     val (top, bottom) = splitLensName(displayName)
     val dim = if (enabled) 1f else .5f
+    // Scales the capsule itself, so the tap target grows with the label rather than just around it.
+    val scale = state.lensBarSize.scale
     Box(
         modifier
             // One width for every lens (labels fit in 60 dp), so Rounded/Pill buttons are all the same capsule.
-            .widthIn(min = 60.dp)
-            .height(44.dp)
+            .widthIn(min = (60.dp * scale))
+            .height(44.dp * scale)
             .then(
                 if (!boxed) Modifier else Modifier
                     .background(if (filled) CaptureColors.Accent.copy(alpha = dim) else Color(0xFF141414), shape)
@@ -185,8 +188,19 @@ internal fun LensGroupSelector(
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("rawr_lens_groups", android.content.Context.MODE_PRIVATE) }
     val lenses = state.capabilities.lenses
-    val groups: List<Pair<String, List<LensCapability>>> = remember(lenses) {
-        lenses.groupBy { it.group.ifBlank { "lens:" + it.id } }.toList()
+    // Auto keeps every lens on one row while the row still fits, and groups by optics when it would not.
+    // The width is the capsule (60 dp scaled) plus the 6 dp gap, against the usable width less the padding
+    // the capture layout puts around this row.
+    val maxWidthDp = LocalConfiguration.current.screenWidthDp - 24
+    val flatFits = lenses.size * ((60 * state.lensBarSize.scale) + 6) <= maxWidthDp
+    val flat = when (state.lensBarGrouping) {
+        LensBarGrouping.Flat -> true
+        LensBarGrouping.Grouped -> false
+        LensBarGrouping.Auto -> flatFits
+    }
+    val groups: List<Pair<String, List<LensCapability>>> = remember(lenses, flat) {
+        if (flat) lenses.map { ("lens:" + it.id) to listOf(it) }
+        else lenses.groupBy { it.group.ifBlank { "lens:" + it.id } }.toList()
     }
     // Remember the variant each group was last left on.
     val selectedGroup = groups.firstOrNull { (_, members) -> members.any { it.id == state.selectedLensId } }?.first

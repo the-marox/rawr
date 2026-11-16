@@ -66,6 +66,14 @@ object CaptureReducer {
             state.copy(controlSurfaceStyle = action.style)
         }
 
+        is SetLensBarGrouping -> {
+            state.copy(lensBarGrouping = action.value)
+        }
+
+        is SetLensBarSize -> {
+            state.copy(lensBarSize = action.value)
+        }
+
         is SetCaptureLayout -> {
             state.copy(captureLayout = action.layout)
         }

@@ -510,6 +510,8 @@ class SettingsPreferencesRepository(context: Context, private val defaults: Sett
                     ?: d.dngCompressionId,
             saveBaseDng = p[Keys.saveBaseDng] ?: true,
             gridMode = enumOrDefault(p[Keys.gridMode], d.gridMode),
+            lensBarGrouping = enumOrDefault(p[Keys.lensBarGrouping], d.lensBarGrouping),
+            lensBarSize = enumOrDefault(p[Keys.lensBarSize], d.lensBarSize),
             showDcpQuickSelect = p[Keys.showDcpQuickSelect] ?: d.showDcpQuickSelect,
             vfShowLook = p[Keys.vfShowLook] ?: d.vfShowLook,
             vfShowExposure = p[Keys.vfShowExposure] ?: d.vfShowExposure,
@@ -723,6 +725,8 @@ class SettingsPreferencesRepository(context: Context, private val defaults: Sett
         p[Keys.dngCompressionId] = v.dngCompressionId
         p[Keys.saveBaseDng] = v.saveBaseDng
         p[Keys.gridMode] = v.gridMode.name
+        p[Keys.lensBarGrouping] = v.lensBarGrouping.name
+        p[Keys.lensBarSize] = v.lensBarSize.name
         p[Keys.showDcpQuickSelect] = v.showDcpQuickSelect
         p[Keys.vfShowLook] = v.vfShowLook
         p[Keys.vfShowExposure] = v.vfShowExposure
@@ -1098,6 +1102,8 @@ class SettingsPreferencesRepository(context: Context, private val defaults: Sett
         val dngCompressionId = stringPreferencesKey("capture_dng_compression_id")
         val saveBaseDng = booleanPreferencesKey("capture_save_base_dng")
         val gridMode = stringPreferencesKey("capture_grid_mode")
+        val lensBarGrouping = stringPreferencesKey("lens_bar_grouping")
+        val lensBarSize = stringPreferencesKey("lens_bar_size")
         val showDcpQuickSelect = booleanPreferencesKey("capture_show_dcp_quick_select")
         val vfShowLook = booleanPreferencesKey("capture_vf_show_look")
         val vfShowExposure = booleanPreferencesKey("capture_vf_show_exposure")

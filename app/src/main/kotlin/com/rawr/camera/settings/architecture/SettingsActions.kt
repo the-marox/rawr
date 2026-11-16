@@ -68,6 +68,10 @@ data class SetGridMode(val value: GridMode) : SettingsApplicationAction
 
 data class SetViewfinderDivisor(val divisor: Int) : SettingsApplicationAction
 
+data class SetLensBarGrouping(val value: LensBarGrouping) : SettingsApplicationAction
+
+data class SetLensBarSize(val value: LensBarSize) : SettingsApplicationAction
+
 data class SetShowDcpQuickSelect(val enabled: Boolean) : SettingsApplicationAction
 
 data class SetViewfinderControlVisible(val control: VfControl, val visible: Boolean) : SettingsApplicationAction

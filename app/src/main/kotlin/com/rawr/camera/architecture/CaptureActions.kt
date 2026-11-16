@@ -39,6 +39,10 @@ data object CloseTopBarPanels : PresentationCaptureAction
 
 data class SetControlSurfaceStyle(val style: ControlSurfaceStyle) : PresentationCaptureAction
 
+data class SetLensBarGrouping(val value: com.rawr.camera.settings.model.LensBarGrouping) : PresentationCaptureAction
+
+data class SetLensBarSize(val value: com.rawr.camera.settings.model.LensBarSize) : PresentationCaptureAction
+
 data class SetCaptureLayout(val layout: CaptureControlLayout) : PresentationCaptureAction
 
 data class SetCaptureMode(val mode: CaptureMode) : PresentationCaptureAction

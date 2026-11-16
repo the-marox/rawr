@@ -192,6 +192,10 @@ data class CaptureUiState(
     val thumbnailRevision: Int = 0,
     val captureFlash: Boolean = false,
     val controlSurfaceStyle: ControlSurfaceStyle = ControlSurfaceStyle.Basic,
+    val lensBarGrouping: com.rawr.camera.settings.model.LensBarGrouping =
+        com.rawr.camera.settings.model.LensBarGrouping.Auto,
+    val lensBarSize: com.rawr.camera.settings.model.LensBarSize =
+        com.rawr.camera.settings.model.LensBarSize.Normal,
     /** V1 rails vs V2 compact buttons. Presentation-only; persisted via settings. */
     val captureLayout: CaptureControlLayout = CaptureControlLayout.Compact,
     /** Self-timer delay; Off means immediate shutter. Persisted via settings. */
