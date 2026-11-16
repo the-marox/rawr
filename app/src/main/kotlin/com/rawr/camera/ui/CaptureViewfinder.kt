@@ -4,6 +4,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -206,7 +208,12 @@ internal fun CaptureViewfinder(
             Box(controlFrameModifier.zIndex(21f)) {
                 val paletteModifier = Modifier.topBarPaletteModifier(state, this)
                 if (state.monitorPanelOpen) {
-                    Column(paletteModifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    // Scrolls rather than clipping its last row: the stack is taller than a short
+                    // control frame once VF CONTROLS carries the lens bar options.
+                    Column(
+                        paletteModifier.verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
                         MonitorPanel(state, dispatch, Modifier)
                         if (quick.eyeControls) {
                             VfControlsPanel(quick, state.orientation, onQuickEvent)

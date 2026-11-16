@@ -7,6 +7,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rawr.camera.architecture.CaptureDispatch
 import com.rawr.camera.architecture.ToggleFalseColor
@@ -30,6 +31,9 @@ internal fun MonitorPanel(state: CaptureUiState, dispatch: CaptureDispatch, modi
         modifier = modifier.testTag(CaptureTestTags.MONITOR_PANEL),
         leadingWeight = .62f,
         trailingWeight = .38f,
+        // Two rows of choices under a caption: the shared 128dp default left a dead band below them,
+        // and the eye stack has no room to spare now that VF CONTROLS carries the lens bar too.
+        bodyHeight = 88.dp,
         leading = {
             Column(
                 modifier = Modifier.fillMaxSize(),
@@ -206,7 +210,7 @@ internal fun VfControlsPanel(
                 SmallChoice(
                     label = label,
                     active = quick.lensBarGrouping == value,
-                    modifier = Modifier.weight(1f).height(CaptureDimens.TopBarPaletteMajorChoiceHeight),
+                    modifier = Modifier.weight(1f).height(CaptureDimens.TopBarPaletteMinorChoiceHeight),
                     testTag = "lens_bar_grouping_${value.name.lowercase()}"
                 ) {
                     haptics.selection()
@@ -223,7 +227,7 @@ internal fun VfControlsPanel(
                 SmallChoice(
                     label = value.label.uppercase(),
                     active = quick.lensBarSize == value,
-                    modifier = Modifier.weight(1f).height(CaptureDimens.TopBarPaletteMajorChoiceHeight),
+                    modifier = Modifier.weight(1f).height(CaptureDimens.TopBarPaletteMinorChoiceHeight),
                     testTag = "lens_bar_size_${value.name.lowercase()}"
                 ) {
                     haptics.selection()
