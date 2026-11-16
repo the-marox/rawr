@@ -31,9 +31,11 @@ internal fun MonitorPanel(state: CaptureUiState, dispatch: CaptureDispatch, modi
         modifier = modifier.testTag(CaptureTestTags.MONITOR_PANEL),
         leadingWeight = .62f,
         trailingWeight = .38f,
-        // Two rows of choices under a caption: the shared 128dp default left a dead band below them,
-        // and the eye stack has no room to spare now that VF CONTROLS carries the lens bar too.
-        bodyHeight = 88.dp,
+        // Portrait: two rows of choices under a caption leave a dead band under the shared 128dp
+        // default, and the stack needs that space now that VF CONTROLS carries the lens bar too.
+        // Landscape keeps the default: there the cards are drawn rotated over an unrotated slot,
+        // so a shorter card moves its neighbour onto it.
+        bodyHeight = if (landscape) CaptureDimens.TopBarPaletteBodyHeight else 88.dp,
         leading = {
             Column(
                 modifier = Modifier.fillMaxSize(),
@@ -164,10 +166,13 @@ internal fun VfControlsPanel(
     modifier: Modifier = Modifier
 ) {
     val haptics = LocalCaptureHaptics.current
-    val width = if (orientation == Orientation.Landscape) CaptureDimens.TopBarPaletteLandscapeWidth
+    val landscape = orientation == Orientation.Landscape
+    val width = if (landscape) CaptureDimens.TopBarPaletteLandscapeWidth
     else CaptureDimens.TopBarPalettePortraitWidth
-    CaptureTopPanel(title = "VF CONTROLS", orientation = orientation, modifier = modifier.width(width)) {
-        PanelCaption("SHOW")
+    // The SHOW caption only earns its height where the lens bar rows follow it.
+    val title = if (landscape) "VF CONTROLS · SHOW" else "VF CONTROLS"
+    CaptureTopPanel(title = title, orientation = orientation, modifier = modifier.width(width)) {
+        if (!landscape) PanelCaption("SHOW")
         Row(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(CaptureDimens.TopBarPaletteInnerGap)
