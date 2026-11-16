@@ -9,13 +9,13 @@
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
-#include <future>
 #include <thread>
 #include <utility>
 
@@ -67,8 +67,8 @@ constexpr const char* kTag = "RawrCamNative";
 // 56 MP, ~0.77 / ~1.26 GiB at 12.5 MP). It is not a memory budget by itself.
 constexpr std::uint64_t kStripMergePixels = 56'000'000;
 static_assert(kRextureMaxPixels >= kStripMergePixels, "a strip window must fit a Rexture merge");
-// Strip size once a frame has to be split (200 MP: 6 strips of ~2430 rows instead of 4 of 3392).
-constexpr std::uint64_t kStripSplitPixels = 40'000'000;
+// Smallest window the memory plan will choose: below it the overlap re-merged by every strip costs more than it saves.
+constexpr std::uint64_t kMinStripPixels = 16'000'000;
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, kTag, __VA_ARGS__)
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, kTag, __VA_ARGS__)
 
@@ -138,25 +138,55 @@ void MfsrCaptureJob::runStages(Published& published) {
     // A burst too large for one merge arena (vivo 200 MP: ~8 GB) merges in
     // overlapping strips the size of a 50 MP merge, stitched on the CPU.
     // DNG only: the merged CFA never exists on the GPU whole.
-    // Frames that need strips use shorter ones (~40 MP): the arena is sized by the window, and reserving the
-    // 56 MP one (3.4 GB) took ~7 s on the 17U while Android killed apps for room. 50 MP frames still merge whole.
-    // debug.rawr.strip_mp overrides the strip size in MP (e.g. 56 = previous behaviour).
-    const std::uint64_t stripPixels = [&] {
-        // The override is read before the size gate: a 50 MP merge needs strips too on a device with less memory
-        // free than the arena its geometry asks for (17U: arena 3.8 GB against 2.8 GB available), and the gate
-        // below would otherwise put the only lever out of reach for exactly the sizes that hit the limit.
+    // The window follows the memory the phone has right now: a frame whose arena (plus its resident frames) fits
+    // merges whole at full speed, one that does not is split into the tallest windows that do. The arena is sized
+    // by the window geometry, not the frame count, so splitting is the only lever that shortens it. A 12 GB 17U at
+    // 8160x6144 needs ~3.8 GB with ~2.8 GB available and was killed. debug.rawr.strip_mp (16..56 MP) overrides.
+    const std::uint32_t residentFrames = job && work->tuning.mergeAlgorithm == 2u
+                                             ? std::uint32_t(job->frames.size())
+                                             : std::uint32_t(std::min<std::size_t>(2u, job ? job->frames.size() : 0u));
+    std::uint64_t memAvailable = readMemAvailableBytes();
+    std::uint64_t stripPixels = kStripMergePixels;
+    const char* stripReason = "whole";
+    {
         char value[PROP_VALUE_MAX] = {};
+        // debug.rawr.mem_avail_mb (256..65536) replaces the measured MemAvailable in the plan only, to exercise the
+        // memory-fit choice on a phone with plenty of memory. The merge still runs on the real memory.
+        if (__system_property_get("debug.rawr.mem_avail_mb", value) > 0) {
+            const long mb = std::atol(value);
+            if (mb >= 256 && mb <= 65536) memAvailable = std::uint64_t(mb) * 1024u * 1024u;
+        }
+        value[0] = '\0';
         const int mp = __system_property_get("debug.rawr.strip_mp", value) > 0 ? std::atoi(value) : 0;
-        if (mp >= 16 && mp <= 56) return std::uint64_t(mp) * 1'000'000u;
-        const std::uint32_t setting = work->tuning.stripMegapixels;
-        if (setting >= 16 && setting <= 56) return std::uint64_t(setting) * 1'000'000u;
-        if (std::uint64_t(ctx.rawWidth) * ctx.rawHeight <= kStripMergePixels) return kStripMergePixels;
-        return kStripSplitPixels;
-    }();
-    const auto strips = job && job->setRowWindow ? stripWindows(ctx.rawWidth, ctx.rawHeight, stripPixels)
-                                                 : std::vector<StripWindow>{};
+        if (mp >= 16 && mp <= 56) {
+            stripPixels = std::uint64_t(mp) * 1'000'000u;
+            stripReason = "property";
+        } else if (job && job->setRowWindow && memAvailable != 0) {
+            // Merging next to the system's own working set: leave the rest of what is available to it, and to the
+            // stitched frame and the JPEG develop that follow.
+            const std::uint64_t budget = memAvailable / 4u * 3u;
+            const std::uint64_t fit = memoryFitStripPixels(
+                ctx.rawWidth, ctx.rawHeight, kStripMergePixels, kMinStripPixels, budget, [&](std::uint32_t rows) {
+                    return estimateMergeArenaBytes(ctx.rawWidth, rows, work->tuning.mergeAlgorithm) +
+                           std::uint64_t(ctx.rawWidth) * rows * sizeof(std::uint16_t) * residentFrames;
+                });
+            if (fit < kStripMergePixels) {
+                stripPixels = fit;
+                stripReason = "memory";
+            }
+        }
+    }
+    const auto strips = job && job->setRowWindow
+                            ? stripWindows(ctx.rawWidth, ctx.rawHeight, stripPixels, 256, 128,
+                                           /*balanced=*/std::strcmp(stripReason, "memory") == 0)
+                            : std::vector<StripWindow>{};
     const bool stripMode = strips.size() > 1;
     const bool jpegRequested = work->jpegRequested && !stripMode;
+    // A frame split only to fit memory (<= 56 MP) still gets its JPEG: the stitched CFA is on the CPU at full size and
+    // develops like a single still once the arena is released. Larger frames (vivo 200 MP) stay DNG-only.
+    const bool stripJpeg =
+        stripMode && work->jpegRequested && std::uint64_t(ctx.rawWidth) * ctx.rawHeight <= kStripMergePixels;
+    bool stripJpegPublished = !stripJpeg;
     // Rexture JPEG from its own RGB (setting "JPEG demosaic: Rexture native"); the DNG is the mosaic either way.
     const bool nativeRgb = work->tuning.mergeAlgorithm == kMergeAlgorithmRexture && jpegRequested &&
                            mergedJpeg.develop.multiframeNativeRgb;
@@ -169,15 +199,11 @@ void MfsrCaptureJob::runStages(Published& published) {
         const std::uint32_t mergeRows = stripMode ? strips.front().rows : ctx.rawHeight;
         const std::uint64_t arenaEstimate = estimateMergeArenaBytes(ctx.rawWidth, mergeRows, work->tuning.mergeAlgorithm);
         const std::uint64_t frameBytes = std::uint64_t(ctx.rawWidth) * mergeRows * sizeof(std::uint16_t);
-        const std::size_t residentFrames = work->tuning.mergeAlgorithm == 2u
-                                               ? job->frames.size()
-                                               : std::min<std::size_t>(2u, job->frames.size());
-        const std::uint64_t avail = readMemAvailableBytes();
-        LOGI("MULTIFRAME_MEMORY_PLAN raw=%ux%u mergeRows=%u frames=%zu strips=%zu arena1xMaxMB=%.0f "
-             "residentFrameMB=%.0f availMB=%.0f",
-             ctx.rawWidth, ctx.rawHeight, mergeRows, job->frames.size(), strips.size(),
-             double(arenaEstimate) / (1024.0 * 1024.0),
-             double(frameBytes * residentFrames) / (1024.0 * 1024.0), double(avail) / (1024.0 * 1024.0));
+        LOGI("MULTIFRAME_MEMORY_PLAN raw=%ux%u mergeRows=%u frames=%zu strips=%zu stripMP=%.1f reason=%s "
+             "arena1xMaxMB=%.0f residentFrameMB=%.0f availMB=%.0f",
+             ctx.rawWidth, ctx.rawHeight, mergeRows, job->frames.size(), strips.size(), double(stripPixels) / 1e6,
+             stripReason, double(arenaEstimate) / (1024.0 * 1024.0),
+             double(frameBytes * residentFrames) / (1024.0 * 1024.0), double(memAvailable) / (1024.0 * 1024.0));
     }
     // Both merges work on the RAW grid.
     const auto tuning = [&] {
@@ -267,10 +293,10 @@ void MfsrCaptureJob::runStages(Published& published) {
         done.error = error;
         publishJpeg(done);
     };
-    // Strip merges never hold the whole merged CFA on the GPU: their JPEG develops on the CPU-stitched CFA.
-    // At or below the strip window (50 MP) that is the full merge; a 200 MP one bins to half size first.
-    const bool stripJpeg = stripMode && work->jpegRequested;
-    bool stripJpegPublished = !stripJpeg;
+    if (stripMode && work->jpegRequested && !stripJpeg) {
+        mergedJpeg.output.outputFd.reset();
+        failJpeg("strip_merge_dng_only");
+    }
     auto makeCaptured = [&](rawr::raw_multiframe_output::PackedRaw16 packed) {
         auto captured = std::make_shared<rawrcam::imaging::RawSnapshot>();
         captured->requestId = requestId;
@@ -284,155 +310,6 @@ void MfsrCaptureJob::runStages(Published& published) {
         captured->colorState = job->referenceColor;
         captured->raw16 = std::move(packed.pixels);
         return captured;
-    };
-    // Half-size Bayer of the stitched merge (each output pixel: the four same-colour pixels of its 4x4
-    // neighbourhood), back in sensor codes, developed and written like a single still.
-    auto binStripHalf = [&](const rawr::raw_multiframe_output::PackedRaw16& full) {
-        const auto begin = std::chrono::steady_clock::now();
-        const float codeScale =
-            rawr::raw_multiframe_output::sixteenBitCodeScale(job->referenceMetadata.effectiveWhiteLevel);
-        const std::uint32_t w = full.width / 2, h = full.height / 2;
-        const std::uint32_t inW = full.rowStrideBytes / std::uint32_t(sizeof(std::uint16_t));
-        rawr::raw_multiframe_output::PackedRaw16 half;
-        half.width = w;
-        half.height = h;
-        half.rowStrideBytes = w * std::uint32_t(sizeof(std::uint16_t));
-        half.pixels.resize(std::size_t(half.rowStrideBytes) * h);
-        const auto* src = reinterpret_cast<const std::uint16_t*>(full.pixels.data());
-        auto* dst = reinterpret_cast<std::uint16_t*>(half.pixels.data());
-        const float toSensor = 1.0f / (4.0f * codeScale);
-        {
-            // Rows split across threads (~1 s single-threaded at 50 MP).
-            const std::uint32_t n = std::max(1u, std::min(6u, std::thread::hardware_concurrency()));
-            std::vector<std::thread> pool;
-            for (std::uint32_t t = 0; t < n; ++t) {
-                const std::uint32_t y0 = h * t / n, y1 = h * (t + 1) / n;
-                pool.emplace_back([&, y0, y1]() {
-                    for (std::uint32_t y = y0; y < y1; ++y) {
-                        const std::uint32_t sy = (y >> 1) * 4u + (y & 1u);
-                        // Uniform half-size grid (output x at sensor 2x + 0.5): same-colour samples weighted 3:1 towards
-                        // the nearer one; a plain 2x2 mean leaves a 2-pixel pattern ("little squares") in the JPEG.
-                        const bool yOdd = (y & 1u) != 0u;
-                        const std::uint16_t* rn = src + std::size_t(yOdd ? sy + 2u : sy) * inW;
-                        const std::uint16_t* rf = src + std::size_t(yOdd ? sy : sy + 2u) * inW;
-                        std::uint16_t* o = dst + std::size_t(y) * w;
-                        for (std::uint32_t x = 0; x < w; ++x) {
-                            const std::uint32_t sx = (x >> 1) * 4u + (x & 1u);
-                            const std::uint32_t xn = (x & 1u) ? sx + 2u : sx, xf = (x & 1u) ? sx : sx + 2u;
-                            const float sum = (9.0f * float(rn[xn]) + 3.0f * (float(rn[xf]) + float(rf[xn])) + float(rf[xf])) *
-                                              0.25f;
-                            o[x] = std::uint16_t(std::clamp(sum * toSensor + 0.5f, 0.0f, 65535.0f));
-                        }
-                    }
-                });
-            }
-            for (auto& th : pool) th.join();
-        }
-        auto captured = makeCaptured(std::move(half));
-        if (captured->metadata.cameraContext) {
-            auto context =
-                std::make_shared<rawrcam::metadata::CameraContextMetadata>(*captured->metadata.cameraContext);
-            context->geometry.rawBufferWidth = w;
-            context->geometry.rawBufferHeight = h;
-            context->cfaBlock = 1;
-            captured->metadata.cameraContext = context;
-        }
-        captured->metadata.hotPixelMap.clear();  // full-size coordinates
-        LOGI("MULTIFRAME_STRIP_JPEG_BIN requestId=%llu jpeg=%ux%u ms=%.1f", static_cast<unsigned long long>(requestId),
-             w, h, wallMs(begin));
-        return captured;
-    };
-    // The stitched CFA whole, in sensor codes: same conversion as the half-size path with no resample.
-    // Half size exists because a 200 MP CPU develop is too heavy; binning a 50 MP merge down to 12 MP would
-    // throw away the resolution the merge was for. Runs after the merge arena is released, so the peak here
-    // is the stitched frame plus the develop, not the arena as well.
-    auto stripFullCodes = [&](const rawr::raw_multiframe_output::PackedRaw16& full) {
-        const auto begin = std::chrono::steady_clock::now();
-        const float codeScale =
-            rawr::raw_multiframe_output::sixteenBitCodeScale(job->referenceMetadata.effectiveWhiteLevel);
-        const std::uint32_t w = full.width, h = full.height;
-        const std::uint32_t inW = full.rowStrideBytes / std::uint32_t(sizeof(std::uint16_t));
-        rawr::raw_multiframe_output::PackedRaw16 out;
-        out.width = w;
-        out.height = h;
-        out.rowStrideBytes = w * std::uint32_t(sizeof(std::uint16_t));
-        out.pixels.resize(std::size_t(out.rowStrideBytes) * h);
-        const auto* src = reinterpret_cast<const std::uint16_t*>(full.pixels.data());
-        auto* dst = reinterpret_cast<std::uint16_t*>(out.pixels.data());
-        const float toSensor = 1.0f / codeScale;
-        {
-            const std::uint32_t n = std::max(1u, std::min(6u, std::thread::hardware_concurrency()));
-            std::vector<std::thread> pool;
-            for (std::uint32_t t = 0; t < n; ++t) {
-                const std::uint32_t y0 = h * t / n, y1 = h * (t + 1) / n;
-                pool.emplace_back([&, y0, y1]() {
-                    for (std::uint32_t y = y0; y < y1; ++y) {
-                        const std::uint16_t* r = src + std::size_t(y) * inW;
-                        std::uint16_t* o = dst + std::size_t(y) * w;
-                        for (std::uint32_t x = 0; x < w; ++x)
-                            o[x] = std::uint16_t(std::clamp(float(r[x]) * toSensor + 0.5f, 0.0f, 65535.0f));
-                    }
-                });
-            }
-            for (auto& th : pool) th.join();
-        }
-        auto captured = makeCaptured(std::move(out));
-        if (captured->metadata.cameraContext) {
-            auto context =
-                std::make_shared<rawrcam::metadata::CameraContextMetadata>(*captured->metadata.cameraContext);
-            context->geometry.rawBufferWidth = w;
-            context->geometry.rawBufferHeight = h;
-            context->cfaBlock = 1;
-            captured->metadata.cameraContext = context;
-        }
-        // The hot pixel map keeps its full-size coordinates here, unlike the binned path.
-        LOGI("MULTIFRAME_STRIP_JPEG_FULL requestId=%llu jpeg=%ux%u ms=%.1f",
-             static_cast<unsigned long long>(requestId), w, h, wallMs(begin));
-        return captured;
-    };
-    // Develops and writes the stitched snapshot, full size or binned; runs after the merge arena is released.
-    auto renderStripJpeg = [&](std::shared_ptr<rawrcam::imaging::RawSnapshot> captured) {
-        const auto begin = std::chrono::steady_clock::now();
-        rawrcam::capture::SingleFrameCaptureDevelop develop(
-            ctx.vulkan, ctx.queue0Mutex, ctx.filesDir,
-            [](const std::string& line) { __android_log_print(ANDROID_LOG_INFO, "RawrCamNative", "%s", line.c_str()); });
-        develop.setAssetManager(ctx.assetManager);
-        if (!develop.start(captured, frozenTonemap, frozenTonemap.aePostGain, work->filmEnabled, work->filmLook,
-                           mergedJpeg)) {
-            throw std::runtime_error("strip_jpeg_develop_rejected");
-        }
-        std::optional<rawrcam::capture::SingleFrameDevelopResult> result;
-        while (!(result = develop.pollCompletion())) std::this_thread::sleep_for(std::chrono::milliseconds(5));
-        const auto& completed = result->completion;
-        if (!completed.success) {
-            develop.shutdown();
-            throw std::runtime_error("strip_jpeg_render_failed: " + completed.error);
-        }
-        auto jpegContext = std::move(mergedJpeg);
-        // EXIF orientation, exposure and lens tags: the merged-JPEG block that sets them is skipped in strip mode.
-        rawrcam::capture::applySingleFrameCaptureMetadata(jpegContext.output, *captured);
-        jpegContext.output.appliedLensShadingCorrection = jpegContext.develop.lensShadingCorrectionEnabled;
-        jpegContext.output.appliedFccSteps = jpegContext.develop.fccSteps;
-        JpegCaptureWriter writer;
-        const auto& px = result->pixels;
-        const bool ultraHdr = jpegContext.output.ultraHdr.enabled && px.gainmapPixels && px.gainmapBytes > 0;
-        const bool accepted =
-            ultraHdr ? writer.startUltraHdr(requestId, px.pixels, px.bytes, completed.width, completed.height,
-                                            px.gainmapPixels, px.gainmapBytes, px.gainmapWidth, px.gainmapHeight,
-                                            std::move(jpegContext.output))
-                     : writer.start(requestId, px.pixels, px.bytes, completed.width, completed.height,
-                                    std::move(jpegContext.output));
-        if (!accepted) {
-            develop.shutdown();
-            throw std::runtime_error("strip_jpeg_writer_start_rejected");
-        }
-        std::optional<JpegWriteCompletion> done;
-        while (!(done = writer.pollCompletion())) std::this_thread::sleep_for(std::chrono::milliseconds(5));
-        develop.releasePixels();
-        develop.shutdown();
-        publishJpeg(*done);
-        LOGI("MULTIFRAME_STRIP_JPEG_DONE requestId=%llu success=%d totalMs=%.1f",
-             static_cast<unsigned long long>(requestId), done->success ? 1 : 0, wallMs(begin));
     };
     auto queueSubmit = [&](const VkSubmitInfo& info, VkFence fence) {
         vkCheck(ctx.vulkan.primaryQueue().submit(info, fence), "multiframe output queue submit");
@@ -485,51 +362,17 @@ void MfsrCaptureJob::runStages(Published& published) {
             LOGE("POST_SHUTTER_RZSL_FAIL %s", e.what());
         }
     };
-    // Strip merges: lay out the merge arena (~2.5 GB at 200 MP, up to ~2.5 s while Android reclaims memory) on a
-    // helper thread while the base DNG writes, instead of inside the first strip.
-    struct ArenaWarm {
-        std::thread thread;
-        double ms = 0.0;
-        void join() {
-            if (thread.joinable()) thread.join();
-        }
-        ~ArenaWarm() { join(); }
-    } arenaWarm;
-    auto startArenaWarm = [&]() {
-        if (!stripMode) return;
-        arenaWarm.thread = std::thread([&ctx, &arenaWarm, w = ctx.rawWidth, rows = strips.front().rows]() {
-            const auto begin = std::chrono::steady_clock::now();
-            try {
-                ctx.burstCoordinator.warmAll(ctx.vulkan.physicalDevice(), ctx.vulkan.device(),
-                                             ctx.vulkan.queueFamily(), w, rows);
-            } catch (const std::exception& e) {
-                LOGE("MULTIFRAME_STRIP_ARENA_WARM_FAIL %s", e.what());
-            }
-            arenaWarm.ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - begin).count();
-        });
-    };
     MultiframeOutputAdapter outputAdapter;
     bool outputAdapterReady = false;
     if (baseRequested) try {
+            outputAdapter.initialize(ctx.vulkan.physicalDevice(), ctx.vulkan.device(), ctx.vulkan.queueFamily(),
+                                     queueSubmit, ctx.rawWidth, ctx.rawHeight);
+            outputAdapterReady = true;
             const auto baseReadBegin = std::chrono::steady_clock::now();
-            rawr::raw_multiframe_output::PackedRaw16 basePacked;
-            if (stripMode && job->readFrameHost) {
-                // 200 MP: the reference is already on the CPU (journal, in page cache); no GPU upload + readback.
-                basePacked.width = ctx.rawWidth;
-                basePacked.height = ctx.rawHeight;
-                basePacked.rowStrideBytes = ctx.rawWidth * std::uint32_t(sizeof(std::uint16_t));
-                job->readFrameHost(job->referenceIndex, basePacked.pixels);
-            } else {
-                outputAdapter.initialize(ctx.vulkan.physicalDevice(), ctx.vulkan.device(), ctx.vulkan.queueFamily(),
-                                         queueSubmit, ctx.rawWidth, ctx.rawHeight);
-                outputAdapterReady = true;
-                basePacked = outputAdapter.readBase(job->frames[job->referenceIndex].raw.image);
-                outputAdapter.reset();
-                outputAdapterReady = false;
-            }
+            auto basePacked = outputAdapter.readBase(job->frames[job->referenceIndex].raw.image);
             baseReadMs = wallMs(baseReadBegin);
-            LOGI("MULTIFRAME_BASE_READ requestId=%llu source=%s ms=%.1f", static_cast<unsigned long long>(requestId),
-                 stripMode && job->readFrameHost ? "journal" : "gpu", baseReadMs);
+            outputAdapter.reset();
+            outputAdapterReady = false;
             auto baseFrame = makeCaptured(std::move(basePacked));
             baseDng.imageDescription = std::string(rawrcam::encoding::kCapturedWith) + "\nMultiframe base frame\n";
             auto context = std::move(baseDng);
@@ -545,10 +388,6 @@ void MfsrCaptureJob::runStages(Published& published) {
             failDng(baseDisplayName, std::string("base_output_failed: ") + e.what());
             basePublished = true;
         }
-    // After the base read, not alongside it: the arena allocation makes Android reclaim memory, and on a
-    // 6-frame burst that evicted the journal from cache (base read 0.3 s -> 4.5 s). It still overlaps the
-    // base DNG write, which runs on its own thread.
-    startArenaWarm();
 
     std::optional<rawr::raw_gpu_pipeline::BurstRunResult> mergeResult;
     std::shared_ptr<rawrcam::imaging::RawSnapshot> mergedFrame;
@@ -572,8 +411,95 @@ void MfsrCaptureJob::runStages(Published& published) {
                                           : outputAdapter.projectMerged(merged.output, merged.outputView, projection);
     };
     std::optional<rawr::raw_multiframe_output::PackedRaw16> stitched;
-    // Binned 50 MP snapshot for the strip JPEG; with a merged DNG it waits until the DNG is written.
+    // Strip merge JPEG: the stitched CFA back in sensor codes (the merged DNG widens them to 16 bit), developed and
+    // written like a single still after the merge arena is released, so the peak is the frame plus the develop.
     std::shared_ptr<rawrcam::imaging::RawSnapshot> stripJpegFrame;
+    auto stripFullCodes = [&](const rawr::raw_multiframe_output::PackedRaw16& full) {
+        const float toSensor = 1.0f / rawr::raw_multiframe_output::sixteenBitCodeScale(
+                                          job->referenceMetadata.effectiveWhiteLevel);
+        rawr::raw_multiframe_output::PackedRaw16 out;
+        out.width = full.width;
+        out.height = full.height;
+        out.rowStrideBytes = full.width * std::uint32_t(sizeof(std::uint16_t));
+        out.pixels.resize(std::size_t(out.rowStrideBytes) * out.height);
+        const std::uint32_t inW = full.rowStrideBytes / std::uint32_t(sizeof(std::uint16_t));
+        const auto* src = reinterpret_cast<const std::uint16_t*>(full.pixels.data());
+        auto* dst = reinterpret_cast<std::uint16_t*>(out.pixels.data());
+        const std::uint32_t n = std::max(1u, std::min(6u, std::thread::hardware_concurrency()));
+        std::vector<std::thread> pool;
+        for (std::uint32_t t = 0; t < n; ++t) {
+            const std::uint32_t y0 = out.height * t / n, y1 = out.height * (t + 1) / n;
+            pool.emplace_back([=]() {
+                for (std::uint32_t y = y0; y < y1; ++y)
+                    for (std::uint32_t x = 0; x < out.width; ++x)
+                        dst[std::size_t(y) * out.width + x] = std::uint16_t(std::clamp(
+                            float(src[std::size_t(y) * inW + x]) * toSensor + 0.5f, 0.0f, 65535.0f));
+            });
+        }
+        for (auto& th : pool) th.join();
+        return makeCaptured(std::move(out));
+    };
+    auto renderStripJpeg = [&](std::shared_ptr<rawrcam::imaging::RawSnapshot> captured) {
+        const auto begin = std::chrono::steady_clock::now();
+        rawrcam::capture::SingleFrameCaptureDevelop develop(
+            ctx.vulkan, ctx.queue0Mutex, ctx.filesDir,
+            [](const std::string& line) { __android_log_print(ANDROID_LOG_INFO, "RawrCamNative", "%s", line.c_str()); });
+        develop.setAssetManager(ctx.assetManager);
+        if (!develop.start(captured, frozenTonemap, frozenTonemap.aePostGain, work->filmEnabled, work->filmLook,
+                           mergedJpeg)) {
+            throw std::runtime_error("strip_jpeg_develop_rejected");
+        }
+        std::optional<rawrcam::capture::SingleFrameDevelopResult> result;
+        while (!(result = develop.pollCompletion())) std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        const auto& completed = result->completion;
+        if (!completed.success) {
+            develop.shutdown();
+            throw std::runtime_error("strip_jpeg_render_failed: " + completed.error);
+        }
+        auto jpegContext = std::move(mergedJpeg);
+        // EXIF orientation, exposure and lens tags (the merged-JPEG block that sets them does not run for strips).
+        rawrcam::capture::applySingleFrameCaptureMetadata(jpegContext.output, *captured);
+        jpegContext.output.appliedLensShadingCorrection = jpegContext.develop.lensShadingCorrectionEnabled;
+        jpegContext.output.appliedFccSteps = jpegContext.develop.fccSteps;
+        outputInfo.demosaicLabel = "single-frame demosaic on the stitched merge";
+        outputInfo.jpegInput = "stitched strip merge CFA";
+        {
+            const bool filmActual = completed.filmRendered && !jpegContext.output.filmDescription.empty();
+            jpegContext.output.imageDescription =
+                buildExifHeader() +
+                buildParametersBlock(tuningView, outputInfo, toneUi, filmActual ? jpegContext.output.filmDescription : "",
+                                     filmActual, mergeResult->frameCount, ctx.rawWidth, ctx.rawHeight) +
+                buildSharpnessSection(baseFrameMode, sharpnessScores, job->referenceIndex,
+                                      static_cast<std::uint32_t>(job->frames.size()),
+                                      tuning.mergeAlgorithm == kMergeAlgorithmRexture);
+            jpegContext.output.hasMultiframeTimings = mergeResult.has_value();
+            jpegContext.output.multiframeTimingsBlock = formatMultiframeTimings(mfStages, baseFrameMode);
+            jpegContext.output.multiframeTotalMs = mfStages.multiframeTotalMs();
+            jpegContext.output.mfBaseReadMs = baseReadMs;
+            jpegContext.output.mfProjectMs = projectMs;
+            jpegContext.output.acceptedAt = work->acceptedAt;
+        }
+        JpegCaptureWriter writer;
+        const auto& px = result->pixels;
+        const bool ultraHdr = jpegContext.output.ultraHdr.enabled && px.gainmapPixels && px.gainmapBytes > 0;
+        const bool accepted =
+            ultraHdr ? writer.startUltraHdr(requestId, px.pixels, px.bytes, completed.width, completed.height,
+                                            px.gainmapPixels, px.gainmapBytes, px.gainmapWidth, px.gainmapHeight,
+                                            std::move(jpegContext.output))
+                     : writer.start(requestId, px.pixels, px.bytes, completed.width, completed.height,
+                                    std::move(jpegContext.output));
+        if (!accepted) {
+            develop.shutdown();
+            throw std::runtime_error("strip_jpeg_writer_start_rejected");
+        }
+        std::optional<JpegWriteCompletion> done;
+        while (!(done = writer.pollCompletion())) std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        develop.releasePixels();
+        develop.shutdown();
+        publishJpeg(*done);
+        LOGI("MULTIFRAME_STRIP_JPEG requestId=%llu success=%d totalMs=%.1f", static_cast<unsigned long long>(requestId),
+             done->success ? 1 : 0, wallMs(begin));
+    };
     auto runStripJpeg = [&]() {
         if (!stripJpegFrame) return;
         try {
@@ -596,32 +522,11 @@ void MfsrCaptureJob::runStages(Published& published) {
             packed.width = ctx.rawWidth;
             packed.height = ctx.rawHeight;
             packed.rowStrideBytes = ctx.rawWidth * sizeof(std::uint16_t);
-            // The 400 MB stitch target. Allocating it on a helper thread during the first strip slowed the merge
-            // (memory reclaim competing with the GPU); it is filled here instead, while the arena warm finishes.
-            const auto allocBegin = std::chrono::steady_clock::now();
             packed.pixels.resize(std::size_t(packed.rowStrideBytes) * ctx.rawHeight);
-            const double allocMs = wallMs(allocBegin);
-            const auto waitBegin = std::chrono::steady_clock::now();
-            arenaWarm.join();
-            LOGI("MULTIFRAME_STRIP_PREP requestId=%llu allocMs=%.1f warmMs=%.1f warmWaitedMs=%.1f",
-                 static_cast<unsigned long long>(requestId), allocMs, arenaWarm.ms, wallMs(waitBegin));
             auto* full = reinterpret_cast<std::uint16_t*>(packed.pixels.data());
             const auto hotPixels = job->referenceMetadata.hotPixelMap;
             rawr::raw_gpu_pipeline::BurstStageTimings total{};
             for (const auto& window : strips) {
-                // Declared first, destroyed last: times the end of the strip (result hand-over + frees), which
-                // logged ~0.26 s per strip with no stage of its own.
-                struct StripTail {
-                    std::chrono::steady_clock::time_point begin{};
-                    std::uint32_t y0 = 0;
-                    ~StripTail() {
-                        if (begin.time_since_epoch().count() == 0) return;
-                        __android_log_print(ANDROID_LOG_INFO, "RawrCamNative", "MULTIFRAME_STRIP_TAIL y0=%u ms=%.1f", y0,
-                                            std::chrono::duration<double, std::milli>(
-                                                std::chrono::steady_clock::now() - begin).count());
-                    }
-                } stripTail;
-                stripTail.y0 = window.y0;
                 diagnostics::CaptureStageTimer stripTiming("merge_strip", requestId, window.y0);
                 CAPTURE_DEBUG_LOG("MERGE_STRIP_BEGIN requestId=%llu y0=%u rows=%u frames=%zu algorithm=%u",
                      static_cast<unsigned long long>(requestId), window.y0, window.rows, job->frames.size(), tuning.mergeAlgorithm);
@@ -644,15 +549,9 @@ void MfsrCaptureJob::runStages(Published& published) {
                     outputAdapterReady = true;
                 }
                 const auto projectBegin = std::chrono::steady_clock::now();
-                // Stitch straight from the mapped readback: a host copy per strip (80 MB allocated and freed)
-                // cost ~0.36 s a strip under memory pressure.
-                const auto projection = projectionFor(merged);
-                const std::uint16_t* stripRows =
-                    projection.sourceIsCfaR32f
-                        ? outputAdapter.projectMergedMapped(merged.cfaImage, merged.cfaView, projection)
-                        : outputAdapter.projectMergedMapped(merged.output, merged.outputView, projection);
+                const auto packed = projectMerged(merged);
                 projectMs += wallMs(projectBegin);
-                writeStrip(full, ctx.rawWidth, window, stripRows);
+                writeStrip(full, ctx.rawWidth, window, reinterpret_cast<const std::uint16_t*>(packed.pixels.data()));
                 projectionTiming.finish();
                 const auto& t = merged.timings;
                 CAPTURE_DEBUG_LOG("MERGE_STRIP_STAGES requestId=%llu y0=%u initMs=%.3f noiseMs=%.3f refMs=%.3f prepMs=%.3f alignMs=%.3f kernelMs=%.3f robustMs=%.3f accumMs=%.3f finalizeMs=%.3f totalMs=%.3f",
@@ -672,7 +571,6 @@ void MfsrCaptureJob::runStages(Published& published) {
                 total.totalMs += t.totalMs;
                 LOGI("MULTIFRAME_STRIP y0=%u rows=%u write=%u..%u blend=%u mergeMs=%.1f", window.y0, window.rows,
                      window.writeBegin, window.writeEnd, window.blendEnd - window.writeBegin, t.totalMs);
-                stripTail.begin = std::chrono::steady_clock::now();
                 mergeResult = std::move(merged);
             }
             job->referenceMetadata.hotPixelMap = hotPixels;
@@ -687,31 +585,15 @@ void MfsrCaptureJob::runStages(Published& published) {
                                               tuning, dumpRzslRequested, queueSubmit, mergeSubmit);
         }
         if (work->awaitDurable) work->awaitDurable();  // outputs follow: the journal must be durable first
-        if (stripMode) {
-            if (stripJpeg && stitched) try {
-                    // A merge that fits the strip window develops whole; only the larger ones bin.
-                    stripJpegFrame = std::uint64_t(stitched->width) * stitched->height <= kStripMergePixels
-                                         ? stripFullCodes(*stitched)
-                                         : binStripHalf(*stitched);
-                } catch (const std::exception& e) {
-                    mergedJpeg.output.outputFd.reset();
-                    failJpeg(std::string("strip_jpeg_failed: ") + e.what());
-                    LOGE("MULTIFRAME_STRIP_JPEG_FAIL %s", e.what());
-                    stripJpegPublished = true;
-                }
-            // Nothing below reads the merge arena or the projection buffers in strip mode (the merged DNG
-            // uses the CPU-stitched CFA): free them before the JPEG render to keep the peak under the LMK.
-            const double arenaMb =
-                double(mergeResult->physicalImageBytes + mergeResult->physicalBufferBytes) / (1024.0 * 1024.0);
-            outputAdapter.releaseDngResources();
-            coordinator.releaseScratch();
-            if (!mergedRequested) stitched.reset();
-            LOGI("MULTIFRAME_STRIP_RELEASE requestId=%llu arenaMB=%.0f stitchedKept=%d availMB=%.0f",
-                 static_cast<unsigned long long>(requestId), arenaMb, stitched ? 1 : 0,
-                 double(readMemAvailableBytes()) / (1024.0 * 1024.0));
-            // Without a merged DNG the JPEG renders now; with one, once the DNG write has started (below).
-            if (!mergedRequested) runStripJpeg();
-        }
+        if (stripJpeg && stitched) try {
+                stripJpegFrame = stripFullCodes(*stitched);  // before the merged DNG consumes the stitched CFA
+                outputAdapter.releaseDngResources();  // per-strip projection buffers: nothing reads them any more
+            } catch (const std::exception& e) {
+                mergedJpeg.output.outputFd.reset();
+                failJpeg(std::string("strip_jpeg_failed: ") + e.what());
+                LOGE("MULTIFRAME_STRIP_JPEG_FAIL %s", e.what());
+                stripJpegPublished = true;
+            }
         // Merge timings feed both horizons (merged DNG and JPEG). Populate
         // here — not inside the merged-DNG gate below — so JPEG-only captures
         // (no merged DNG requested) still report the merge/alignment stages
@@ -943,7 +825,7 @@ void MfsrCaptureJob::runStages(Published& published) {
             LOGI("MULTIFRAME_ARENA retain=%d totalRamGB=%.1f availMB=%.0f arenaMB=%.0f", retainArena ? 1 : 0,
                  double(totalRam) / (1024.0 * 1024.0 * 1024.0), double(availRam) / (1024.0 * 1024.0),
                  double(arenaBytes) / (1024.0 * 1024.0));
-            if (!retainArena) coordinator.releaseScratch();
+            if (!retainArena || stripJpeg) coordinator.releaseScratch();
         }
 
         if (jpegRequested) {
@@ -1321,15 +1203,10 @@ void MfsrCaptureJob::runStages(Published& published) {
         publishDng(*done);
         published = true;
     };
-    // Strip JPEG develops while the merged DNG writes: the arena is gone by now and the render only needs the
-    // 50 MP half-size copy. (The "1.3 GB free" read right after the arena release was the kernel lagging; a
-    // moment later 4.8+ GB were free with the 400 MB stitched CFA still held.) The DNG writer keeps its own ref.
+    // The strip JPEG develops while the merged DNG writes (the writer keeps its own reference to the frame).
     if (stripJpegFrame) {
         mergedFrame.reset();
         stitched.reset();
-        LOGI("MULTIFRAME_STRIP_JPEG_WITH_DNG requestId=%llu dngWriting=%d availMB=%.0f",
-             static_cast<unsigned long long>(requestId), mergedStarted && !mergedPublished ? 1 : 0,
-             double(readMemAvailableBytes()) / (1024.0 * 1024.0));
         runStripJpeg();
     }
     awaitDng(baseWriter, baseStarted, basePublished);

@@ -104,8 +104,6 @@ internal fun MultiframeSettings(state: SettingsUiState, dispatch: SettingsDispat
             }
             SettingDivider()
             MultiframeSlider(spec(MultiframeNumericParameter.MaxFrames), tuning, enabled, dispatch)
-            SettingDivider()
-            MultiframeSlider(spec(MultiframeNumericParameter.StripMegapixels), tuning, enabled, dispatch)
             if (lensFrameLimit in 1 until tuning.maxFrames) {
                 androidx.compose.material3.Text(
                     if (lensFrameLimit == 1) "Limited to 1 frame by this lens profile (single photo)."

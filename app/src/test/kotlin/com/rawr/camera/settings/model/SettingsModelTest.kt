@@ -632,7 +632,7 @@ class SettingsModelTest {
         // Native layout: 22 tuning values, chroma flag, then algorithm id + strength (bracket slots unused)
         // and the strip size. 22 + 1 + 7 = 30, which the JNI length whitelist must list.
         assertEquals(22, tuning.nativeValues().size)
-        assertEquals(listOf(2f, 18f, 32f, -3f, 0f, 0f, 0f), tuning.nativeMergeValues().toList())
+        assertEquals(listOf(2f, 18f, 32f, -3f, 0f, 0f), tuning.nativeMergeValues().toList())
         controller.dispatch(SetMultiframeNumericValue(MultiframeNumericParameter.HdrPlusTileSize, 16f))
         controller.dispatch(SetMultiframeNumericValue(MultiframeNumericParameter.HdrPlusTileSize, 64f))
         assertEquals(16, controller.state.value.values.multiframeTuning.hdrPlusTileSize)
@@ -695,13 +695,11 @@ class SettingsModelTest {
         assertEquals(17, defaults.maxFrames)
         assertEquals(13f, defaults.hdrPlusStrength)
         assertEquals(32, defaults.hdrPlusTileSize)
-        assertEquals(0, defaults.stripMegapixels)  // off: the whole merge, as before the setting existed
         assertEquals(
             listOf(
                 MultiframeNumericParameter.MaxFrames,
                 MultiframeNumericParameter.HdrPlusStrength,
-                MultiframeNumericParameter.HdrPlusTileSize,
-                MultiframeNumericParameter.StripMegapixels
+                MultiframeNumericParameter.HdrPlusTileSize
             ),
             MultiframeSpecs.all.map { it.parameter }
         )

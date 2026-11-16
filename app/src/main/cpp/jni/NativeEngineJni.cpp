@@ -51,10 +51,9 @@ rawrcam::capture::multiframe::MultiframeTuning multiframeTuning(JNIEnv* env, jfl
     // flag (read separately by multiframeChromaDenoise()), then the merge
     // algorithm, HDR+ strength, (optionally) HDR+ tile size and (optionally)
     // the bracket EV (headroom limit), long-frame count and (optionally) the
-    // long-frame EV, and (optionally) the strip size in MP.
+    // long-frame EV.
     // A length not listed here falls back to every default, so each appended value needs its own entry.
-    if (count != 22 && count != 23 && count != 25 && count != 26 && count != 28 && count != 29 && count != 30)
-        return out;
+    if (count != 22 && count != 23 && count != 25 && count != 26 && count != 28 && count != 29) return out;
     std::array<jfloat, 22> v{};
     env->GetFloatArrayRegion(values, 0, 22, v.data());
     out.outputScale = v[0];
@@ -110,12 +109,6 @@ rawrcam::capture::multiframe::MultiframeTuning multiframeTuning(JNIEnv* env, jfl
         out.hdrplusTileSize = static_cast<std::uint32_t>(merge[2]);
         out.bracketEv = merge[3];
         out.bracketFrames = static_cast<std::uint32_t>(std::lround(merge[4]));
-    }
-    if (count >= 30) {
-        jfloat strip = 0.0f;
-        env->GetFloatArrayRegion(values, 29, 1, &strip);
-        if (!(strip == 0.0f || (strip >= 16.0f && strip <= 56.0f))) return {};
-        out.stripMegapixels = static_cast<std::uint32_t>(std::lround(strip));
     }
     return out;
 }
