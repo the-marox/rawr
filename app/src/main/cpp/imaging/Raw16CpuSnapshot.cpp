@@ -155,6 +155,45 @@ Raw16CpuSnapshotResult copyCompletedRaw16AhbToMemory(AHardwareBuffer* ahb, uint3
     return out;
 }
 
+std::optional<SampledFullSizeCheck> sampleFullSizeBinnedCorner(AImage* image, AHardwareBuffer* ahb, uint32_t width,
+                                                               uint32_t height, uint32_t pixelArrayWidth,
+                                                               uint32_t pixelArrayHeight,
+                                                               std::optional<int64_t> seamlessMode) noexcept {
+    if (!image || !ahb || width == 0 || height == 0 || width % 4u != 0) return std::nullopt;
+    if (rawPixelFormatOf(image) != RawPixelFormat::Raw10) return std::nullopt;
+    int32_t imageWidth = 0, imageHeight = 0, planes = 0, rowStride = 0;
+    if (AImage_getWidth(image, &imageWidth) != AMEDIA_OK || AImage_getHeight(image, &imageHeight) != AMEDIA_OK ||
+        AImage_getNumberOfPlanes(image, &planes) != AMEDIA_OK || planes != 1 ||
+        AImage_getPlaneRowStride(image, 0, &rowStride) != AMEDIA_OK || imageWidth < static_cast<int32_t>(width) ||
+        imageHeight < static_cast<int32_t>(height) || rowStride <= 0 ||
+        static_cast<size_t>(rowStride) < minimumRowBytes(RawPixelFormat::Raw10, width))
+        return std::nullopt;
+    SampledFullSizeCheck out{};
+    out.rowStrideBytes = static_cast<uint32_t>(rowStride);
+    // Same order as fullSizeBinnedCorner: only a full-size buffer is checked, the HAL report first.
+    uint32_t d = 0;
+    for (const uint32_t k : {2u, 4u})
+        if (pixelArrayWidth && pixelArrayHeight && width == pixelArrayWidth * k && height == pixelArrayHeight * k) d = k;
+    if (!d) return out;
+    if (seamlessMode && *seamlessMode != (d == 4 ? 768 : 259)) {
+        out.check = {d, "reported"};
+        return out;
+    }
+    void* address = nullptr;
+    if (AHardwareBuffer_lock(ahb, AHARDWAREBUFFER_USAGE_CPU_READ_OFTEN, -1, nullptr, &address) != 0 || !address)
+        return std::nullopt;
+    const RawPixelSource source{static_cast<const uint8_t*>(address), RawPixelFormat::Raw10, width, height,
+                                static_cast<size_t>(rowStride)};
+    const uint32_t empty = binnedCornerDivisorSampled(
+        [&source](uint32_t x, uint32_t y) { return readRawPixel(source, x, y); }, width, height);
+    int releaseFence = -1;
+    const int unlocked = AHardwareBuffer_unlock(ahb, &releaseFence);
+    if (releaseFence >= 0) close(releaseFence);
+    if (unlocked != 0) return std::nullopt;
+    if (empty > 1) out.check = {empty, "empty"};
+    return out;
+}
+
 std::string stillRawContentStatsLine(const RawSnapshot& snapshot) {
     RawContentStatsInput input;
     const auto& metadata = snapshot.metadata;

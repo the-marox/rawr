@@ -5,8 +5,12 @@
 #include <cstring>
 #include <stdexcept>
 
+#include <vulkan/vulkan_android.h>
+
 #include "capture/ReducedRawMetadata.h"
 #include "diagnostics/timing/CaptureStageTimer.h"
+#include "vulkan/RawImportEvidence.h"
+#include "vulkan/Synchronization.h"
 namespace rawrcam::capture {
 namespace {
 void check(VkResult r) {
@@ -67,7 +71,6 @@ void ReducedRaw::initialize(uint32_t count) {
     check(vkCreateCommandPool(vk_.device(), &pi, nullptr, &pool_));
     for (uint32_t i = 0; i < count; ++i) {
         auto& s = slots_[i];
-        allocate(s.source, bytes_, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
         allocate(s.result, bytes_ / 4, VK_BUFFER_USAGE_TRANSFER_DST_BIT);
         s.output =
             rawr::vk::createOwnedImage(vk_.physicalDevice(), vk_.device(), width_ / 2, height_ / 2, VK_FORMAT_R16_UINT,
@@ -89,6 +92,7 @@ void ReducedRaw::submit(uint32_t index, const std::vector<uint8_t>& pixels, cons
     auto& s = slots_.at(index);
     if (pixels.size() != bytes_) throw std::runtime_error("reduced_raw_submit_invalid");
     const float limit = sourceCodeLimit(s, m);
+    ensureSource(s);
     // Copy and validate in one pass; phase-fit integer statistics require bounded source codes.
     auto* out = static_cast<uint16_t*>(s.source.mapped);
     const auto* in = reinterpret_cast<const uint16_t*>(pixels.data());
@@ -98,18 +102,79 @@ void ReducedRaw::submit(uint32_t index, const std::vector<uint8_t>& pixels, cons
         maximum = std::max(maximum, in[i]);
     }
     if (maximum > limit) throw std::runtime_error("reduced_raw_source_code_out_of_range");
-    record(s, index, m);
+    record(s, index, m, s.source.buffer, width_ * 2, false);
 }
 uint16_t* ReducedRaw::uploadBuffer(uint32_t index) {
     auto& s = slots_.at(index);
     if (!s.command || s.pending) throw std::runtime_error("reduced_raw_upload_buffer_busy");
+    ensureSource(s);
     return static_cast<uint16_t*>(s.source.mapped);
 }
 void ReducedRaw::submitUploaded(uint32_t index, const metadata::FrameMetadataSnapshot& m, uint16_t sourceMaximum) {
     diagnostics::CaptureStageTimer timing("reduced_submit_uploaded", m.timestampNs, index);
     auto& s = slots_.at(index);
     if (sourceMaximum > sourceCodeLimit(s, m)) throw std::runtime_error("reduced_raw_source_code_out_of_range");
-    record(s, index, m);
+    record(s, index, m, s.source.buffer, width_ * 2, false);
+}
+bool ReducedRaw::submitImported(uint32_t index, AHardwareBuffer* ahb, uint32_t rowStrideBytes,
+                                const metadata::FrameMetadataSnapshot& m, std::string* error) {
+    diagnostics::CaptureStageTimer timing("reduced_import_and_submit", m.timestampNs, index);
+    auto& s = slots_.at(index);
+    try {
+        // RAW10 codes never exceed 1023, below both limits.
+        if (1023.0f > sourceCodeLimit(s, m)) throw std::runtime_error("reduced_raw_source_code_out_of_range");
+        if (!ahb || rowStrideBytes < width_ / 4 * 5) throw std::runtime_error("reduced_raw_import_layout");
+        const auto getProperties = vk_.getAhbProperties();
+        if (!getProperties) throw std::runtime_error("reduced_raw_import_unsupported");
+        VkAndroidHardwareBufferFormatPropertiesANDROID fp{};
+        fp.sType = VK_STRUCTURE_TYPE_ANDROID_HARDWARE_BUFFER_FORMAT_PROPERTIES_ANDROID;
+        VkAndroidHardwareBufferPropertiesANDROID hp{};
+        hp.sType = VK_STRUCTURE_TYPE_ANDROID_HARDWARE_BUFFER_PROPERTIES_ANDROID;
+        hp.pNext = &fp;
+        check(getProperties(vk_.device(), ahb, &hp));
+        if (hp.memoryTypeBits == 0 || hp.allocationSize < VkDeviceSize(rowStrideBytes) * height_)
+            throw std::runtime_error("reduced_raw_import_size");
+        // As RawAhbImporter::ensureBufferImport, proven on the Adreno 840: a plain buffer bound to the AHB's
+        // memory reads the camera data; one created with VkExternalMemoryBufferCreateInfo reads it back black.
+        VkBufferCreateInfo bi{};
+        bi.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        bi.size = hp.allocationSize;
+        bi.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+        bi.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        check(vkCreateBuffer(vk_.device(), &bi, nullptr, &s.imported));
+        VkMemoryRequirements req{};
+        vkGetBufferMemoryRequirements(vk_.device(), s.imported, &req);
+        if (req.size > hp.allocationSize) throw std::runtime_error("reduced_raw_import_requirements");
+        VkImportAndroidHardwareBufferInfoANDROID import{};
+        import.sType = VK_STRUCTURE_TYPE_IMPORT_ANDROID_HARDWARE_BUFFER_INFO_ANDROID;
+        import.buffer = ahb;
+        VkMemoryDedicatedAllocateInfo dedicated{};
+        dedicated.sType = VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO;
+        dedicated.pNext = &import;
+        dedicated.buffer = s.imported;
+        VkMemoryAllocateInfo ma{};
+        ma.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        ma.pNext = &dedicated;
+        ma.allocationSize = hp.allocationSize;
+        ma.memoryTypeIndex = vulkan::findImportMemoryType(vk_.physicalDevice(), hp.memoryTypeBits, 0);
+        check(vkAllocateMemory(vk_.device(), &ma, nullptr, &s.importedMemory));
+        check(vkBindBufferMemory(vk_.device(), s.imported, s.importedMemory, 0));
+        record(s, index, m, s.imported, rowStrideBytes, true);
+        return true;
+    } catch (const std::exception& e) {
+        if (!s.pending) releaseImport(s);
+        if (error) *error = e.what();
+        return false;
+    }
+}
+void ReducedRaw::ensureSource(Slot& s) {
+    if (!s.source.buffer) allocate(s.source, bytes_, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+}
+void ReducedRaw::releaseImport(Slot& s) noexcept {
+    if (s.imported) vkDestroyBuffer(vk_.device(), s.imported, nullptr);
+    if (s.importedMemory) vkFreeMemory(vk_.device(), s.importedMemory, nullptr);
+    s.imported = VK_NULL_HANDLE;
+    s.importedMemory = VK_NULL_HANDLE;
 }
 float ReducedRaw::sourceCodeLimit(const Slot& s, const metadata::FrameMetadataSnapshot& m) const {
     if (!s.command || s.pending || !m.cameraContext || !reducedRawRequested(*m.cameraContext))
@@ -121,7 +186,8 @@ float ReducedRaw::sourceCodeLimit(const Slot& s, const metadata::FrameMetadataSn
         throw std::runtime_error("reduced_raw_unsupported_white_level");
     return limit;
 }
-void ReducedRaw::record(Slot& s, uint32_t index, const metadata::FrameMetadataSnapshot& m) {
+void ReducedRaw::record(Slot& s, uint32_t index, const metadata::FrameMetadataSnapshot& m, VkBuffer source,
+                        uint32_t rowStrideBytes, bool raw10) {
     const auto& c = *m.cameraContext;
     const bool fit = c.photoPhaseFit && reducedRawFitFits(m.effectiveWhiteLevel);
     check(vkResetCommandBuffer(s.command, 0));
@@ -139,12 +205,20 @@ void ReducedRaw::record(Slot& s, uint32_t index, const metadata::FrameMetadataSn
     b.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
     vkCmdPipelineBarrier(s.command, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0,
                          nullptr, 0, nullptr, 1, &b);
+    // A camera buffer read in place is taken from, and handed back to, the foreign queue (as the viewfinder's
+    // GPU RAW10 ingress does).
+    const bool camera = source == s.imported && s.imported != VK_NULL_HANDLE;
+    if (camera)
+        vulkan::acquireForeignBuffer(s.command, source, vk_.queueFamily(),
+                                     VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                     VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_READ_BIT);
     rawr::raw_ingress::RawRemosaicker::Frame f;
-    f.source = s.source.buffer;
+    f.source = source;
     f.destination = s.output.view;
     f.width = width_;
     f.height = height_;
-    f.rowStrideBytes = width_ * 2;
+    f.rowStrideBytes = rowStrideBytes;
+    f.raw10 = raw10;
     f.block = 4;
     f.order = c.rawPreviewCfa;
     f.quality = rawr::raw_ingress::RawRemosaicker::Quality::Detail;
@@ -154,6 +228,9 @@ void ReducedRaw::record(Slot& s, uint32_t index, const metadata::FrameMetadataSn
                     m.blackLevelPhysicalRggb[3]) *
                    .25f;
     remosaic_->record(s.command, index, f);
+    if (camera)
+        vulkan::releaseForeignBuffer(s.command, source, vk_.queueFamily(), VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                     VK_ACCESS_SHADER_READ_BIT);
     b.oldLayout = b.newLayout = VK_IMAGE_LAYOUT_GENERAL;
     b.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
     b.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
@@ -188,11 +265,13 @@ void ReducedRaw::collect(uint32_t index, std::vector<uint8_t>& pixels) {
     check(vkWaitForFences(vk_.device(), 1, &s.fence, VK_TRUE, UINT64_MAX));
     pixels.resize(bytes_ / 4);
     std::memcpy(pixels.data(), s.result.mapped, pixels.size());
+    releaseImport(s);
     s.pending = false;
 }
 void ReducedRaw::destroy() noexcept {
     for (auto& s : slots_)
         if (s.pending) vkWaitForFences(vk_.device(), 1, &s.fence, VK_TRUE, UINT64_MAX);
+    for (auto& s : slots_) releaseImport(s);
     remosaic_.reset();
     for (auto& s : slots_) {
         rawr::vk::destroyOwnedImage(vk_.device(), s.output);

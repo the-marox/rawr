@@ -1,4 +1,5 @@
 #pragma once
+#include <android/hardware_buffer.h>
 #include <rawr/raw_ingress/RawRemosaicker.h>
 
 #include <array>
@@ -25,6 +26,11 @@ class ReducedRaw final {
     // then submitUploaded with an upper bound of its codes (1023 for RAW10). Throws while the slot is busy.
     uint16_t* uploadBuffer(uint32_t slot);
     void submitUploaded(uint32_t slot, const metadata::FrameMetadataSnapshot&, uint16_t sourceMaximum);
+    // Zero copy: imports the camera buffer (packed RAW10, rowStrideBytes apart, no pending fence) as a storage
+    // buffer and reduces it in place. The caller keeps the camera frame leased until collect(slot). False, with
+    // the reason in error and nothing left behind, when the buffer cannot be imported: use the CPU paths.
+    bool submitImported(uint32_t slot, AHardwareBuffer* ahb, uint32_t rowStrideBytes,
+                        const metadata::FrameMetadataSnapshot&, std::string* error);
     void collect(uint32_t slot, std::vector<uint8_t>&);
 
    private:
@@ -39,10 +45,17 @@ class ReducedRaw final {
         VkCommandBuffer command{};
         VkFence fence{};
         bool pending = false;
+        // Camera buffer imported for the submission in flight (zero copy); released at collect.
+        VkBuffer imported{};
+        VkDeviceMemory importedMemory{};
     };
     void initialize(uint32_t slots);
     float sourceCodeLimit(const Slot&, const metadata::FrameMetadataSnapshot&) const;
-    void record(Slot&, uint32_t slot, const metadata::FrameMetadataSnapshot&);
+    void record(Slot&, uint32_t slot, const metadata::FrameMetadataSnapshot&, VkBuffer source, uint32_t rowStrideBytes,
+                bool raw10);
+    // The 400 MB upload buffer is made on first CPU use: a zero-copy burst never needs it.
+    void ensureSource(Slot&);
+    void releaseImport(Slot&) noexcept;
     void destroy() noexcept;
     void allocate(Buffer&, size_t, VkBufferUsageFlags);
     const vulkan::VulkanContext& vk_;

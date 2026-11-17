@@ -453,7 +453,7 @@
           "height": 12288,
           "useCase": 524547,
           "buffers": {
-            "usage": "0x100003"
+            "usage": "0x1100003"
           },
           "mergeFrameLimit": 6,
           "includePreview": false
@@ -817,7 +817,7 @@
           "height": 12288,
           "useCase": 524547,
           "buffers": {
-            "usage": "0x100003"
+            "usage": "0x1100003"
           },
           "mergeFrameLimit": 6,
           "includePreview": false

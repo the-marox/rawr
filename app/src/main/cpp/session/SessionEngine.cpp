@@ -2,11 +2,15 @@
 #include "capture/ReducedRawMetadata.h"
 #include "diagnostics/timing/GpuTimingTracker.h"
 // Composition root: construction, core lifecycle, metadata ingress, shutdown.
+#include <sys/system_properties.h>
 #include <unistd.h>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
+#include <cstring>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <thread>
@@ -35,6 +39,12 @@
 
 namespace rawrcam::session {
 namespace {
+// `adb shell setprop debug.rawr.still_gpu_direct 0` keeps reduced RAW10 bursts on the CPU decode, to compare.
+bool stillGpuDirectEnabled() {
+    char value[PROP_VALUE_MAX]{};
+    __system_property_get("debug.rawr.still_gpu_direct", value);
+    return std::strcmp(value, "0") != 0;
+}
 int64_t steadyMillis() {
     return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch())
         .count();
@@ -629,12 +639,30 @@ uint32_t SessionEngine::prepareFullSizeBurst(uint32_t maxFrames) {
     const bool reduced = capture::reducedRawRequested(*context);
     const uint32_t outputWidth = reduced ? width / 2 : width, outputHeight = reduced ? height / 2 : height;
     auto journal = std::make_shared<capture::persistence::AcquiredRawJournal>(filesDir_, reduced ? bytes / 4 : bytes, count);
+    // Camera frames the GPU reads in place (zero copy) stay leased until their slot is collected. Declared
+    // before the reducer, whose destructor waits for outstanding GPU work, so they outlive it.
+    std::array<std::optional<imaging::RawFrameLease>, 2> heldLeases;
+    Cleanup releaseHeld{[&] {
+        bool released = false;
+        for (auto& held : heldLeases)
+            if (held) {
+                held.reset();
+                released = true;
+            }
+        if (released) captureFrameIngress_.resumeAfterRelease(context->cameraContextGeneration);
+    }};
+    const bool gpuDirect = reduced && stillGpuDirectEnabled();
     std::unique_ptr<capture::ReducedRaw> reducer;
     if (reduced) reducer = std::make_unique<capture::ReducedRaw>(vulkanContext_, width, height);
     std::vector<uint8_t> reducedPixels;
     size_t reducedSubmitted = 0, reducedCollected = 0;
     const auto collectReduced = [&] {
-        reducer->collect(reducedCollected % 2, reducedPixels);
+        const auto slot = reducedCollected % 2;
+        reducer->collect(slot, reducedPixels);
+        if (heldLeases[slot]) {
+            heldLeases[slot].reset();
+            captureFrameIngress_.resumeAfterRelease(context->cameraContextGeneration);
+        }
         journal->append(reducedPixels);
         ++reducedCollected;
     };
@@ -720,8 +748,42 @@ uint32_t SessionEngine::prepareFullSizeBurst(uint32_t maxFrames) {
             for (; count > index + 1; --count) journal->dropExpected();
         }
         nextSubmitTiming.finish();
-        diagnostics::CaptureStageTimer copyTiming("fullres_copy_raw_to_u16", tag, index + 1);
         auto& lease = frames.back().lease;
+        // Zero copy: a reduced RAW10 frame is imported and reduced in place by the GPU; only the 128 binned-corner
+        // samples are read on the CPU. Any refusal (fence, layout, import) falls back to the CPU decode below.
+        if (gpuDirect && lease.fence() < 0 &&
+            imaging::rawPixelFormatOf(lease.image()) == imaging::RawPixelFormat::Raw10) {
+            diagnostics::CaptureStageTimer directTiming("fullres_gpu_direct", tag, index + 1);
+            const uint32_t slot = reducedSubmitted % 2;
+            const auto sampled = imaging::sampleFullSizeBinnedCorner(
+                lease.image(), lease.ahb(), width, height, context->geometry.pixelArrayWidth,
+                context->geometry.pixelArrayHeight, frames.back().metadata.vendorSeamlessMode);
+            if (sampled && sampled->check.divisor > 1) {
+                appendDiagnostic("FULL_SIZE_BINNED_CORNER tag=" + std::to_string(tag) +
+                                 " timestampNs=" + std::to_string(frames.back().metadata.timestampNs) +
+                                 " burst=1 reason=" + sampled->check.reason + " seamlessMode=" +
+                                 std::to_string(frames.back().metadata.vendorSeamlessMode.value_or(-1)));
+                frames.pop_back();
+                captureFrameIngress_.resumeAfterRelease(context->cameraContextGeneration);
+                journal->dropExpected();
+                ++binnedCorners;
+                continue;
+            }
+            std::string error = sampled ? std::string() : std::string("binned_corner_sample_failed");
+            if (sampled && reducer->submitImported(slot, lease.ahb(), sampled->rowStrideBytes, frames.back().metadata,
+                                                   &error)) {
+                CAPTURE_DEBUG_LOG("FULLRES_GPU_DIRECT tag=%llu frame=%u rowStride=%u slot=%u",
+                     static_cast<unsigned long long>(tag), index + 1, sampled->rowStrideBytes, slot);
+                heldLeases[slot].emplace(std::move(lease));
+                ++reducedSubmitted;
+                capture::applyReducedRawMetadata(frames.back().metadata);
+                if (reducedSubmitted - reducedCollected == 2) collectReduced();
+                continue;
+            }
+            appendDiagnostic("FULLRES_GPU_DIRECT_FALLBACK tag=" + std::to_string(tag) +
+                             " frame=" + std::to_string(index + 1) + " reason=" + error);
+        }
+        diagnostics::CaptureStageTimer copyTiming("fullres_copy_raw_to_u16", tag, index + 1);
         // RAW10 codes never exceed 1023, so a reduced RAW10 frame needs no copy-and-scan pass: it is decoded
         // once, into the upload buffer the reduce reads.
         uint16_t* upload = nullptr;

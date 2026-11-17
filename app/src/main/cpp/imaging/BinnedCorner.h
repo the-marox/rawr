@@ -13,8 +13,10 @@ namespace rawrcam::imaging {
 // apart without scanning the frame.
 //
 // Returns d (4 or 2) for such a frame, or 1 for a full frame. Packed RAW16.
-inline uint32_t binnedCornerDivisor(const uint16_t* px, uint32_t width, uint32_t height) {
-    if (!px || width < 64 || height < 64) return 1;
+// The same test through a sampler (x, y) -> code, for frames that are not packed RAW16 in memory.
+template <class Sample>
+inline uint32_t binnedCornerDivisorSampled(Sample sample, uint32_t width, uint32_t height) {
+    if (width < 64 || height < 64) return 1;
     constexpr uint32_t kGrid = 8;
     const auto emptyOutside = [&](uint32_t d) {
         const uint32_t cw = width / d, ch = height / d;
@@ -22,7 +24,7 @@ inline uint32_t binnedCornerDivisor(const uint16_t* px, uint32_t width, uint32_t
         for (uint32_t gy = 0; gy < kGrid; ++gy) {
             for (uint32_t gx = 0; gx < kGrid; ++gx) {
                 const uint32_t x = (2 * gx + 1) * width / (2 * kGrid), y = (2 * gy + 1) * height / (2 * kGrid);
-                const uint16_t v = px[size_t(y) * width + x];
+                const uint16_t v = sample(x, y);
                 if (x >= cw || y >= ch) {
                     if (v != 0) return false;
                     ++outside;
@@ -38,6 +40,12 @@ inline uint32_t binnedCornerDivisor(const uint16_t* px, uint32_t width, uint32_t
     };
     if (!fits(2) || !emptyOutside(2)) return 1;
     return fits(4) && emptyOutside(4) ? 4 : 2;
+}
+
+inline uint32_t binnedCornerDivisor(const uint16_t* px, uint32_t width, uint32_t height) {
+    if (!px) return 1;
+    return binnedCornerDivisorSampled([px, width](uint32_t x, uint32_t y) { return px[size_t(y) * width + x]; },
+                                      width, height);
 }
 
 // Keeps the top-left width/d x height/d of a packed RAW16 frame, in place.
