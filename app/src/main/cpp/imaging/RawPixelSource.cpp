@@ -5,6 +5,8 @@
 #include <cstring>
 #include <iomanip>
 #include <sstream>
+#include <thread>
+#include <utility>
 #include <vector>
 
 namespace rawrcam::imaging {
@@ -40,14 +42,48 @@ bool copyRawToPackedRaw16(const RawPixelSource& source, uint16_t* destination) n
     if (!source.base || !destination || source.width == 0 || source.height == 0) return false;
     if (source.rowStrideBytes < minimumRowBytes(source.format, source.width)) return false;
     if (source.format == RawPixelFormat::Raw10 && source.width % 4u != 0) return false;
-    for (uint32_t y = 0; y < source.height; ++y) {
-        const uint8_t* row = source.base + static_cast<size_t>(y) * source.rowStrideBytes;
-        uint16_t* out = destination + static_cast<size_t>(y) * source.width;
-        if (source.format == RawPixelFormat::Raw10)
-            unpackRaw10Row(row, source.width, out);
-        else
-            std::memcpy(out, row, static_cast<size_t>(source.width) * sizeof(uint16_t));
+    const auto rows = [&](uint32_t begin, uint32_t end) noexcept {
+        for (uint32_t y = begin; y < end; ++y) {
+            const uint8_t* row = source.base + static_cast<size_t>(y) * source.rowStrideBytes;
+            uint16_t* out = destination + static_cast<size_t>(y) * source.width;
+            if (source.format == RawPixelFormat::Raw10)
+                unpackRaw10Row(row, source.width, out);
+            else
+                std::memcpy(out, row, static_cast<size_t>(source.width) * sizeof(uint16_t));
+        }
+    };
+    // Full-size stills (50 / 200 MP) split the rows across cores: one thread took ~180 ms per 200 MP RAW10 frame.
+    // Smaller frames stay on the calling thread. A thread that cannot be started leaves its rows to this one.
+    const uint64_t pixels = static_cast<uint64_t>(source.width) * source.height;
+    const uint32_t threads =
+        pixels >= 24'000'000ull ? std::clamp(std::thread::hardware_concurrency(), 1u, 8u) : 1u;
+    if (threads <= 1u || source.height < threads) {
+        rows(0, source.height);
+        return true;
     }
+    const uint32_t chunk = (source.height + threads - 1u) / threads;
+    const auto range = [&](uint32_t i) {
+        const uint32_t begin = std::min(source.height, i * chunk);
+        return std::pair<uint32_t, uint32_t>{begin, std::min(source.height, begin + chunk)};
+    };
+    std::vector<std::thread> pool;
+    uint32_t started = 0;
+    try {
+        pool.reserve(threads - 1u);
+        for (uint32_t i = 1; i < threads; ++i) {
+            const auto [begin, end] = range(i);
+            pool.emplace_back(rows, begin, end);
+            ++started;
+        }
+    } catch (...) {
+    }
+    for (uint32_t i = started + 1u; i < threads; ++i) {
+        const auto [begin, end] = range(i);
+        rows(begin, end);
+    }
+    const auto [begin, end] = range(0);
+    rows(begin, end);
+    for (auto& thread : pool) thread.join();
     return true;
 }
 
