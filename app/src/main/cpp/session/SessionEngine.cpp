@@ -638,7 +638,8 @@ uint32_t SessionEngine::prepareFullSizeBurst(uint32_t maxFrames) {
         journal->append(reducedPixels);
         ++reducedCollected;
     };
-    std::vector<uint8_t> packed(bytes);
+    // Allocated on first use: a reduced burst of RAW10 frames decodes straight into the reducer's upload buffers.
+    std::vector<uint8_t> packed;
     allocationTiming.finish();
     struct Frame {
         imaging::RawFrameLease lease{imaging::AcquiredRawFrame{}};
@@ -721,12 +722,20 @@ uint32_t SessionEngine::prepareFullSizeBurst(uint32_t maxFrames) {
         nextSubmitTiming.finish();
         diagnostics::CaptureStageTimer copyTiming("fullres_copy_raw_to_u16", tag, index + 1);
         auto& lease = frames.back().lease;
-        const auto copy =
-            imaging::copyCompletedRaw16AhbToPacked(lease.ahb(), width, height, packed, lease.fence(), lease.image());
+        // RAW10 codes never exceed 1023, so a reduced RAW10 frame needs no copy-and-scan pass: it is decoded
+        // once, into the upload buffer the reduce reads.
+        uint16_t* upload = nullptr;
+        if (reducer && imaging::rawPixelFormatOf(lease.image()) == imaging::RawPixelFormat::Raw10)
+            upload = reducer->uploadBuffer(reducedSubmitted % 2);
+        if (!upload && packed.size() != bytes) packed.resize(bytes);
+        const auto copy = upload ? imaging::copyCompletedRaw16AhbToMemory(lease.ahb(), width, height, upload, bytes,
+                                                                          lease.fence(), lease.image())
+                                 : imaging::copyCompletedRaw16AhbToPacked(lease.ahb(), width, height, packed,
+                                                                          lease.fence(), lease.image());
         copyTiming.finish();
-        CAPTURE_DEBUG_LOG("FULLRES_COPY tag=%llu frame=%u lockMs=%.3f decodeMs=%.3f unlockMs=%.3f rowStride=%d success=%d",
+        CAPTURE_DEBUG_LOG("FULLRES_COPY tag=%llu frame=%u lockMs=%.3f decodeMs=%.3f unlockMs=%.3f rowStride=%d success=%d target=%s",
              static_cast<unsigned long long>(tag), index + 1, copy.lockMs, copy.copyMs, copy.unlockMs,
-             copy.sourceRowStrideBytes, copy.success ? 1 : 0);
+             copy.sourceRowStrideBytes, copy.success ? 1 : 0, upload ? "upload" : "packed");
         diagnostics::CaptureStageTimer releaseTiming("fullres_release_and_resume_reader", tag, index + 1);
         lease = imaging::RawFrameLease(imaging::AcquiredRawFrame{});
         // A queued burst may have filled every reader lease while this frame was copied.
@@ -738,7 +747,11 @@ uint32_t SessionEngine::prepareFullSizeBurst(uint32_t maxFrames) {
         // A frame the HAL returned binned (corner of the buffer) would wreck
         // the merge: leave it out and merge the full-size ones.
         diagnostics::CaptureStageTimer checkTiming("fullres_validate_buffer", tag, index + 1);
-        if (const auto check = imaging::fullSizeBinnedCorner(packed, width, height, context->geometry.pixelArrayWidth,
+        if (const auto check = upload ? imaging::fullSizeBinnedCorner(upload, size_t(width) * height, width, height,
+                                                                     context->geometry.pixelArrayWidth,
+                                                                     context->geometry.pixelArrayHeight,
+                                                                     frames.back().metadata.vendorSeamlessMode)
+                                      : imaging::fullSizeBinnedCorner(packed, width, height, context->geometry.pixelArrayWidth,
                                                              context->geometry.pixelArrayHeight,
                                                              frames.back().metadata.vendorSeamlessMode);
             check.divisor > 1) {
@@ -755,7 +768,10 @@ uint32_t SessionEngine::prepareFullSizeBurst(uint32_t maxFrames) {
         if (reducer) {
             diagnostics::CaptureStageTimer reduceTiming("fullres_reduce_gpu_submit", tag, index + 1);
             try {
-                reducer->submit(reducedSubmitted % 2, packed, frames.back().metadata);
+                if (upload)
+                    reducer->submitUploaded(reducedSubmitted % 2, frames.back().metadata, 1023);
+                else
+                    reducer->submit(reducedSubmitted % 2, packed, frames.back().metadata);
             } catch (const std::exception& e) {
                 // This frame cannot be reduced; reduced and full-size frames never mix in one merge.
                 // Drop it like a binned-corner frame: fewer than two left falls back to a single still.

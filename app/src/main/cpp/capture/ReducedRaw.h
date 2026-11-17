@@ -21,6 +21,10 @@ class ReducedRaw final {
     // Empty when the device can reduce frames of this size (storage buffer range, image size).
     static std::string deviceUnsupportedReason(const vulkan::VulkanContext&, uint32_t width, uint32_t height);
     void submit(uint32_t slot, const std::vector<uint8_t>&, const metadata::FrameMetadataSnapshot&);
+    // The slot's mapped upload buffer (width * height packed RAW16), to decode a frame straight into it;
+    // then submitUploaded with an upper bound of its codes (1023 for RAW10). Throws while the slot is busy.
+    uint16_t* uploadBuffer(uint32_t slot);
+    void submitUploaded(uint32_t slot, const metadata::FrameMetadataSnapshot&, uint16_t sourceMaximum);
     void collect(uint32_t slot, std::vector<uint8_t>&);
 
    private:
@@ -37,6 +41,8 @@ class ReducedRaw final {
         bool pending = false;
     };
     void initialize(uint32_t slots);
+    float sourceCodeLimit(const Slot&, const metadata::FrameMetadataSnapshot&) const;
+    void record(Slot&, uint32_t slot, const metadata::FrameMetadataSnapshot&);
     void destroy() noexcept;
     void allocate(Buffer&, size_t, VkBufferUsageFlags);
     const vulkan::VulkanContext& vk_;

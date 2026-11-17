@@ -87,15 +87,8 @@ void ReducedRaw::initialize(uint32_t count) {
 void ReducedRaw::submit(uint32_t index, const std::vector<uint8_t>& pixels, const metadata::FrameMetadataSnapshot& m) {
     diagnostics::CaptureStageTimer timing("reduced_upload_and_submit", m.timestampNs, index);
     auto& s = slots_.at(index);
-    if (!s.command || s.pending || pixels.size() != bytes_ || !m.cameraContext ||
-        !reducedRawRequested(*m.cameraContext))
-        throw std::runtime_error("reduced_raw_submit_invalid");
-    const auto& c = *m.cameraContext;
-    // A frame whose levels are too deep for the fit still reduces, without it.
-    const bool fit = c.photoPhaseFit && reducedRawFitFits(m.effectiveWhiteLevel);
-    const float limit = fit ? kReducedRawMaxFitCode : kReducedRawMaxCode;
-    if (!std::isfinite(m.effectiveWhiteLevel) || m.effectiveWhiteLevel <= 0 || m.effectiveWhiteLevel > limit)
-        throw std::runtime_error("reduced_raw_unsupported_white_level");
+    if (pixels.size() != bytes_) throw std::runtime_error("reduced_raw_submit_invalid");
+    const float limit = sourceCodeLimit(s, m);
     // Copy and validate in one pass; phase-fit integer statistics require bounded source codes.
     auto* out = static_cast<uint16_t*>(s.source.mapped);
     const auto* in = reinterpret_cast<const uint16_t*>(pixels.data());
@@ -105,6 +98,32 @@ void ReducedRaw::submit(uint32_t index, const std::vector<uint8_t>& pixels, cons
         maximum = std::max(maximum, in[i]);
     }
     if (maximum > limit) throw std::runtime_error("reduced_raw_source_code_out_of_range");
+    record(s, index, m);
+}
+uint16_t* ReducedRaw::uploadBuffer(uint32_t index) {
+    auto& s = slots_.at(index);
+    if (!s.command || s.pending) throw std::runtime_error("reduced_raw_upload_buffer_busy");
+    return static_cast<uint16_t*>(s.source.mapped);
+}
+void ReducedRaw::submitUploaded(uint32_t index, const metadata::FrameMetadataSnapshot& m, uint16_t sourceMaximum) {
+    diagnostics::CaptureStageTimer timing("reduced_submit_uploaded", m.timestampNs, index);
+    auto& s = slots_.at(index);
+    if (sourceMaximum > sourceCodeLimit(s, m)) throw std::runtime_error("reduced_raw_source_code_out_of_range");
+    record(s, index, m);
+}
+float ReducedRaw::sourceCodeLimit(const Slot& s, const metadata::FrameMetadataSnapshot& m) const {
+    if (!s.command || s.pending || !m.cameraContext || !reducedRawRequested(*m.cameraContext))
+        throw std::runtime_error("reduced_raw_submit_invalid");
+    // A frame whose levels are too deep for the fit still reduces, without it.
+    const bool fit = m.cameraContext->photoPhaseFit && reducedRawFitFits(m.effectiveWhiteLevel);
+    const float limit = fit ? kReducedRawMaxFitCode : kReducedRawMaxCode;
+    if (!std::isfinite(m.effectiveWhiteLevel) || m.effectiveWhiteLevel <= 0 || m.effectiveWhiteLevel > limit)
+        throw std::runtime_error("reduced_raw_unsupported_white_level");
+    return limit;
+}
+void ReducedRaw::record(Slot& s, uint32_t index, const metadata::FrameMetadataSnapshot& m) {
+    const auto& c = *m.cameraContext;
+    const bool fit = c.photoPhaseFit && reducedRawFitFits(m.effectiveWhiteLevel);
     check(vkResetCommandBuffer(s.command, 0));
     VkCommandBufferBeginInfo bi{};
     bi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;

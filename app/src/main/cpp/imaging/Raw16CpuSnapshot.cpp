@@ -24,10 +24,10 @@ double elapsedMs(Clock::time_point begin, Clock::time_point end) {
 constexpr uint32_t kHalPixelFormatRaw16 = 0x20;
 
 Raw16CpuSnapshotResult copyToPacked(AImage* image, AHardwareBuffer* ahb, int lockFenceFd, uint32_t width,
-                                    uint32_t height, std::vector<uint8_t>& destination) noexcept {
+                                    uint32_t height, uint16_t* destination, size_t destinationBytes) noexcept {
     Raw16CpuSnapshotResult out{};
     out.gpuAcquireFenceFd = lockFenceFd;
-    if (ahb == nullptr || width == 0 || height == 0) {
+    if (ahb == nullptr || destination == nullptr || width == 0 || height == 0) {
         out.error = "invalid_input";
         return out;
     }
@@ -78,7 +78,7 @@ Raw16CpuSnapshotResult copyToPacked(AImage* image, AHardwareBuffer* ahb, int loc
         out.sourcePixelStrideBytes = static_cast<int32_t>(sizeof(uint16_t));
     }
     if (packedBytes > static_cast<uint64_t>(std::numeric_limits<size_t>::max()) ||
-        destination.size() != static_cast<size_t>(packedBytes)) {
+        destinationBytes != static_cast<size_t>(packedBytes)) {
         out.error = "destination_size_mismatch";
         return out;
     }
@@ -101,7 +101,7 @@ Raw16CpuSnapshotResult copyToPacked(AImage* image, AHardwareBuffer* ahb, int loc
     const auto copyBegin = Clock::now();
     const RawPixelSource source{static_cast<const uint8_t*>(address), format, width, height,
                                 static_cast<size_t>(sourceRowBytes)};
-    const bool copied = copyRawToPackedRaw16(source, reinterpret_cast<uint16_t*>(destination.data()));
+    const bool copied = copyRawToPackedRaw16(source, destination);
     out.copyMs = elapsedMs(copyBegin, Clock::now());
 
     int cpuReleaseFenceFd = -1;
@@ -132,13 +132,22 @@ Raw16CpuSnapshotResult copyRaw16AhbToPacked(AImage* image, AHardwareBuffer* ahb,
         out.error = "invalid_input";
         return out;
     }
-    return copyToPacked(image, ahb, acquireFenceFd, width, height, destination);
+    return copyToPacked(image, ahb, acquireFenceFd, width, height, reinterpret_cast<uint16_t*>(destination.data()),
+                        destination.size());
 }
 
 Raw16CpuSnapshotResult copyCompletedRaw16AhbToPacked(AHardwareBuffer* ahb, uint32_t width, uint32_t height,
                                                      std::vector<uint8_t>& destination, int acquireFenceFd,
                                                      AImage* image) noexcept {
-    Raw16CpuSnapshotResult out = copyToPacked(image, ahb, acquireFenceFd, width, height, destination);
+    return copyCompletedRaw16AhbToMemory(ahb, width, height, reinterpret_cast<uint16_t*>(destination.data()),
+                                         destination.size(), acquireFenceFd, image);
+}
+
+Raw16CpuSnapshotResult copyCompletedRaw16AhbToMemory(AHardwareBuffer* ahb, uint32_t width, uint32_t height,
+                                                     uint16_t* destination, size_t destinationBytes,
+                                                     int acquireFenceFd, AImage* image) noexcept {
+    Raw16CpuSnapshotResult out =
+        copyToPacked(image, ahb, acquireFenceFd, width, height, destination, destinationBytes);
     // Worker copies never hand a fence onward; only a release fence created
     // by the unlock is ours to close.
     if (out.gpuAcquireFenceFd >= 0 && out.gpuAcquireFenceFd != acquireFenceFd) close(out.gpuAcquireFenceFd);

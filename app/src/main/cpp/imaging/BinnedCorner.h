@@ -60,19 +60,25 @@ struct BinnedCornerCheck {
 // seamlessMode is 768 when a still switched to the 200 MP mode and 259 for
 // 50 MP, so any other value means the binned readout. Without the tag, or
 // when it claims the switch, the zero samples decide.
-inline BinnedCornerCheck fullSizeBinnedCorner(const std::vector<uint8_t>& raw16, uint32_t width, uint32_t height,
+// Same check on packed RAW16 held elsewhere (the reducer's upload buffer); pixels is its length in samples.
+inline BinnedCornerCheck fullSizeBinnedCorner(const uint16_t* raw16, size_t pixels, uint32_t width, uint32_t height,
                                               uint32_t pixelArrayWidth, uint32_t pixelArrayHeight,
                                               std::optional<int64_t> seamlessMode) {
-    if (!pixelArrayWidth || !pixelArrayHeight || raw16.size() < size_t(width) * height * 2) return {};
+    if (!raw16 || !pixelArrayWidth || !pixelArrayHeight || pixels < size_t(width) * height) return {};
     uint32_t d = 0;
     for (const uint32_t k : {2u, 4u})
         if (width == pixelArrayWidth * k && height == pixelArrayHeight * k) d = k;
     if (!d) return {};
     if (seamlessMode && *seamlessMode != (d == 4 ? 768 : 259)) return {d, "reported"};
-    if (const uint32_t empty = binnedCornerDivisor(reinterpret_cast<const uint16_t*>(raw16.data()), width, height);
-        empty > 1)
-        return {empty, "empty"};
+    if (const uint32_t empty = binnedCornerDivisor(raw16, width, height); empty > 1) return {empty, "empty"};
     return {};
+}
+
+inline BinnedCornerCheck fullSizeBinnedCorner(const std::vector<uint8_t>& raw16, uint32_t width, uint32_t height,
+                                              uint32_t pixelArrayWidth, uint32_t pixelArrayHeight,
+                                              std::optional<int64_t> seamlessMode) {
+    return fullSizeBinnedCorner(reinterpret_cast<const uint16_t*>(raw16.data()), raw16.size() / 2, width, height,
+                                pixelArrayWidth, pixelArrayHeight, seamlessMode);
 }
 
 }  // namespace rawrcam::imaging

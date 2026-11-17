@@ -40,6 +40,12 @@ Raw16CpuSnapshotResult copyCompletedRaw16AhbToPacked(AHardwareBuffer* ahb, uint3
                                                      std::vector<uint8_t>& destination, int acquireFenceFd = -1,
                                                      AImage* image = nullptr) noexcept;
 
+// The same into caller-owned storage of destinationBytes (exactly width * height * 2), such as a mapped
+// upload buffer, so a frame headed for the GPU is decoded once instead of decoded and copied again.
+Raw16CpuSnapshotResult copyCompletedRaw16AhbToMemory(AHardwareBuffer* ahb, uint32_t width, uint32_t height,
+                                                     uint16_t* destination, size_t destinationBytes,
+                                                     int acquireFenceFd = -1, AImage* image = nullptr) noexcept;
+
 // RAW_CONTENT_STATS for a completed still snapshot (packed RAW16), logged so
 // device logs show whether a dark still had dark sensor data.
 [[nodiscard]] std::string stillRawContentStatsLine(const RawSnapshot& snapshot);
