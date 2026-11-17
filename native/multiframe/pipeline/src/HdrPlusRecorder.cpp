@@ -211,6 +211,7 @@ VkDeviceSize alignUp256(VkDeviceSize v) { return (v + 255u) / 256u * 256u; }
 struct MismatchPc {
     std::int32_t tilesX, tilesY, rgbaWidth, rgbaHeight;
     float noiseSlope, noiseOffset, black, frameInv;
+    float energyGain, energyDead, energyScale;
 };
 struct RegionPc {
     std::int32_t originX, originY, width, height;
@@ -226,11 +227,23 @@ struct FreqMergePc {
 };
 // A frame is gated out of a tile where the displacement statistic (1 = noise only) rises from kGateLow to kGateHigh; the
 // reference's own bins are then shrunk by kGateShrink times their noise power. Tuned on the tmp bursts (scooter, crowd,
-// 33TJ, Pixel street, birds).
-constexpr float kGateLow = 1.6f, kGateHigh = 2.6f, kGateShrink = 2.0f;
+// 33TJ, Pixel street, birds, a 30-frame bay with moving water). 2.0 smoothed the single-frame grain best but also took
+// 10-35% of the fine real ripple detail in moving water; 1.0 keeps most of it (75-99% of the finest band) with only mild
+// grain, and 0.5 and below bring back the coarse grain of an unshrunk frame.
+constexpr float kGateLow = 1.6f, kGateHigh = 2.6f, kGateShrink = 1.0f;
+// Second displacement test, on the energy of the difference: the mean-based test cannot see a displaced fine pattern (small ripples,
+// foliage) because its block mean cancels. The block's mean square difference over what noise alone gives (q, ~1 for noise) raises the
+// statistic to 1 + kEnergyGain * (q - 1 - kEnergyDead) / kEnergyScale once q passes the dead zone; below it noise tiles are untouched.
+// Tuned on a 30-frame bay with moving water against pixel4a, 33TJ and the street: far-water ripple detail kept 38% -> 43% at the
+// finest band and rocks 82% -> 91%, for ~6% more noise in flat areas of long bursts (a more sensitive 0.4 / 0.2 keeps 58% but costs 18%).
+constexpr float kEnergyGain = 1.0f, kEnergyDead = 1.0f, kEnergyScale = 0.5f;
 struct BackwardPc {
     std::int32_t tilesX, tilesY;
     float frames, scale;
+};
+struct DeconvPc {
+    std::int32_t tilesX, tilesY;
+    float frames;
 };
 struct SeedPc {
     std::int32_t tilesX, tilesY;
@@ -424,7 +437,7 @@ void HdrPlusFrequencyRecorder::recordCompanionMerge(VkCommandBuffer c, std::uint
     const auto& black = align_.referenceBlack();
     const float meanBlack = .25f * (black[0] + black[1] + black[2] + black[3]);
     MismatchPc mp{std::int32_t(tx), std::int32_t(ty), std::int32_t(geometry_.rgbaWidth), std::int32_t(geometry_.rgbaHeight),
-                  noiseSlope_, noiseOffset_, meanBlack, 1.0f / frameScale()};
+                  noiseSlope_, noiseOffset_, meanBlack, 1.0f / frameScale(), kEnergyGain, kEnergyDead, kEnergyScale};
     executor_.record(c, ShaderId::HdrqMismatch,
                      {{ib(0, refRgba), ib(1, alignedRgba), ib(2, arena_.image("hdrq_rms")), ib(3, mismatch),
                        ib(4, arena_.image("hdrq_zmap"))},
@@ -488,12 +501,15 @@ void HdrPlusFrequencyRecorder::recordPassFinish(VkCommandBuffer c, std::uint32_t
     const std::uint32_t tx = geometry_.tilesX, ty = geometry_.tilesY;
     const auto& finalFt = arena_.image("hdrq_final_ft");
     const auto& out = arena_.image("hdrq_out_rgba");
-    TilesPc tp{std::int32_t(tx), std::int32_t(ty)};
-    executor_.record(c, ShaderId::HdrqDeconvolute, {{ib(0, finalFt), ib(1, arena_.image("hdrq_total_mismatch"))}, {}}, &tp,
-                     sizeof(tp), tx, ty);
+    // The running merge stores the burst's difference from frameCount x the reference spectrum (see hdrq_merge.comp), so the
+    // reference spectrum is an input of both the deconvolution and the inverse transform.
+    const auto& refFt = arena_.image("hdrq_ref_ft");
+    DeconvPc dp{std::int32_t(tx), std::int32_t(ty), float(frameCount)};
+    executor_.record(c, ShaderId::HdrqDeconvolute,
+                     {{ib(0, finalFt), ib(1, arena_.image("hdrq_total_mismatch")), ib(2, refFt)}, {}}, &dp, sizeof(dp), tx, ty);
     computeWriteBarrier(c);
     BackwardPc bp{std::int32_t(tx), std::int32_t(ty), float(frameCount), spectrumScale()};
-    executor_.record(c, ShaderId::HdrqBackwardDft, {{ib(0, finalFt), ib(1, out)}, {}}, &bp, sizeof(bp), tx, ty);
+    executor_.record(c, ShaderId::HdrqBackwardDft, {{ib(0, finalFt), ib(1, out), ib(2, refFt)}, {}}, &bp, sizeof(bp), tx, ty);
     computeWriteBarrier(c);
     // Exposure control off: upstream passes black level -1, so the clamp floor is -2 * window.
     BorderPc bd{std::int32_t(geometry_.rgbaWidth), std::int32_t(geometry_.rgbaHeight), -2.0f, 1.0f / frameScale()};
