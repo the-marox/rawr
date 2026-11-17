@@ -80,6 +80,35 @@ lenses and all other lenses behave as before, with one exception: the session-ke
 
 **Unrelated, small:** lens name limit raised to 12 (`LENS_NAME_MAX_LENGTH`, test updated).
 
+## 200 MP capture: zero copy
+
+`200>50` (3.2x and 4.3x) reduces every 200 MP frame on the GPU (`ReducedRaw`, hexadeca to quad) before the
+merge. Until November 2026 the CPU first unpacked each RAW10 frame to 16-bit (`copyRawToPackedRaw16`, one
+thread) and copied it into the reduce's upload buffer. Now:
+
+- The photo reader asks for usage `0x1100003` (`0x100003` + GPU_DATA_BUFFER); the 17U accepts it for the
+  16320x12288 output. `0x100103` (GPU_SAMPLED_IMAGE) is refused by gralloc and the shot fails.
+- Each reduced RAW10 frame is imported as a `VkBuffer` (same recipe as `RawAhbImporter::ensureBufferImport`)
+  and `RawRemosaicker` reads the packed RAW10 directly (`raw10 = true`, row stride 20400). The camera frame
+  stays leased until its slot is collected. Only the 128 binned-corner samples are read on the CPU.
+- A frame with an acquire fence, or one that cannot be imported, falls back to the CPU path
+  (`FULLRES_GPU_DIRECT_FALLBACK` in logcat). That path now unpacks on up to 8 threads straight into the upload
+  buffer, and the two 400 MB upload buffers are only allocated when it is used.
+- `adb shell setprop debug.rawr.still_gpu_direct 0` turns zero copy off, to compare.
+
+Measured on the 17U (3.2x `200>50`, 6 frames, 20 shots alternating builds `6452350` and `62e248d`, phone
+warming from 35 to 42 C; shots 2-5 of each block):
+
+| | Before (CPU unpack) | After (zero copy) |
+|---|---|---|
+| 6 frames captured | 2.65-4.74 s (median 3.12) | 1.46-1.58 s (median 1.52) |
+| First shot after opening the app | 4.14-5.55 s | 1.49-1.59 s |
+| App work per 200 MP frame | 261-539 ms (median 346) | 52-102 ms (median 63) |
+| JPEG + DNG saved | 9.6-15.5 s (median 11.6) | 9.1-12.7 s (median 10.8) |
+
+The app now waits for the sensor (one 200 MP frame every ~133 ms). Merge, demosaic, render and Ultra HDR
+(about 7.5-8 s) are unchanged, so the end-to-end gain is small.
+
 ## Known limits
 
 - 50 MP *streaming* (full-size as the viewfinder stream, no capture stream) has no working AF on

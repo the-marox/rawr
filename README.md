@@ -36,6 +36,9 @@
 - **200 MP tele** at 3.2x and 4.3x, in two lenses: `200>50` merges up to 6 frames and writes a 50 MP DNG
   (2x2 binning of the quad-Bayer blocks), and `200 SF` writes one single-frame full 200 MP DNG (about 200 MB).
   The JPEG is always developed at 50 MP.
+- `200>50` capture is zero copy: the GPU reduces each 200 MP frame straight from the camera buffer, with no CPU
+  unpack. On the 17U the 6 frames are in after about 1.5 s (2.7-4.7 s before), also when the phone is warm;
+  merge and JPEG time are unchanged. Details in [`docs/xiaomi-17u-50mp.md`](docs/xiaomi-17u-50mp.md#200-mp-capture-zero-copy).
 - Full-size stills use our own block remosaic (directional colour planes, per-zone flat-field) because the
   17 Ultra HAL offers no remosaic reprocessing.
 
@@ -72,7 +75,8 @@ automatically). The rest is configuration, from the lens profile:
 | 200 MP (tele) | 4080x3072 binned | 16320x12288 RAW10 | use case `0x80103`, session op mode `36868`, `xiaomi.remosaic.enabled` 1 on the still |
 
 The full-size output needs a CPU + RenderScript reader (usage `0x100003`) so Xiaomi's cameraserver accepts the
-unadvertised size, and a small companion output in the session (without it every request fails). The still
+unadvertised size; `200>50` adds GPU_DATA_BUFFER (`0x1100003`) so the GPU can read the frame in place. The
+session also needs a small companion output in the session (without it every request fails). The still
 request carries the full-size and companion outputs only; adding the binned RAW stalls the HAL. Details,
 logs and the failed attempts are in [`docs/xiaomi-17u-50mp.md`](docs/xiaomi-17u-50mp.md).
 
