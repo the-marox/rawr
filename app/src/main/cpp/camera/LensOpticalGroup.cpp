@@ -1,4 +1,5 @@
 #include "camera/LensOpticalGroup.h"
+#include "camera/CameraRouting.h"
 
 #include <camera/NdkCameraManager.h>
 #include <camera/NdkCameraMetadata.h>
@@ -44,6 +45,18 @@ std::string lensOpticalGroup(const std::string& cameraId, const std::string& phy
         ACameraMetadata_free(chars);
     }
     cache.emplace(id, group);
+    return group;
+}
+
+std::string lensOpticalGroup(const LensRoute& route) {
+    std::string group = lensOpticalGroup(route.cameraId, route.physicalCameraId);
+    for (const auto& key : route.vendorKeys) {
+        if (!key.enabled || key.values.empty() || key.tag != "xiaomi.zoomRatio.debug.setZoomRatioCode") continue;
+        char zoom[24];
+        std::snprintf(zoom, sizeof zoom, ":z%.2f", key.values.front());
+        group += zoom;
+        break;
+    }
     return group;
 }
 

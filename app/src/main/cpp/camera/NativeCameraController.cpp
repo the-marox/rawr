@@ -264,7 +264,7 @@ struct NativeCameraController::Impl final : CameraEventSink {
         control.capabilities.profileLensGroups.clear();
         for (const auto& lens : profile.lenses) {
             control.capabilities.profileLenses.emplace_back(lens.lensId, lens.lensId);
-            control.capabilities.profileLensGroups.push_back(lensOpticalGroup(lens.cameraId, lens.physicalCameraId));
+            control.capabilities.profileLensGroups.push_back(lensOpticalGroup(lens));
         }
     }
 
