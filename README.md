@@ -16,7 +16,10 @@
 
 ## Download (Xiaomi 17 Ultra)
 
-- Latest build: [rawr-debug.apk](https://github.com/utalpt/rawr/releases/download/debug/rawr-debug.apk)
+- Release (recommended): [rawr17u.apk](https://github.com/utalpt/rawr/releases/latest/download/rawr17u.apk)
+  ([releases](https://github.com/utalpt/rawr/releases)). Installs as `x17u.rawr.camera` ("Rawr 17U"); versions
+  are named after the Rawr version they build on, e.g. `0.5.1-17u.1`, and each one installs over the previous.
+- Test build: [rawr-debug.apk](https://github.com/utalpt/rawr/releases/download/debug/rawr-debug.apk)
   ([release page](https://github.com/utalpt/rawr/releases/tag/debug)). Every push to `xiaomi-17u` rebuilds it;
   install it over the previous one.
 - Lens setup (50 MP, 200 MP tele, vendor keys, merge limits) is built into the APK. If you restored an older

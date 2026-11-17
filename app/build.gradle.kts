@@ -44,6 +44,12 @@ val filmAssets = tasks.register<FilmAssetsTask>("generateFilmAssets") {
 val releaseApplicationId = "x17u.rawr.camera"
 val debugApplicationId = "x17u.rawr.camera.debug"
 
+// Rawr 17U release number on top of Ed's version: the release workflow passes -Prawr17uRelease=N from a
+// v<version>-17u.<N> tag. Release versionName <version>-17u.<N>, versionCode <Ed's code> * 100 + N, so every
+// fork release installs over the previous one and the code keeps rising when Ed's does. 0: local build.
+val forkRelease = providers.gradleProperty("rawr17uRelease").orNull?.toIntOrNull() ?: 0
+fun forkVersionName(base: String) = if (forkRelease > 0) "$base-17u.$forkRelease" else "$base-17u"
+
 androidComponents {
     onVariants(selector().withBuildType("debug")) { variant ->
         variant.applicationId.set(debugApplicationId)
@@ -51,6 +57,12 @@ androidComponents {
     }
     onVariants(selector().withBuildType("release")) { variant ->
         variant.applicationId.set(releaseApplicationId)
+        val base = requireNotNull(android.defaultConfig.versionName)
+        val code = requireNotNull(android.defaultConfig.versionCode)
+        variant.outputs.forEach {
+            it.versionName.set(forkVersionName(base))
+            it.versionCode.set(code * 100 + forkRelease)
+        }
     }
     onVariants { variant ->
         variant.sources.assets?.addGeneratedSourceDirectory(filmAssets, FilmAssetsTask::outputDirectory)
@@ -148,7 +160,8 @@ android {
         release {
             resValue("string", "app_name", "Rawr 17U")
             versionNameSuffix = "-17u"
-            externalNativeBuild { cmake { arguments += "-DRAWR_VERSION_NAME=${defaultConfig.versionName}-17u" } }
+            // Native EXIF Software tag; must match BuildConfig.VERSION_NAME (set in androidComponents above).
+            externalNativeBuild { cmake { arguments += "-DRAWR_VERSION_NAME=${forkVersionName(requireNotNull(defaultConfig.versionName))}" } }
             isDebuggable = false
             isMinifyEnabled = true
             isShrinkResources = true

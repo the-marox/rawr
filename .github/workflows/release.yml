@@ -1,0 +1,97 @@
+name: Release build
+
+# Push a tag v<Ed's version>-17u.<N> on xiaomi-17u (for example v0.5.1-17u.1) to publish a signed release.
+# versionName <version>-17u.<N>, versionCode <Ed's code> * 100 + N (see app/build.gradle.kts).
+on:
+  push:
+    tags: ['v*-17u.*']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      # The tag must match the version in app/build.gradle.kts, so a release never claims the wrong base.
+      - name: Read version from tag
+        id: version
+        run: |
+          TAG="$GITHUB_REF_NAME"
+          if [[ ! "$TAG" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)-17u\.([0-9]+)$ ]]; then
+            echo "Tag $TAG is not v<x.y.z>-17u.<N>"; exit 1
+          fi
+          BASE="${BASH_REMATCH[1]}"; N="${BASH_REMATCH[2]}"
+          GRADLE_BASE=$(sed -n 's/^ *versionName = "\(.*\)".*/\1/p' app/build.gradle.kts | head -1)
+          if [ "$BASE" != "$GRADLE_BASE" ]; then
+            echo "Tag base $BASE does not match versionName $GRADLE_BASE in app/build.gradle.kts"; exit 1
+          fi
+          if [ "$N" -lt 1 ] || [ "$N" -gt 99 ]; then echo "Release number must be 1-99"; exit 1; fi
+          echo "n=$N" >> "$GITHUB_OUTPUT"
+          echo "name=$BASE-17u.$N" >> "$GITHUB_OUTPUT"
+
+      # Release key from repo secrets. Without it the build would be unsigned and could not be installed.
+      - name: Restore release keystore
+        env:
+          RELEASE_KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_B64 }}
+        run: |
+          if [ -z "$RELEASE_KEYSTORE_B64" ]; then echo "Missing secret RELEASE_KEYSTORE_B64"; exit 1; fi
+          mkdir -p signing
+          echo "$RELEASE_KEYSTORE_B64" | base64 -d > signing/release.keystore
+
+      - uses: actions/cache@v4
+        with:
+          path: /usr/local/lib/android/sdk/ndk/29.0.14206865
+          key: ndk-29.0.14206865
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools ndk;29.0.14206865 cmake;3.31.6
+
+      - uses: astral-sh/setup-uv@v6
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: native-arm64-release
+          max-size: 2G
+
+      - name: Assemble signed release APK
+        env:
+          CMAKE_C_COMPILER_LAUNCHER: ccache
+          CMAKE_CXX_COMPILER_LAUNCHER: ccache
+          CCACHE_COMPILERCHECK: content
+          CCACHE_BASEDIR: ${{ github.workspace }}
+          CCACHE_NOHASHDIR: "true"
+          RAWR_SIGNING_STORE_FILE: signing/release.keystore
+          RAWR_SIGNING_STORE_PASSWORD: ${{ secrets.RAWR_SIGNING_STORE_PASSWORD }}
+          RAWR_SIGNING_KEY_ALIAS: ${{ secrets.RAWR_SIGNING_KEY_ALIAS }}
+          RAWR_SIGNING_KEY_PASSWORD: ${{ secrets.RAWR_SIGNING_KEY_PASSWORD }}
+        run: ./gradlew :app:assembleRelease -Prawr17uRelease=${{ steps.version.outputs.n }}
+
+      # Two copies of the same APK: a versioned one, and rawr17u.apk for the fixed
+      # https://github.com/utalpt/rawr/releases/latest/download/rawr17u.apk link.
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NAME: ${{ steps.version.outputs.name }}
+        run: |
+          APK=$(ls app/build/outputs/apk/release/*.apk | head -1)
+          cp "$APK" "rawr17u-$NAME.apk"
+          cp "$APK" rawr17u.apk
+          gh release create "$GITHUB_REF_NAME" "rawr17u-$NAME.apk" rawr17u.apk --latest \
+            --title "Rawr 17U $NAME" \
+            --notes "Rawr 17U $NAME (release build, Xiaomi 17 Ultra). Installs as Rawr 17U (x17u.rawr.camera), next to the debug build."
