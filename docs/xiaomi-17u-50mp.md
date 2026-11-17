@@ -36,7 +36,12 @@ lens profile; the UW values were found by testing.
 
 ## Changes
 
-**Stream use case from the NDK** (`camera/StreamUseCaseHook.*`, new)
+> **Current state (`xiaomi-17u` branch):** the NDK hook below was the first working route, on the old `main`
+> branch only. `xiaomi-17u` does not carry it: lenses with a stream use case or an operating mode run on
+> Rawr's Java Camera2 backend (upstream #83), which sets both through `OutputConfiguration` and
+> `SessionConfiguration`. The hook notes are kept as history.
+
+**Stream use case from the NDK** (`camera/StreamUseCaseHook.*`, old `main` branch only)
 The NDK has no `setStreamUseCase`. `ACameraDevice` builds an
 `android::hardware::camera2::params::OutputConfiguration` per output inside libcamera2ndk.so.
 The hook patches libcamera2ndk's PLT/GOT import of that constructor (dl_iterate_phdr,

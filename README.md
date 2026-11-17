@@ -59,10 +59,11 @@
 
 ### How 50 and 200 MP are reached
 
-The Camera2 NDK has no `setStreamUseCase`, and Xiaomi's HAL only delivers full-size frames to an output created
-with the vendor stream use case `0x80103` (not listed in `availableStreamUseCases`). The app patches the
-`OutputConfiguration` constructor imported by `libcamera2ndk.so` and writes the use case while the session is
-created. The rest is configuration, from the lens profile:
+Xiaomi's HAL only delivers full-size frames to an output created with the vendor stream use case `0x80103`
+(not listed in `availableStreamUseCases`), and the 200 MP stream also needs session operating mode `36868`.
+The NDK can set neither, so these lenses run on Rawr's Java Camera2 backend, which sets both through
+`OutputConfiguration` and `SessionConfiguration` (any lens with a use case or operating mode uses it
+automatically). The rest is configuration, from the lens profile:
 
 | | Viewfinder | Still stream | Notes |
 |---|---|---|---|
