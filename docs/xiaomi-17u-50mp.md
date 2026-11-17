@@ -83,6 +83,4 @@ lenses and all other lenses behave as before, with one exception: the session-ke
   `xiaomi.remosaic.enabled` 0 on requests and 1 on the still. The app remosaics the 4x4 blocks itself.
   Outputs: `200>50` (up to 6 frames, 2x2 binned to a 50 MP DNG) and `200 SF` (single frame, full 200 MP DNG,
   about 200 MB). The JPEG is always 50 MP.
-- Sensor HDR modes are not usable from Camera2: mode 5 (DCG + short exposure) delivers only the 14-bit frame,
-  and the internal modes 6 and 40 report size 0x0 and fail the pipeline. The `DCG` lenses use mode 4.
 - The 17 Ultra HAL has no ULTRA_HIGH_RESOLUTION_SENSOR / REMOSAIC_REPROCESSING capability.

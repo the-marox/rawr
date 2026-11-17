@@ -40,11 +40,13 @@
   17 Ultra HAL offers no remosaic reprocessing.
 
 **Lenses and readout modes**
-- One lens button per physical camera, with a variant picker: `Normal`, `50MP`, `200>50` / `200 SF`, `ISZ`
+- One lens button per focal length (0.6x, 1x, 3.2x, 4.3x; the tele periscope moves to 100 mm for 4.3x), with a variant picker: `Normal`, `50MP`, `200>50` / `200 SF`, `ISZ`
   (in-sensor zoom) and the dual-gain readouts `DCG`, `DSG`, `DAG` (14-bit, with a per-lens ISO cap).
 - Lens bar grouping (Auto / Grouped / All) and button size (Compact / Normal / Large), set from the eye panel.
-- Each camera remembers its exposure, white balance and focus when you switch lenses; each lens can keep
-  its own frame count, look, tone and film.
+- Exposure memory (**Settings > Control Style > Exposure memory**): **Per camera**, each lens keeps its own
+  exposure mode, ISO, shutter, EV and WB; or **Shared**, one set for every lens, like one camera body (focus
+  stays per lens). Both are kept after closing the app.
+- Each lens can keep its own frame count, look, tone and film.
 
 **Viewfinder and controls**
 - Swipe-down quick panel (AE / metering, highlights, frames per lens, per-lens look), exposure row with
@@ -72,9 +74,6 @@ The full-size output needs a CPU + RenderScript reader (usage `0x100003`) so Xia
 unadvertised size, and a small companion output in the session (without it every request fails). The still
 request carries the full-size and companion outputs only; adding the binned RAW stalls the HAL. Details,
 logs and the failed attempts are in [`docs/xiaomi-17u-50mp.md`](docs/xiaomi-17u-50mp.md).
-
-The sensor's HDR modes (DCG + very short exposure, mode 5, and the internal modes 6 and 40) cannot be used from
-a Camera2 app on this HAL; the `DCG` lens uses mode 4, where the sensor merges both conversion gains itself.
 
 An Android RAW based camera application with GPU image processing, film simulation, JPEG/DNG
 capture, video recording, and DNG renderer.
