@@ -9,13 +9,10 @@
 > [github.com/adityawarmanfw/rawr](https://github.com/adityawarmanfw/rawr)
 >
 > Modified by Paulo Gonçalves ([@utalpt](https://github.com/utalpt)), November 2026. Not affiliated with
-> or endorsed by the original author. Changes in this version:
-> - 50 MP RAW on the Xiaomi 17 Ultra main, tele and ultra-wide (binned viewfinder with AF, full-size stills),
->   via a stream use case set from the NDK - see [`docs/xiaomi-17u-50mp.md`](docs/xiaomi-17u-50mp.md).
-> - Xiaomi HAL workarounds (lost companion buffers on stills, late viewfinder results).
-> - Lens buttons grouped by physical lens with a variant picker; translucent viewfinder controls with a scrub
->   readout; Leica-style palette.
-> - Release build installs as `x17u.rawr.camera` ("Rawr 17U") next to the official app.
+> or endorsed by the original author. Changes in this version are listed under
+> [What this fork adds](#what-this-fork-adds-xiaomi-17-ultra).
+> The release build installs as `x17u.rawr.camera` ("Rawr 17U") and the debug build as
+> `x17u.rawr.camera.debug`, next to the official app.
 
 ## Download (Xiaomi 17 Ultra)
 
@@ -29,6 +26,55 @@
   - Multiframe on (Rexture, 17 frames, Chroma Denoise on)
   - RAWR look contrast +61, capture sharpening Medium
   - Highlight recovery off, distortion correction off, AgX preset Default
+
+## What this fork adds (Xiaomi 17 Ultra)
+
+**Resolution**
+- **50 MP RAW** on the main, tele and ultra-wide cameras: the viewfinder streams the binned 4:3 RAW at 30 fps
+  with continuous and tap AF, and the shutter takes one full-size still. Multiframe merges up to 30 full-size
+  frames (17 by default, memory-aware: strips when the merge does not fit).
+- **200 MP tele** at 3.2x and 4.3x, in two lenses: `200>50` merges up to 6 frames and writes a 50 MP DNG
+  (2x2 binning of the quad-Bayer blocks), and `200 SF` writes one single-frame full 200 MP DNG (about 200 MB).
+  The JPEG is always developed at 50 MP.
+- Full-size stills use our own block remosaic (directional colour planes, per-zone flat-field) because the
+  17 Ultra HAL offers no remosaic reprocessing.
+
+**Lenses and readout modes**
+- One lens button per physical camera, with a variant picker: `Normal`, `50MP`, `200>50` / `200 SF`, `ISZ`
+  (in-sensor zoom) and the dual-gain readouts `DCG`, `DSG`, `DAG` (14-bit, with a per-lens ISO cap).
+- Lens bar grouping (Auto / Grouped / All) and button size (Compact / Normal / Large), set from the eye panel.
+- Each camera remembers its exposure, white balance and focus when you switch lenses; each lens can keep
+  its own frame count, look, tone and film.
+
+**Viewfinder and controls**
+- Swipe-down quick panel (AE / metering, highlights, frames per lens, per-lens look), exposure row with
+  tap-to-set slider bar, VF controls show/hide, RESET and UNDO. Camera controls persist across restarts.
+- Film strip and PARAMS editor, AgX quick card with advanced grids, long-press help on controls.
+- Themes (Leica, Mono, Steel, Sage, Custom), button shapes, and a layout that stays upright in landscape.
+- Video: 60 and 120 fps in the frame-rate cycle.
+
+**Xiaomi HAL workarounds**: lost companion buffers on stills, late viewfinder results, unadvertised session keys.
+
+### How 50 and 200 MP are reached
+
+The Camera2 NDK has no `setStreamUseCase`, and Xiaomi's HAL only delivers full-size frames to an output created
+with the vendor stream use case `0x80103` (not listed in `availableStreamUseCases`). The app patches the
+`OutputConfiguration` constructor imported by `libcamera2ndk.so` and writes the use case while the session is
+created. The rest is configuration, from the lens profile:
+
+| | Viewfinder | Still stream | Notes |
+|---|---|---|---|
+| 50 MP (main, UW) | 4096x3072 binned | 8192x6144 | `current_mode` 0 and `xiaomi.remosaic.enabled` 1, scope **Still** only |
+| 50 MP (tele) | 4080x3072 binned | 8160x6144 | `current_mode` 1, scope **Still** only |
+| 200 MP (tele) | 4080x3072 binned | 16320x12288 RAW10 | use case `0x80103`, session op mode `36868`, `xiaomi.remosaic.enabled` 1 on the still |
+
+The full-size output needs a CPU + RenderScript reader (usage `0x100003`) so Xiaomi's cameraserver accepts the
+unadvertised size, and a small companion output in the session (without it every request fails). The still
+request carries the full-size and companion outputs only; adding the binned RAW stalls the HAL. Details,
+logs and the failed attempts are in [`docs/xiaomi-17u-50mp.md`](docs/xiaomi-17u-50mp.md).
+
+The sensor's HDR modes (DCG + very short exposure, mode 5, and the internal modes 6 and 40) cannot be used from
+a Camera2 app on this HAL; the `DCG` lens uses mode 4, where the sensor merges both conversion gains itself.
 
 An Android RAW based camera application with GPU image processing, film simulation, JPEG/DNG
 capture, video recording, and DNG renderer.

@@ -585,8 +585,6 @@ class SettingsPreferencesRepository(context: Context, private val defaults: Sett
             multiframeTuning =
                 MultiframeTuning(
                     mergeAlgorithm = enumOrDefault(p[Keys.multiframeMergeAlgorithm], d.multiframeTuning.mergeAlgorithm),
-                    hdrPlusStrength = p[Keys.multiframeHdrPlusStrength] ?: d.multiframeTuning.hdrPlusStrength,
-                    hdrPlusTileSize = p[Keys.multiframeHdrPlusTileSize] ?: d.multiframeTuning.hdrPlusTileSize,
                     maxFrames = p[Keys.multiframeMaxFrames] ?: d.multiframeTuning.maxFrames
                 ).sanitized(d.multiframeTuning),
             multiframeTuningByLens = decodeMultiframeByLens(p[Keys.multiframeTuningByLens], d.multiframeTuning),
@@ -816,8 +814,6 @@ class SettingsPreferencesRepository(context: Context, private val defaults: Sett
         p.remove(Keys.multiframeNoiseProfile)
         p.remove(Keys.camera2NoiseModelEnabled)
         p[Keys.multiframeMergeAlgorithm] = v.multiframeTuning.mergeAlgorithm.name
-        p[Keys.multiframeHdrPlusStrength] = v.multiframeTuning.hdrPlusStrength
-        p[Keys.multiframeHdrPlusTileSize] = v.multiframeTuning.hdrPlusTileSize
         p[Keys.multiframeMaxFrames] = v.multiframeTuning.maxFrames
         if (v.multiframeTuningByLens.isEmpty()) p.remove(Keys.multiframeTuningByLens)
         else p[Keys.multiframeTuningByLens] = encodeMultiframeByLens(v.multiframeTuningByLens)
@@ -969,7 +965,7 @@ class SettingsPreferencesRepository(context: Context, private val defaults: Sett
             }
         }.toMap()
 
-    /** `{"<lens id>": {"mergeAlgorithm", "hdrPlusStrength", "hdrPlusTileSize", "maxFrames"}}`. */
+    /** `{"<lens id>": {"mergeAlgorithm", "maxFrames"}}` (older hdrPlusStrength / hdrPlusTileSize keys are ignored). */
     private fun encodeTone(t: ProfileTone) = org.json.JSONArray().apply {
         listOf(t.renderExposure, t.blacks, t.shadows, t.contrast, t.midtones, t.highlights, t.whites, t.saturation,
             t.vibrance).forEach { put(it.toDouble()) }
@@ -1029,8 +1025,6 @@ class SettingsPreferencesRepository(context: Context, private val defaults: Sett
             values.toSortedMap().forEach { (lens, t) ->
                 put(lens, org.json.JSONObject()
                     .put("mergeAlgorithm", t.mergeAlgorithm.name)
-                    .put("hdrPlusStrength", t.hdrPlusStrength.toDouble())
-                    .put("hdrPlusTileSize", t.hdrPlusTileSize)
                     .put("maxFrames", t.maxFrames))
             }
         }.toString()
@@ -1042,8 +1036,6 @@ class SettingsPreferencesRepository(context: Context, private val defaults: Sett
             val o = json.optJSONObject(lens) ?: return@mapNotNull null
             lens to MultiframeTuning(
                 mergeAlgorithm = enumOrDefault(o.optString("mergeAlgorithm"), defaults.mergeAlgorithm),
-                hdrPlusStrength = o.optDouble("hdrPlusStrength", defaults.hdrPlusStrength.toDouble()).toFloat(),
-                hdrPlusTileSize = o.optInt("hdrPlusTileSize", defaults.hdrPlusTileSize),
                 maxFrames = o.optInt("maxFrames", defaults.maxFrames)
             ).sanitized(defaults)
         }.toMap()
@@ -1177,8 +1169,6 @@ class SettingsPreferencesRepository(context: Context, private val defaults: Sett
         val camera2NoiseModelEnabled = booleanPreferencesKey("camera2_noise_model_enabled")
         val multiframeNoiseProfile = stringPreferencesKey("multiframe_noise_profile")
         val multiframeMergeAlgorithm = stringPreferencesKey("multiframe_merge_algorithm")
-        val multiframeHdrPlusStrength = floatPreferencesKey("multiframe_hdrplus_strength")
-        val multiframeHdrPlusTileSize = intPreferencesKey("multiframe_hdrplus_tile_size")
         val multiframeMaxFrames = intPreferencesKey("multiframe_max_frames")
         val multiframeTuningByLens = stringPreferencesKey("multiframe_tuning_by_lens")
         val lookByLens = stringPreferencesKey("look_by_lens")
