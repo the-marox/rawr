@@ -16,9 +16,9 @@
 
 ## Download (Xiaomi 17 Ultra)
 
-- Release (recommended): [rawr17u.apk](https://github.com/utalpt/rawr/releases/latest/download/rawr17u.apk)
-  ([releases](https://github.com/utalpt/rawr/releases)). Installs as `x17u.rawr.camera` ("Rawr 17U"); versions
-  are named after the Rawr version they build on, e.g. `0.5.1-17u.1`, and each one installs over the previous.
+- Release (recommended): [latest release](https://github.com/utalpt/rawr/releases/latest), file
+  `rawr17u-<version>.apk`. Installs as `x17u.rawr.camera` ("Rawr 17U"); versions are named after the Rawr
+  version they build on, e.g. `0.5.1-17u.1`, and each one installs over the previous.
 - Test build: [rawr-debug.apk](https://github.com/utalpt/rawr/releases/download/debug/rawr-debug.apk)
   ([release page](https://github.com/utalpt/rawr/releases/tag/debug)). Every push to `xiaomi-17u` rebuilds it;
   install it over the previous one.

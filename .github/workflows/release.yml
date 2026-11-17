@@ -1,6 +1,7 @@
 name: Release build
 
-# Push a tag v<Ed's version>-17u.<N> on xiaomi-17u (for example v0.5.1-17u.1) to publish a signed release.
+# Push an annotated tag v<Ed's version>-17u.<N> on xiaomi-17u (for example v0.5.1-17u.1) to publish a signed
+# release; the tag message becomes the release notes, followed by .github/release-footer.md.
 # versionName <version>-17u.<N>, versionCode <Ed's code> * 100 + N (see app/build.gradle.kts).
 on:
   push:
@@ -82,16 +83,21 @@ jobs:
           RAWR_SIGNING_KEY_PASSWORD: ${{ secrets.RAWR_SIGNING_KEY_PASSWORD }}
         run: ./gradlew :app:assembleRelease -Prawr17uRelease=${{ steps.version.outputs.n }}
 
-      # Two copies of the same APK: a versioned one, and rawr17u.apk for the fixed
-      # https://github.com/utalpt/rawr/releases/latest/download/rawr17u.apk link.
+      # The annotated tag's message is the "What's new"; a fixed footer follows.
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
           NAME: ${{ steps.version.outputs.name }}
         run: |
+          git fetch --force origin "refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME"
           APK=$(ls app/build/outputs/apk/release/*.apk | head -1)
           cp "$APK" "rawr17u-$NAME.apk"
-          cp "$APK" rawr17u.apk
-          gh release create "$GITHUB_REF_NAME" "rawr17u-$NAME.apk" rawr17u.apk --latest \
-            --title "Rawr 17U $NAME" \
-            --notes "Rawr 17U $NAME (release build, Xiaomi 17 Ultra). Installs as Rawr 17U (x17u.rawr.camera), next to the debug build."
+          {
+            if [ "$(git cat-file -t "$GITHUB_REF_NAME")" = "tag" ]; then
+              git for-each-ref --format='%(contents)' "refs/tags/$GITHUB_REF_NAME" | sed '/-----BEGIN PGP SIGNATURE-----/,$d'
+              echo
+            fi
+            cat .github/release-footer.md
+          } > notes.md
+          gh release create "$GITHUB_REF_NAME" "rawr17u-$NAME.apk" --latest \
+            --title "Rawr 17U $NAME" --notes-file notes.md
