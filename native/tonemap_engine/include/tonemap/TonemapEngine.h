@@ -44,6 +44,9 @@ struct TonemapCreateInfo {
     bool neutralLutTexture = false;
     // Must match RAWR_TONEMAP_USER_TEXTURE; includes all chain stages.
     bool userLutTexture = false;
+    // With userLutTexture: store the chain as RGBA16F 3D textures sampled with
+    // hardware trilinear filtering (must match RAWR_TONEMAP_USER_LINEAR).
+    bool userLutLinear = false;
     // Required for textures. Caller externally synchronizes access to this
     // queue during creation; it must belong to lutUploadQueueFamily.
     VkQueue lutUploadQueue = VK_NULL_HANDLE;

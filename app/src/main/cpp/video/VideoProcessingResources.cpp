@@ -17,6 +17,13 @@
 #include "tonemap_video_linear_texture.h"
 #include "tonemap_video_rgb10a2_texture.h"
 #include "tonemap_video_rgba8_texture.h"
+#include "tonemap_video_linear_usertex.h"
+#include "tonemap_video_rgb10a2_usertex.h"
+#include "tonemap_video_rgba8_usertex.h"
+#include "tonemap_video_linear_userlinear.h"
+#include "tonemap_video_rgb10a2_userlinear.h"
+#include "tonemap_video_rgba8_userlinear.h"
+#include <sys/system_properties.h>
 #include "vulkan/VulkanContext.h"
 namespace {
 int64_t steadyNs() {
@@ -57,6 +64,29 @@ std::unique_ptr<tonemap::TonemapEngine> makeTonemap(rawrcam::vulkan::VulkanConte
         }
     };
     selectShader(useTexture);
+    // Experiment: debug.rawr.video.lut = texel | linear keeps the render LUT
+    // chain in 3D textures (tetrahedral texelFetch, or hardware trilinear).
+    char lutMode[PROP_VALUE_MAX] = {};
+    __system_property_get("debug.rawr.video.lut", lutMode);
+    const std::string userMode = lutMode;
+    const bool userTexture = renderLut && (userMode == "texel" || userMode == "linear") &&
+                             tonemap::TonemapEngine::supportsNeutralLutTexture(context.physicalDevice());
+    if (userTexture) {
+        const bool lin = userMode == "linear";
+        tone.neutralLutTexture = true;
+        tone.userLutTexture = true;
+        tone.userLutLinear = lin;
+        if (format == VK_FORMAT_R8G8B8A8_UNORM) {
+            tone.shaderSpirv = reinterpret_cast<const uint32_t*>(lin ? tonemap_video_rgba8_userlinear_spv : tonemap_video_rgba8_usertex_spv);
+            tone.shaderSpirvBytes = lin ? tonemap_video_rgba8_userlinear_spv_size : tonemap_video_rgba8_usertex_spv_size;
+        } else if (format == VK_FORMAT_A2B10G10R10_UNORM_PACK32) {
+            tone.shaderSpirv = reinterpret_cast<const uint32_t*>(lin ? tonemap_video_rgb10a2_userlinear_spv : tonemap_video_rgb10a2_usertex_spv);
+            tone.shaderSpirvBytes = lin ? tonemap_video_rgb10a2_userlinear_spv_size : tonemap_video_rgb10a2_usertex_spv_size;
+        } else {
+            tone.shaderSpirv = reinterpret_cast<const uint32_t*>(lin ? tonemap_video_linear_userlinear_spv : tonemap_video_linear_usertex_spv);
+            tone.shaderSpirvBytes = lin ? tonemap_video_linear_userlinear_spv_size : tonemap_video_linear_usertex_spv_size;
+        }
+    }
     tone.lutUploadQueue = context.queue();
     tone.lutUploadQueueFamily = context.queueFamily();
     tone.outputFormat = format;
@@ -65,6 +95,19 @@ std::unique_ptr<tonemap::TonemapEngine> makeTonemap(rawrcam::vulkan::VulkanConte
     tone.workgroupSizeY = 8;
     tone.maxFramesInFlight = rawrcam::imaging::kRealtimeFramesInFlight;
     tone.lutChain = renderLut;
+    if (userTexture) {
+        try {
+            std::lock_guard<std::mutex> lock(context.primaryQueue().mutex());
+            auto engine = std::make_unique<tonemap::TonemapEngine>(tone);
+            __android_log_print(ANDROID_LOG_INFO, "RawrNative", "VIDEO_TONEMAP_LUT backend=user_%s stages=%zu",
+                                userMode.c_str(), renderLut->stages.size());
+            return engine;
+        } catch (const std::exception& error) {
+            __android_log_print(ANDROID_LOG_WARN, "RawrNative", "VIDEO_TONEMAP_LUT user texture fallback: %s", error.what());
+            tone.neutralLutTexture = tone.userLutTexture = tone.userLutLinear = false;
+            selectShader(false);
+        }
+    }
     if (useTexture) {
         try {
             // Share the queue's submission authority with preview and recording.
@@ -77,7 +120,8 @@ std::unique_ptr<tonemap::TonemapEngine> makeTonemap(rawrcam::vulkan::VulkanConte
             selectShader(false);
         }
     }
-    __android_log_print(ANDROID_LOG_INFO, "RawrNative", "VIDEO_TONEMAP_LUT backend=buffer custom=%d", renderLut ? 1 : 0);
+    __android_log_print(ANDROID_LOG_INFO, "RawrNative", "VIDEO_TONEMAP_LUT backend=buffer chain=%d stages=%zu", renderLut ? 1 : 0,
+                        renderLut ? renderLut->stages.size() : size_t(0));
     return std::make_unique<tonemap::TonemapEngine>(tone);
 }
 }  // namespace
