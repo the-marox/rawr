@@ -21,18 +21,20 @@ internal fun VideoTimingMonitor(state: VideoControlState) {
             .testTag(CaptureTestTags.VIDEO_TIMING_MONITOR)
             .background(CaptureColors.Surface)
             .height(CaptureDimens.MonitorHeight),
-        horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
+        horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically
     ) {
         AudioMeter(state.audio, recording = state.recording)
-        MonitorMetric("FPS", timing?.let { "${state.fps}/${"%.1f".format(it.actualFps)}" } ?: "${state.fps}/—")
-        MonitorMetric("DROP", timing?.let { t -> t.dropReason?.let { "${t.dropped}·$it" } ?: "${t.dropped}" } ?: "—",
+        // Mono values padded to a fixed width: the row is centred, so a value growing or
+        // shrinking by a digit every second would otherwise shift the whole bar sideways.
+        MonitorMetric("FPS", (timing?.let { "${state.fps}/${"%.1f".format(it.actualFps)}" } ?: "${state.fps}/—").padEnd(7))
+        MonitorMetric("DROP", (timing?.let { t -> t.dropReason?.let { "${t.dropped}·$it" } ?: "${t.dropped}" } ?: "—").padEnd(7),
             valueColor = if (timing != null && timing.dropped > 0) CaptureColors.Danger else Color.White)
-        MonitorMetric("SHORT", timing?.shortfall?.toString() ?: "—")
+        MonitorMetric("SHORT", (timing?.shortfall?.toString() ?: "—").padEnd(3))
         // Average/recent peak: a drop comes from one slow frame, which the average hides.
-        MonitorMetric("GPU", timing?.let { "%.0f/%.0fms".format(it.gpuMs, it.gpuPeakMs) } ?: "—")
-        MonitorMetric("LAT", timing?.let { "%.0f/%.0fms".format(it.encoderMs, it.encoderPeakMs) } ?: "—")
+        MonitorMetric("GPU", (timing?.let { "%.0f/%.0fms".format(it.gpuMs, it.gpuPeakMs) } ?: "—").padEnd(9))
+        MonitorMetric("LAT", (timing?.let { "%.0f/%.0fms".format(it.encoderMs, it.encoderPeakMs) } ?: "—").padEnd(9))
         // What the encoder produced, which can differ from the requested interval and B-frames.
-        MonitorMetric("GOP", timing?.gopSummary ?: "—")
+        MonitorMetric("GOP", (timing?.gopSummary ?: "—").padEnd(7))
     }
 }
