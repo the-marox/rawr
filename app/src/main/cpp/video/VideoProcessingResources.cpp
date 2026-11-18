@@ -219,6 +219,9 @@ void VideoProcessingResources::collectStageTiming(uint32_t frameSlot) {
     }
     ++stageSamples_;
     totalPeak_.add(steadyNs(), total);
+    // Recording-only GPU cost per stage, every 2 s at 60 fps (averages since record start).
+    if (stageSamples_ % 120 == 0)
+        __android_log_print(ANDROID_LOG_INFO, "RawrNativeVideo", "VIDEO_GPU_STAGES %s", stageTimingJson().c_str());
 }
 void VideoProcessingResources::beginMonitorTiming(VkCommandBuffer command, uint32_t frameSlot) {
     if (frameSlot >= monitorPools_.size() || !monitorPools_[frameSlot]) return;
