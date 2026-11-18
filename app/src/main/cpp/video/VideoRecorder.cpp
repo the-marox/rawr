@@ -31,7 +31,11 @@ rawr::post::StillDistortionCorrection VideoRecorder::distortionFor(const rawrcam
     if (same) return c.correction;
     c = {lens, rawWidth, rawHeight, cropX, cropY, cropW, cropH, {}, true};
     const auto model = rawrcam::geometry::scaledTo(lens, rawWidth, rawHeight);
-    if (!model) return c.correction;  // another aspect: record as is
+    if (!model) {  // another aspect: record as is
+        __android_log_print(ANDROID_LOG_INFO, "RawrNativeVideo", "VIDEO_DISTORTION_SKIPPED lens=%ux%u raw=%ux%u",
+                            lens.width, lens.height, rawWidth, rawHeight);
+        return c.correction;
+    }
     // Only the record crop is demosaiced: zoom just enough that every output
     // pixel samples inside it. The idle video viewfinder uses the same scale.
     const double outputScale = rawrcam::geometry::containedOutputScale(*model, cropX, cropY, cropW, cropH);

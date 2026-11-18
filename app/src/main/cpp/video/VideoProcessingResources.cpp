@@ -68,7 +68,10 @@ std::unique_ptr<tonemap::TonemapEngine> makeTonemap(rawrcam::vulkan::VulkanConte
     // chain in 3D textures (tetrahedral texelFetch, or hardware trilinear).
     char lutMode[PROP_VALUE_MAX] = {};
     __system_property_get("debug.rawr.video.lut", lutMode);
-    const std::string userMode = lutMode;
+    // Adreno 840 default: hardware trilinear (measured 8.4 -> 5.8 ms per 4K frame
+    // vs buffer). "buffer" restores the tetrahedral buffer path.
+    std::string userMode = lutMode;
+    if (userMode.empty() && context.gpuName() == "Adreno (TM) 840") userMode = "linear";
     const bool userTexture = renderLut && (userMode == "texel" || userMode == "linear") &&
                              tonemap::TonemapEngine::supportsNeutralLutTexture(context.physicalDevice());
     if (userTexture) {

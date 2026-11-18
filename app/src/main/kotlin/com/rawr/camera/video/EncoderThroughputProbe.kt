@@ -34,12 +34,26 @@ internal object EncoderThroughputProbe {
             Case("rgba1010102", HardwareBuffer.RGBA_1010102, MediaCodecInfo.CodecProfileLevel.HEVCProfileMain10)
         )
         val out = JSONArray()
-        for (case in cases) out.put(runCase(case))
+        for (content in listOf("static", "noise")) for (case in cases) out.put(runCase(case, content))
         return JSONObject().put("width", WIDTH).put("height", HEIGHT).put("frames", FRAMES).put("cases", out)
     }
 
-    private fun runCase(case: Case): JSONObject {
-        val result = JSONObject().put("case", case.name)
+    private fun fillNoise(image: android.media.Image, seed: Int) {
+        var x = 0x9E3779B9.toInt() xor (seed * 0x85EBCA6B.toInt())
+        for (plane in image.planes) {
+            val buf = plane.buffer
+            buf.rewind()
+            val words = buf.remaining() / 4
+            val ints = buf.order(java.nio.ByteOrder.LITTLE_ENDIAN).asIntBuffer()
+            for (k in 0 until words) {
+                x = x xor (x shl 13); x = x xor (x ushr 17); x = x xor (x shl 5)
+                ints.put(k, x)
+            }
+        }
+    }
+
+    private fun runCase(case: Case, content: String): JSONObject {
+        val result = JSONObject().put("case", case.name).put("content", content)
         var codec: MediaCodec? = null
         var writer: ImageWriter? = null
         var surface: android.view.Surface? = null
@@ -77,18 +91,27 @@ internal object EncoderThroughputProbe {
             val frameNs = 1_000_000_000L / 60
             val begin = SystemClock.elapsedRealtimeNanos()
             var maxDequeueMs = 0.0
+            var fillNs = 0L
             for (i in 0 until FRAMES) {
                 val t0 = SystemClock.elapsedRealtimeNanos()
                 val image = writer.dequeueInputImage()
                 val waitMs = (SystemClock.elapsedRealtimeNanos() - t0) / 1e6
+                // Fill each pooled buffer once with different noise: the encoder then
+                // sees a fully changing, high-entropy frame every time (worst case,
+                // unlike a static frame that motion search skips).
+                if (content == "noise" && i < 4) {
+                    val f0 = SystemClock.elapsedRealtimeNanos()
+                    fillNoise(image, i)
+                    fillNs += SystemClock.elapsedRealtimeNanos() - f0
+                }
                 if (i > 8 && waitMs > maxDequeueMs) maxDequeueMs = waitMs
                 image.timestamp = begin + i * frameNs
                 writer.queueInputImage(image)
             }
-            val feedMs = (SystemClock.elapsedRealtimeNanos() - begin) / 1e6
+            val feedMs = (SystemClock.elapsedRealtimeNanos() - begin - fillNs) / 1e6
             codec.signalEndOfInputStream()
             drain.join(5_000)
-            val totalMs = (SystemClock.elapsedRealtimeNanos() - begin) / 1e6
+            val totalMs = (SystemClock.elapsedRealtimeNanos() - begin - fillNs) / 1e6
             result.put("success", true)
                 .put("encodedFrames", encoded.get())
                 .put("feedMs", "%.0f".format(feedMs))
