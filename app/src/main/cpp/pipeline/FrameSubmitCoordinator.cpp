@@ -369,6 +369,13 @@ rawrcam::vulkan::ImportedRaw& FrameSubmitCoordinator::ingestRaw(const SubmitPara
             if (config_.diagnosticMode == 16u || config_.diagnosticMode == 0u)
                 resources_.importer()->ensureBufferImport(params.ahb);
             return raw;
+        } catch (const rawrcam::vulkan::RawImportCacheFull& e) {
+            // Transient: this frame uploads; the zero-copy import resumes once the old set is evicted.
+            if (config_.diagnosticMode != 0u) throw;
+            const std::string line = std::string("RAW_INGRESS_TRANSIENT path=image_import reason=") + e.what();
+            LOGE("%s", line.c_str());
+            lifecyclePort_.postDiagnostic(line);
+            return cpuUpload_.upload(slotIndex, params.lease->image(), params.ahb, params.acquireFenceFd);
         } catch (const std::exception& e) {
             // Diagnostic modes exist to exercise the import itself; never mask them.
             if (config_.diagnosticMode != 0u) throw;

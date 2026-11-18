@@ -7,6 +7,11 @@
 #include "vulkan/RawImportEvidence.h"
 namespace rawrcam::vulkan {
 namespace {
+// Two full reader sets (old and new session) plus the vendor rotations the comment in the
+// header describes. Entries are imports of camera memory, not copies, so the cost is small.
+constexpr std::size_t kMaxImports = 32;
+}  // namespace
+namespace {
 void vkCheck(VkResult r, const char* what) {
     if (r != VK_SUCCESS) throw std::runtime_error(std::string(what) + " VkResult=" + std::to_string(r));
 }
@@ -71,9 +76,9 @@ uint64_t RawAhbImporter::requiredHardwareBufferUsage(VkImageUsageFlags imageUsag
 
 RawAhbImporter::Entry RawAhbImporter::newEntry(AHardwareBuffer* ahb, uint32_t expectedWidth,
                                                uint32_t expectedHeight) const {
-    if (imported_.size() >= 16u)
-        throw std::runtime_error(
-            "AHardwareBuffer identity count exceeded bounded cache (16); refusing unbounded import growth");
+    if (imported_.size() >= kMaxImports)
+        throw RawImportCacheFull(
+            "AHardwareBuffer identity count exceeded bounded cache (32); refusing unbounded import growth");
     Entry entry{AhbReference(ahb), AhbReference(), DeviceObjects(device_), ImportedRaw{}};
     entry.raw.ahb = ahb;
     AHardwareBuffer_describe(ahb, &entry.raw.desc);
@@ -363,7 +368,7 @@ void RawAhbImporter::clear() noexcept {
 }
 void RawAhbImporter::touch(uintptr_t key) { lastUse_[key] = std::chrono::steady_clock::now(); }
 void RawAhbImporter::evictIdleEntry() {
-    if (imported_.size() < 16u) return;
+    if (imported_.size() < kMaxImports) return;
     constexpr auto kIdle = std::chrono::seconds(1);  // far longer than any in-flight frame
     auto oldest = lastUse_.end();
     for (auto it = lastUse_.begin(); it != lastUse_.end(); ++it)
