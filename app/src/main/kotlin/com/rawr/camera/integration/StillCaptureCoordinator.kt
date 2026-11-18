@@ -30,7 +30,8 @@ class StillCaptureCoordinator(
     private val settings: () -> SettingsValues,
     private val onJpegPublished: (Uri) -> Unit = {},
     private val onDngPublished: () -> Unit = {},
-    private val gpsSnapshot: () -> com.rawr.camera.location.CaptureGps?
+    private val gpsSnapshot: () -> com.rawr.camera.location.CaptureGps?,
+    private val levelSnapshot: () -> CaptureLevel? = { null }
 ) {
     data class CompletionEvent(val requestId: Long, val artifact: Artifact, val success: Boolean, val jpegRequested: Boolean = false,
                                 val filmFallbackMemory: Boolean = false, val dngFailed: Boolean = false) {
@@ -69,6 +70,7 @@ class StillCaptureCoordinator(
     private data class CaptureInput(val settings: SettingsValues, val captureTime: CaptureTime, val releaseAssets: () -> Unit,
                                     var frozenAssetId: String? = null,
                                     val gps: com.rawr.camera.location.CaptureGps? = null,
+                                    val level: CaptureLevel? = null,
                                     val requestedAtNs: Long = android.os.SystemClock.elapsedRealtimeNanos())
     private val queuedInputs = java.util.concurrent.ConcurrentLinkedQueue<CaptureInput>()
     private val activeCaptures = java.util.concurrent.atomic.AtomicInteger(0)
@@ -92,7 +94,8 @@ class StillCaptureCoordinator(
         val releaseAssets = com.rawr.camera.settings.preferences.CaptureLutPins.acquire(
             snapshot.userLutProfiles.firstOrNull { it.id == snapshot.selectedUserLutProfileId })
         queuedInputs.add(CaptureInput(snapshot, CaptureTime.snapshot(), releaseAssets,
-            gps = if (snapshot.locationTagging) gpsSnapshot() else null, requestedAtNs = requestedAtNs))
+            gps = if (snapshot.locationTagging) gpsSnapshot() else null, level = levelSnapshot(),
+            requestedAtNs = requestedAtNs))
         activeCaptures.incrementAndGet()
         pressCameraLeases += 1
         preview.beginStillCapture()
@@ -283,6 +286,7 @@ class StillCaptureCoordinator(
                     ultraHdrEnabled = current.ultraHdrEnabled,
                     wallClockMillis = now,
                     gps = input.gps,
+                    level = input.level,
                     utcOffsetMinutes = offsetMinutes,
                     deviceMake = Build.MANUFACTURER,
                     deviceModel = DeviceNames.marketingModel(),
@@ -327,6 +331,7 @@ class StillCaptureCoordinator(
                     ultraHdrEnabled = current.ultraHdrEnabled,
                     wallClockMillis = now,
                     gps = input.gps,
+                    level = input.level,
                     utcOffsetMinutes = offsetMinutes,
                     deviceMake = Build.MANUFACTURER,
                     deviceModel = DeviceNames.marketingModel(),

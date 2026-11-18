@@ -78,6 +78,8 @@ data class SetViewfinderControlVisible(val control: VfControl, val visible: Bool
 
 data class SetEyeControlsViewfinder(val enabled: Boolean) : SettingsApplicationAction
 
+data class SetLevelMeter(val enabled: Boolean) : SettingsApplicationAction
+
 data class SetColorRenderProfile(val value: ColorRenderProfile) : SettingsApplicationAction
 
 data class SelectUserLutProfile(val profileId: String) : SettingsApplicationAction

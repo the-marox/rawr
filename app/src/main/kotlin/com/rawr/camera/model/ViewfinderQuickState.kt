@@ -33,6 +33,7 @@ data class ViewfinderQuickState(
     val metering: RawrMetering = RawrMetering.Matrix,
     val highlight: HighlightQuickState = HighlightQuickState(),
     val dcps: List<DcpQuickState> = emptyList(),
+    val levelMeterEnabled: Boolean = false,
     /** Recording locks the rail like it locks the render profile. */
     val locked: Boolean = false,
     // Quick panel, second row (photo only): frames of the lens in use and its per-lens switches.
@@ -78,6 +79,7 @@ internal fun SettingsValues.toViewfinderQuickState(
         if (isVideo) VIDEO_HIGHLIGHT_COMPRESSION_DEFAULT else PHOTO_HIGHLIGHT_COMPRESSION_DEFAULT
     return ViewfinderQuickState(
         dcps = if (!showDcpQuickSelect) emptyList() else (lensProfiles ?: deviceDefaults).map { DcpQuickState(it.name, it.image.availableDcps, it.image.dcp?.file) },
+        levelMeterEnabled = levelMeterEnabled,
         rawrAeEnabled = rawrAe.enabled,
         metering = rawrAe.metering,
         highlight = HighlightQuickState(

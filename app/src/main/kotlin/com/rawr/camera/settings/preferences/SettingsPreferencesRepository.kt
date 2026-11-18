@@ -517,6 +517,7 @@ class SettingsPreferencesRepository(context: Context, private val defaults: Sett
             vfShowExposure = p[Keys.vfShowExposure] ?: d.vfShowExposure,
             vfShowInfoBar = p[Keys.vfShowInfoBar] ?: d.vfShowInfoBar,
             vfEyeControls = p[Keys.vfEyeControls] ?: d.vfEyeControls,
+            levelMeterEnabled = p[Keys.levelMeterEnabled] ?: d.levelMeterEnabled,
             armedOverlays = decodeArmedOverlays(p, d.armedOverlays),
             falseColorManual = p[Keys.falseColorManual] ?: d.falseColorManual,
             activeScopes = decodeScopes(p[Keys.activeScopes], d.activeScopes),
@@ -729,6 +730,7 @@ class SettingsPreferencesRepository(context: Context, private val defaults: Sett
         p[Keys.vfShowExposure] = v.vfShowExposure
         p[Keys.vfShowInfoBar] = v.vfShowInfoBar
         p[Keys.vfEyeControls] = v.vfEyeControls
+        p[Keys.levelMeterEnabled] = v.levelMeterEnabled
         // Blank (not absent) = all off, so a non-empty default can't come back.
         p[Keys.armedOverlays] = v.armedOverlays.map { it.name }.distinct().sorted().joinToString(",")
         p[Keys.falseColorManual] = v.falseColorManual
@@ -1097,6 +1099,7 @@ class SettingsPreferencesRepository(context: Context, private val defaults: Sett
         val vfShowExposure = booleanPreferencesKey("capture_vf_show_exposure")
         val vfShowInfoBar = booleanPreferencesKey("capture_vf_show_info_bar")
         val vfEyeControls = booleanPreferencesKey("capture_vf_eye_controls")
+        val levelMeterEnabled = booleanPreferencesKey("capture_level_meter")
         val overlayMode = stringPreferencesKey("capture_overlay_mode")
         val armedOverlays = stringPreferencesKey("capture_armed_overlays")
         val falseColorManual = booleanPreferencesKey("capture_false_color_manual")

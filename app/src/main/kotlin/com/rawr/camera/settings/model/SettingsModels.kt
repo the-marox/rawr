@@ -660,6 +660,8 @@ data class SettingsValues(
     val vfShowInfoBar: Boolean = true,
     /** The eye (MONITORING) panel offers VF CONTROLS to show/hide those groups while shooting. */
     val vfEyeControls: Boolean = true,
+    /** Horizon/level overlay on the capture viewfinder. */
+    val levelMeterEnabled: Boolean = false,
     // Preview-only look-stage (tonemap or film) downsample divisor, 1..4.
     // Film always runs at 2 or more. Never touches stills, video, or EXIF.
     val viewfinderDivisor: Int = 2,

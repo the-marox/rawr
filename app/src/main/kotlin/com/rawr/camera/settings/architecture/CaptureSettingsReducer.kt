@@ -91,5 +91,8 @@ internal fun reduceCaptureSettings(
     is SetEyeControlsViewfinder -> {
         state.withValues(state.values.copy(vfEyeControls = action.enabled))
     }
+    is SetLevelMeter -> {
+        state.withValues(state.values.copy(levelMeterEnabled = action.enabled))
+    }
     else -> error("Unsupported capture settings action: $action")
 }

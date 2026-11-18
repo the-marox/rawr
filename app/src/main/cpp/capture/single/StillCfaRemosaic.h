@@ -30,8 +30,9 @@ inline void remosaicBlockCfaStill(imaging::RawSnapshot& frame) {
     const auto start = std::chrono::steady_clock::now();
     // All cores: 12 MP takes ~115 ms (Standard) / ~140-175 ms (High) at 8 threads on V2562.
     const uint32_t threads = std::clamp(std::thread::hardware_concurrency(), 1u, 8u);
-    const auto quality = context->cfaPhotoQuality == 2u ? imaging::CfaRemosaicQuality::High
-                                                        : imaging::CfaRemosaicQuality::Standard;
+    const auto quality = context->cfaPhotoQuality == 3u   ? imaging::CfaRemosaicQuality::Detail
+                         : context->cfaPhotoQuality == 2u ? imaging::CfaRemosaicQuality::High
+                                                          : imaging::CfaRemosaicQuality::Standard;
     // 4x4 blocks at Standard (Xiaomi 200 MP): the generic remosaic takes ~16 s there, the fast path well under 1 s.
     const bool fast = context->cfaBlock == 4u && quality == imaging::CfaRemosaicQuality::Standard &&
                       frame.raw16.size() >= size_t(frame.width) * frame.height * 2u;
@@ -60,14 +61,19 @@ inline void remosaicBlockCfaStill(imaging::RawSnapshot& frame) {
         }
         imaging::remosaicBlockCfaWithModel(raw, model, threads);
     } else {
+        const auto& black = frame.metadata.blackLevelPhysicalRggb;
         imaging::remosaicBlockCfa(frame.raw16, frame.width, frame.height, context->cfaBlock, context->rawPreviewCfa,
-                                  threads, quality);
+                                  threads, quality, 1.0f, 0.25f * (black[0] + black[1] + black[2] + black[3]));
     }
     [[maybe_unused]] const long long ms =
         std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
     __android_log_print(ANDROID_LOG_INFO, "RawrCamNative",
                         "STILL_CFA_REMOSAIC requestId=%llu raw=%ux%u block=%u quality=%s ms=%lld jpegBayerMs=%lld",
                         static_cast<unsigned long long>(frame.requestId), frame.width, frame.height, context->cfaBlock,
-                        fast ? "fast" : quality == imaging::CfaRemosaicQuality::High ? "high" : "standard", ms, jpegMs);
+                        fast                                            ? "fast"
+                        : quality == imaging::CfaRemosaicQuality::Detail ? "detail"
+                        : quality == imaging::CfaRemosaicQuality::High   ? "high"
+                                                                         : "standard",
+                        ms, jpegMs);
 }
 }  // namespace rawrcam::capture
