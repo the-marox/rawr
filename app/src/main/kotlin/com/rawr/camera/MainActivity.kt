@@ -104,6 +104,11 @@ class MainActivity : ComponentActivity() {
             java.io.File(filesDir, "p010_writer_probe.json").writeText(report)
             android.util.Log.i("RawrVideoProbe", "Wrote p010_writer_probe.json")
         }
+        if (intent.getBooleanExtra("encoder_throughput_probe", false)) {
+            val report = runBlocking(Dispatchers.IO) { com.rawr.camera.video.EncoderThroughputProbe.run().toString(2) }
+            java.io.File(filesDir, "encoder_throughput_probe.json").writeText(report)
+            android.util.Log.i("RawrVideoProbe", "Wrote encoder_throughput_probe.json")
+        }
         if (intent.getBooleanExtra("yuv_buffer_probe", false)) {
             val report = runBlocking(Dispatchers.IO) { com.rawr.camera.video.YuvBufferProbe.run().toString(2) }
             java.io.File(filesDir, "yuv_buffer_probe.json").writeText(report)
