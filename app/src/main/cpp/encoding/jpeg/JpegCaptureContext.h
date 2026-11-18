@@ -41,6 +41,10 @@ struct JpegCaptureContext {
     std::optional<rawrcam::metadata::CaptureLevel> level;
     std::optional<std::array<uint8_t, 4>> sourceExifVersion;
     int quality = 98;
+    // Photo aspect ratio (num:den in sensor orientation, 0:0 = full frame): the writer
+    // crops the JPEG (and its gain map) to it; the DNG is never cropped.
+    std::uint32_t aspectNum = 0;
+    std::uint32_t aspectDen = 0;
     ChromaSubsampling subsampling = ChromaSubsampling::Yuv420;
     rawrcam::color::UltraHdrParams ultraHdr;
     std::string rendererDisplayName;

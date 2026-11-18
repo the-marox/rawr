@@ -565,6 +565,7 @@ class SettingsPreferencesRepository(context: Context, private val defaults: Sett
             videoColorRenderProfile = enumOrDefault(p[Keys.videoColorRenderProfile], d.videoColorRenderProfile),
             videoUserLutProfileId = p[Keys.videoUserLutProfileId]?.takeIf { it.isNotEmpty() },
             videoLogEnabled = p[Keys.videoLogEnabled] ?: false,
+            photoAspectId = p[Keys.photoAspectId] ?: d.photoAspectId,
             videoLogProfile = enumOrDefault(p[Keys.videoLogProfile], VideoLogProfile.LogC3),
             selectedUserLutProfileId = p[Keys.selectedUserLutProfileId],
             userLutProfiles = LutProfileCodec.decode(p[Keys.userLutProfiles]),
@@ -740,6 +741,7 @@ class SettingsPreferencesRepository(context: Context, private val defaults: Sett
         p[Keys.videoColorRenderProfile] = v.videoColorRenderProfile.name
         p[Keys.videoUserLutProfileId] = v.videoUserLutProfileId.orEmpty()
         p[Keys.videoLogEnabled] = v.videoLogEnabled
+        p[Keys.photoAspectId] = v.photoAspectId
         p[Keys.videoLogProfile] = v.videoLogProfile.name
         p[Keys.colorRenderProfile] = v.colorRenderProfile.name
         p[Keys.rec709ToneRenderExposure] = v.rec709Tone.renderExposure
@@ -1142,6 +1144,7 @@ class SettingsPreferencesRepository(context: Context, private val defaults: Sett
         val videoColorRenderProfile = stringPreferencesKey("video_color_render_profile")
         val videoUserLutProfileId = stringPreferencesKey("video_user_lut_profile_id")
         val videoLogEnabled = booleanPreferencesKey("video_log_enabled")
+        val photoAspectId = stringPreferencesKey("photo_aspect_id")
         val videoLogProfile = stringPreferencesKey("video_log_profile")
         val colorRenderProfile = stringPreferencesKey("color_render_profile")
         val selectedUserLutProfileId = stringPreferencesKey("selected_user_lut_profile_id")

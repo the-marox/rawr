@@ -144,6 +144,8 @@ data class CaptureUiState(
     val videoLogEnabled: Boolean = false,
     /** Cinema/panoramic crop of the recording, kept horizontal in the world. */
     val videoAspect: com.rawr.camera.video.VideoAspect = com.rawr.camera.video.VideoAspect.Native,
+    /** Photo aspect ratio; crops the JPEG, never the DNG. */
+    val photoAspect: PhotoAspect = PhotoAspect.Native,
     val jpegEnabled: Boolean = true,
     val dngEnabled: Boolean = true,
     val grid: GridMode = GridMode.Off,

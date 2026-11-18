@@ -1,5 +1,6 @@
 #include "encoding/jpeg/JpegCaptureWriter.h"
 #include "encoding/jpeg/JpegExif.h"
+#include "encoding/jpeg/JpegAspectCrop.h"
 
 #include <android/log.h>
 #include <gainmap/UltrahdrMux.h>
@@ -226,8 +227,23 @@ bool JpegCaptureWriter::start(std::uint64_t requestId, const void* rgba8, std::s
     }
     joinWorker();
     const auto* pixels = static_cast<const unsigned char*>(rgba8);
+    std::vector<unsigned char> aspectPixels;
+    if (context.aspectNum && context.aspectDen) {
+        const auto crop = aspectCrop(width, height, context.aspectNum, context.aspectDen);
+        if (crop.width != width || crop.height != height) {
+            aspectPixels = cropPlanes(pixels, width, height, 1, crop);
+            __android_log_print(ANDROID_LOG_INFO, "RawrCamNative",
+                                "JPEG_ASPECT_CROP requestId=%llu aspect=%u:%u %ux%u -> %ux%u",
+                                (unsigned long long)requestId, context.aspectNum, context.aspectDen, width, height,
+                                crop.width, crop.height);
+            pixels = aspectPixels.data();
+            width = crop.width;
+            height = crop.height;
+        }
+    }
     try {
-        worker_ = std::thread([this, requestId, pixels, width, height, context = std::move(context)]() mutable {
+        worker_ = std::thread([this, requestId, pixels, width, height, aspectPixels = std::move(aspectPixels),
+                               context = std::move(context)]() mutable {
             // Background priority: file encoding must never preempt camera or
             // preview threads, especially on throttled silicon.
             ::setpriority(PRIO_PROCESS, 0, 10);
@@ -390,9 +406,29 @@ bool JpegCaptureWriter::startUltraHdr(std::uint64_t requestId, const void* rgba8
     const auto* mapPixels = static_cast<const unsigned char*>(mapRgba8);
     const bool hasCaptureColor = mapBytes == mapRequired * 2u;
     const int mapQuality = hasCaptureColor ? 95 : std::clamp(context.ultraHdr.gainmapQuality, 1, 100);
+    std::vector<unsigned char> aspectPixels, aspectMap;
+    if (context.aspectNum && context.aspectDen) {
+        const auto crop = aspectCrop(width, height, context.aspectNum, context.aspectDen);
+        if (crop.width != width || crop.height != height) {
+            const auto mapCrop = scaledCrop(crop, width, height, mapWidth, mapHeight);
+            aspectPixels = cropPlanes(pixels, width, height, 1, crop);
+            aspectMap = cropPlanes(mapPixels, mapWidth, mapHeight, hasCaptureColor ? 2u : 1u, mapCrop);
+            __android_log_print(ANDROID_LOG_INFO, "RawrCamNative",
+                                "JPEG_ASPECT_CROP requestId=%llu aspect=%u:%u %ux%u -> %ux%u map %ux%u -> %ux%u",
+                                (unsigned long long)requestId, context.aspectNum, context.aspectDen, width, height,
+                                crop.width, crop.height, mapWidth, mapHeight, mapCrop.width, mapCrop.height);
+            pixels = aspectPixels.data();
+            width = crop.width;
+            height = crop.height;
+            mapPixels = aspectMap.data();
+            mapWidth = mapCrop.width;
+            mapHeight = mapCrop.height;
+        }
+    }
     try {
         worker_ = std::thread([this, requestId, pixels, width, height, mapPixels, mapWidth, mapHeight, mapQuality,
-                               hasCaptureColor, context = std::move(context)]() mutable {
+                               hasCaptureColor, aspectPixels = std::move(aspectPixels),
+                               aspectMap = std::move(aspectMap), context = std::move(context)]() mutable {
             ::setpriority(PRIO_PROCESS, 0, 10);
             JpegWriteCompletion done{};
             done.requestId = requestId;

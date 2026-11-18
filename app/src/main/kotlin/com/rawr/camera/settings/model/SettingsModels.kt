@@ -698,6 +698,8 @@ data class SettingsValues(
     val videoColorRenderProfile: ColorRenderProfile = ColorRenderProfile.RawrBase,
     val videoUserLutProfileId: String? = null,
     val videoLogEnabled: Boolean = false,
+    /** Photo aspect ratio id (PhotoAspect); crops the JPEG only. */
+    val photoAspectId: String = "native",
     val videoLogProfile: VideoLogProfile = VideoLogProfile.LogC3,
     val pipelineDiagnosticsEnabled: Boolean = false,
     val experimentalZeroCopyEnabled: Boolean = true,

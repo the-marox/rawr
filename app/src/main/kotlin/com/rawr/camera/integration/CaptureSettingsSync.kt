@@ -147,8 +147,16 @@ internal class CaptureSettingsSync(
         // The recorder's frame (VideoCropRequest); native resolves Open Gate and applies the
         // aspect and halving with the same rule, for the viewfinder and the prewarm.
         val state = controller.state.value
-        val request = if (mode != CaptureMode.Video) null
-        else com.rawr.camera.video.videoCropRequest(resolution, state.videoAspect)
+        val photo = state.photoAspect
+        val photoCrop = mode == CaptureMode.Photo && photo != com.rawr.camera.model.PhotoAspect.Native
+        // Photo: the JPEG crop goes native at once; the viewfinder shows the same frame
+        // (the image area at that aspect, as the video Open Gate crop does).
+        previewCoordinator.setPhotoAspect(if (photoCrop) photo.num else 0, if (photoCrop) photo.den else 0)
+        val request = when {
+            photoCrop -> com.rawr.camera.video.VideoCropRequest(0, 0, photo.num, photo.den, false)
+            mode != CaptureMode.Video -> null
+            else -> com.rawr.camera.video.videoCropRequest(resolution, state.videoAspect)
+        }
         if (request == null) previewCoordinator.clearVideoPreviewCrop()
         else previewCoordinator.setVideoPreviewCropOut(request.width, request.height, request.num, request.den,
             request.halve)

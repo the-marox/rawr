@@ -25,6 +25,7 @@ object CaptureReducer {
                 videoFps = action.videoFps.coerceVideoFps(),
                 videoLogEnabled = action.videoLogEnabled,
                 videoAspect = action.videoAspect,
+                photoAspect = action.photoAspect,
                 selfTimer = action.selfTimer,
                 // A restored preference never resumes a mid-flight countdown.
                 selfTimerRemainingMs = null
@@ -95,6 +96,7 @@ object CaptureReducer {
             state.copy(videoResolution = state.videoResolution.next())
         }
 
+        is SetPhotoAspect -> state.copy(photoAspect = action.value)
         is SetVideoAspect -> if (state.captureMode == CaptureMode.Video) state.copy(videoAspect = action.value) else state
         ToggleVideoLog -> if (state.captureMode == CaptureMode.Video) state.copy(videoLogEnabled = !state.videoLogEnabled) else state
 

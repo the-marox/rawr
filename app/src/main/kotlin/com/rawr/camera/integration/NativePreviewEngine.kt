@@ -31,6 +31,8 @@ class NativePreviewEngine {
 
     external fun setSurface(handle: Long, surface: Surface?, displayRotationDegrees: Int): Boolean
     external fun setVideoSurface(handle: Long, surface: Surface?, width: Int, height: Int, bitDepth: Int): Boolean
+    /** Photo aspect for the next shutters (JPEG crop); 0:0 = full frame. Thread-safe, no posting needed. */
+    external fun setPhotoAspect(num: Int, den: Int)
     external fun setVideoPreviewCrop(handle: Long, width: Int, height: Int, aspectNum: Int, aspectDen: Int, halve: Boolean)
     external fun prewarmVideo(handle: Long, width: Int, height: Int, bitDepth: Int)
     external fun releaseVideoProcessing(handle: Long)

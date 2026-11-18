@@ -56,6 +56,9 @@ class RawPreviewCoordinator(application: Application) : AutoCloseable {
     fun setVideoPreviewCropOut(width: Int, height: Int, aspectNum: Int = 0, aspectDen: Int = 0, halve: Boolean = false) =
         postNative { native.setVideoPreviewCrop(nativeHandle, width, height, aspectNum, aspectDen, halve) }
 
+    /** Frozen into each capture at the shutter, so it is set at once rather than posted. */
+    fun setPhotoAspect(num: Int, den: Int) = native.setPhotoAspect(num, den)
+
     fun clearVideoPreviewCrop() = postNative { native.setVideoPreviewCrop(nativeHandle, 0, 0, 0, 0, false) }
 
     /**

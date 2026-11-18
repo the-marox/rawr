@@ -156,6 +156,9 @@ internal fun CaptureTopBar(
                 }
             }
             TopBarSlot {
+                PhotoAspectTopBarChoice(state = state, dispatch = dispatch)
+            }
+            TopBarSlot {
                 SelfTimerTopBarChoice(
                     state = state,
                     dispatch = dispatch,
@@ -243,21 +246,64 @@ private fun VideoResolutionMode.topBarLabel(): String = when (this) {
     VideoResolutionMode.OPEN_GATE -> "OPEN"
 }
 
-/**
- * Recording aspect ratio: tap for the cinema formats, grouped. The crop stays
- * horizontal; the viewfinder shows it.
- */
+internal data class AspectChoice(val id: String, val label: String, val shortLabel: String, val group: String)
+
 @Composable
 private fun VideoAspectTopBarChoice(state: CaptureUiState, dispatch: CaptureDispatch, enabled: Boolean) {
+    val options = com.rawr.camera.video.VideoAspect.entries
+    AspectTopBarChoice(
+        state = state,
+        enabled = enabled,
+        icon = Icons.Outlined.MovieFilter,
+        kind = "Video",
+        testPrefix = "topbar_video_aspect",
+        current = state.videoAspect.let { AspectChoice(it.id, it.label, it.shortLabel, it.group) },
+        options = options.map { AspectChoice(it.id, it.label, it.shortLabel, it.group) },
+        groups = com.rawr.camera.video.VideoAspect.groups
+    ) { id -> options.firstOrNull { it.id == id }?.let { dispatch(com.rawr.camera.architecture.SetVideoAspect(it)) } }
+}
+
+/** Photo aspect ratio: crops the JPEG only (the DNG stays full); the viewfinder shows it. */
+@Composable
+private fun PhotoAspectTopBarChoice(state: CaptureUiState, dispatch: CaptureDispatch) {
+    val options = com.rawr.camera.model.PhotoAspect.entries
+    AspectTopBarChoice(
+        state = state,
+        enabled = true,
+        icon = Icons.Outlined.AspectRatio,
+        kind = "Photo",
+        testPrefix = "topbar_photo_aspect",
+        current = state.photoAspect.let { AspectChoice(it.id, it.label, it.shortLabel, it.group) },
+        options = options.map { AspectChoice(it.id, it.label, it.shortLabel, it.group) },
+        groups = com.rawr.camera.model.PhotoAspect.groups
+    ) { id -> options.firstOrNull { it.id == id }?.let { dispatch(com.rawr.camera.architecture.SetPhotoAspect(it)) } }
+}
+
+/**
+ * Aspect ratio picker: tap for the formats, grouped. Portrait opens a dropdown;
+ * landscape a panel turned like the other landscape controls.
+ */
+@Composable
+private fun AspectTopBarChoice(
+    state: CaptureUiState,
+    enabled: Boolean,
+    icon: ImageVector,
+    kind: String,
+    testPrefix: String,
+    current: AspectChoice,
+    options: List<AspectChoice>,
+    groups: List<String>,
+    onSelect: (String) -> Unit
+) {
     val haptics = LocalCaptureHaptics.current
     var open by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
-    val aspect = state.videoAspect
+    val aspect = current
     Box {
         VideoTopBarChoice(
-            icon = Icons.Outlined.MovieFilter,
+            icon = icon,
             label = aspect.shortLabel,
-            testTag = "topbar_video_aspect",
-            description = "Video aspect ratio ${aspect.label}. Tap to choose.",
+            testTag = testPrefix,
+            description = "$kind aspect ratio ${aspect.label}. Tap to choose.",
             enabled = enabled,
             orientation = state.orientation,
             // "2.39"/"XPan" are wider than the slot: turn the label's layout box, not just its pixels.
@@ -282,8 +328,7 @@ private fun VideoAspectTopBarChoice(state: CaptureUiState, dispatch: CaptureDisp
                     // Turned, the panel's height runs along the screen's width: cap it there and scroll,
                     // with the groups in two columns so it rarely needs to.
                     val maxAlong = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp - 24.dp
-                    val groups = com.rawr.camera.video.VideoAspect.groups
-                    Row(
+                                        Row(
                         Modifier
                             .uprightPanelInLandscape(state.orientation)
                             .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = .85f), shape)
@@ -295,12 +340,12 @@ private fun VideoAspectTopBarChoice(state: CaptureUiState, dispatch: CaptureDisp
                         listOf(groups.take(3), groups.drop(3)).forEach { columnGroups ->
                             Column(Modifier.width(IntrinsicSize.Max)) {
                                 columnGroups.forEach { group ->
-                                    val items = com.rawr.camera.video.VideoAspect.entries.filter { it.group == group }
+                                    val items = options.filter { it.group == group }
                                     if (items.isEmpty()) return@forEach
                                     Text(group, color = CaptureColors.Muted, fontSize = 10.sp,
                                         modifier = Modifier.padding(start = 10.dp, end = 10.dp, top = 4.dp))
                                     items.forEach { option ->
-                                        val selected = option == aspect
+                                        val selected = option.id == aspect.id
                                         Text(
                                             option.label,
                                             color = if (selected) CaptureColors.Accent else androidx.compose.ui.graphics.Color.White,
@@ -312,10 +357,10 @@ private fun VideoAspectTopBarChoice(state: CaptureUiState, dispatch: CaptureDisp
                                                 .clickable {
                                                     haptics.selection()
                                                     open = false
-                                                    dispatch(com.rawr.camera.architecture.SetVideoAspect(option))
+                                                    onSelect(option.id)
                                                 }
                                                 .padding(horizontal = 10.dp, vertical = 5.dp)
-                                                .testTag("topbar_video_aspect_${option.id}")
+                                                .testTag("${testPrefix}_${option.id}")
                                         )
                                     }
                                 }
@@ -325,8 +370,8 @@ private fun VideoAspectTopBarChoice(state: CaptureUiState, dispatch: CaptureDisp
                 }
             }
         } else DropdownMenu(expanded = open && enabled, onDismissRequest = { open = false }) {
-            com.rawr.camera.video.VideoAspect.groups.forEach { group ->
-                val items = com.rawr.camera.video.VideoAspect.entries.filter { it.group == group }
+            groups.forEach { group ->
+                val items = options.filter { it.group == group }
                 if (items.isEmpty()) return@forEach
                 Text(
                     group,
@@ -335,7 +380,7 @@ private fun VideoAspectTopBarChoice(state: CaptureUiState, dispatch: CaptureDisp
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
                 )
                 items.forEach { option ->
-                    val selected = option == aspect
+                    val selected = option.id == aspect.id
                     DropdownMenuItem(
                         text = {
                             Text(
@@ -347,9 +392,9 @@ private fun VideoAspectTopBarChoice(state: CaptureUiState, dispatch: CaptureDisp
                         onClick = {
                             haptics.selection()
                             open = false
-                            dispatch(com.rawr.camera.architecture.SetVideoAspect(option))
+                            onSelect(option.id)
                         },
-                        modifier = Modifier.testTag("topbar_video_aspect_${option.id}")
+                        modifier = Modifier.testTag("${testPrefix}_${option.id}")
                     )
                 }
             }

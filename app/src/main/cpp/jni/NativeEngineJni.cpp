@@ -4,6 +4,7 @@
 #include <tonemap/TonemapMath.h>
 
 #include <algorithm>
+#include <atomic>
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -140,6 +141,10 @@ rawrcam::encoding::dng::DngCaptureContext makeDngContext(jint fd, jint rotation,
 // strengths[waveletStrength, waveletDetail, waveletForceY]. One IntArray +
 // one FloatArray instead of positional params.
 using rawrcam::jni::DenoiseIntent;
+// Photo aspect ratio for the next shutters (Kotlin sets it with the top bar choice); frozen
+// into each capture's JPEG context at the shutter, so a later change never reaches it.
+std::atomic<uint32_t> gPhotoAspectNum{0};
+std::atomic<uint32_t> gPhotoAspectDen{0};
 using rawrcam::jni::parseDenoiseSpec;
 void fillJpegContext(JNIEnv* env, rawrcam::capture::JpegCaptureRequest& jpeg, jint fd, jint rotation,
                      int64_t wallClockMillis, int16_t utcOffsetMinutes, const std::string& make,
@@ -160,6 +165,8 @@ void fillJpegContext(JNIEnv* env, rawrcam::capture::JpegCaptureRequest& jpeg, ji
     jpeg.output.deviceModel = model;
     jpeg.output.displayName = jString(env, displayName);
     jpeg.output.quality = quality;
+    jpeg.output.aspectNum = gPhotoAspectNum.load(std::memory_order_relaxed);
+    jpeg.output.aspectDen = gPhotoAspectDen.load(std::memory_order_relaxed);
     jpeg.develop = rawrcam::jni::readCaptureDevelopSettings(
         {pipelineDiagnosticsEnabled, colorRenderProfile, jString(env, importedLutProfileId), dualAutoContrast,
          dualContrastPercent, fccSteps, defringeEnabled, defringeStrength, defringeEdgeThreshold, defringeLumaFloor,
@@ -175,6 +182,12 @@ void fillJpegContext(JNIEnv* env, rawrcam::capture::JpegCaptureRequest& jpeg, ji
 }
 }  // namespace
 
+extern "C" JNIEXPORT void JNICALL Java_com_rawr_camera_integration_NativePreviewEngine_setPhotoAspect(
+    JNIEnv*, jobject, jint num, jint den) {
+    const bool valid = num > 0 && den > 0;
+    gPhotoAspectNum.store(valid ? static_cast<uint32_t>(num) : 0u, std::memory_order_relaxed);
+    gPhotoAspectDen.store(valid ? static_cast<uint32_t>(den) : 0u, std::memory_order_relaxed);
+}
 extern "C" JNIEXPORT jlong JNICALL Java_com_rawr_camera_integration_NativePreviewEngine_create(
     JNIEnv* env, jobject, jstring filesDir, jstring nativeLibraryDir, jstring customDriverPath) {
     rawrcam::vulkan::dispatch::configure(jString(env, nativeLibraryDir), jString(env, customDriverPath));

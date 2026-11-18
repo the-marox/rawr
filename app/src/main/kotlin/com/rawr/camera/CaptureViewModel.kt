@@ -209,7 +209,7 @@ class CaptureViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             // The aspect picked in the top bar: viewfinder crop and prewarm follow it
             // (never mid-recording; the picker is locked then anyway).
-            controller.state.map { it.videoAspect }.distinctUntilChanged().collect {
+            controller.state.map { it.videoAspect to it.photoAspect }.distinctUntilChanged().collect {
                 if (!videoSelectionLocked())
                     settingsSync.updatePreviewCrop(controller.state.value.captureMode, controller.state.value.videoResolution)
             }
