@@ -264,3 +264,80 @@ extern "C" JNIEXPORT jint JNICALL Java_com_rawr_camera_video_VideoGpuProbe_rende
     ANativeWindow_release(window);
     return frames;
 }
+
+#include "vulkan/RawImportEvidence.h"
+
+// Encoder YUV input probe: can the GPU write the encoder's own P010/NV12
+// buffers as a storage buffer (the import recipe the camera RAW uses on Adreno),
+// and what is their plane layout? Out: [allocationSize, memoryTypeBits, import
+// VkResult, then per plane (up to 3) offset, rowStride, pixelStride from
+// AHardwareBuffer_lockPlanes (-1 when locking is refused), then desc stride,
+// usage].
+extern "C" JNIEXPORT jlongArray JNICALL
+Java_com_rawr_camera_video_VideoGpuProbe_inspectHardwareBufferAsBuffer(JNIEnv* env, jobject, jobject javaBuffer) {
+    std::array<jlong, 14> out{};
+    out.fill(-1);
+    AHardwareBuffer* ahb = AHardwareBuffer_fromHardwareBuffer(env, javaBuffer);
+    if (!ahb) return nullptr;
+    AHardwareBuffer_Desc desc{};
+    AHardwareBuffer_describe(ahb, &desc);
+    out[12] = static_cast<jlong>(desc.stride);
+    out[13] = static_cast<jlong>(desc.usage);
+    AHardwareBuffer_Planes planes{};
+    if (AHardwareBuffer_lockPlanes(ahb, AHARDWAREBUFFER_USAGE_CPU_READ_RARELY, -1, nullptr, &planes) == 0) {
+        const auto* base = static_cast<const uint8_t*>(planes.planes[0].data);
+        for (uint32_t p = 0; p < std::min<uint32_t>(planes.planeCount, 3u); ++p) {
+            out[3 + p * 3] = static_cast<jlong>(static_cast<const uint8_t*>(planes.planes[p].data) - base);
+            out[4 + p * 3] = static_cast<jlong>(planes.planes[p].rowStride);
+            out[5 + p * 3] = static_cast<jlong>(planes.planes[p].pixelStride);
+        }
+        AHardwareBuffer_unlock(ahb, nullptr);
+    }
+    try {
+        rawrcam::vulkan::dispatch::configure("", "");
+        rawrcam::vulkan::VulkanContext context;
+        context.createInstance();
+        context.createDeviceForSurface(VK_NULL_HANDLE);
+        const VkDevice device = context.device();
+        VkAndroidHardwareBufferPropertiesANDROID hp{};
+        hp.sType = VK_STRUCTURE_TYPE_ANDROID_HARDWARE_BUFFER_PROPERTIES_ANDROID;
+        if (context.getAhbProperties()(device, ahb, &hp) == VK_SUCCESS) {
+            out[0] = static_cast<jlong>(hp.allocationSize);
+            out[1] = static_cast<jlong>(hp.memoryTypeBits);
+            VkBufferCreateInfo bi{};
+            bi.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+            bi.size = hp.allocationSize;
+            bi.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+            bi.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+            VkBuffer buffer = VK_NULL_HANDLE;
+            VkResult r = vkCreateBuffer(device, &bi, nullptr, &buffer);
+            if (r == VK_SUCCESS) {
+                VkImportAndroidHardwareBufferInfoANDROID import{};
+                import.sType = VK_STRUCTURE_TYPE_IMPORT_ANDROID_HARDWARE_BUFFER_INFO_ANDROID;
+                import.buffer = ahb;
+                VkMemoryDedicatedAllocateInfo dedicated{};
+                dedicated.sType = VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO;
+                dedicated.pNext = &import;
+                dedicated.buffer = buffer;
+                VkMemoryAllocateInfo ma{};
+                ma.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+                ma.pNext = &dedicated;
+                ma.allocationSize = hp.allocationSize;
+                ma.memoryTypeIndex = rawrcam::vulkan::findImportMemoryType(context.physicalDevice(), hp.memoryTypeBits, 0);
+                VkDeviceMemory memory = VK_NULL_HANDLE;
+                r = vkAllocateMemory(device, &ma, nullptr, &memory);
+                if (r == VK_SUCCESS) {
+                    r = vkBindBufferMemory(device, buffer, memory, 0);
+                    vkFreeMemory(device, memory, nullptr);
+                }
+                vkDestroyBuffer(device, buffer, nullptr);
+            }
+            out[2] = static_cast<jlong>(r);
+        }
+        context.destroyDevice();
+    } catch (...) {
+    }
+    jlongArray result = env->NewLongArray(static_cast<jsize>(out.size()));
+    if (result) env->SetLongArrayRegion(result, 0, static_cast<jsize>(out.size()), out.data());
+    return result;
+}

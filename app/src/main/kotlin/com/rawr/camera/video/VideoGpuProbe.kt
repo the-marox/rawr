@@ -7,6 +7,7 @@ import android.view.Surface
 internal object VideoGpuProbe {
     init { System.loadLibrary("rawrcam_native") }
     external fun inspectHardwareBuffer(buffer: HardwareBuffer): LongArray
+    external fun inspectHardwareBufferAsBuffer(buffer: HardwareBuffer): LongArray
     external fun inspectEncoderSurface(surface: Surface): LongArray
     external fun renderHalfFloatFrames(surface: Surface): Int
 }
