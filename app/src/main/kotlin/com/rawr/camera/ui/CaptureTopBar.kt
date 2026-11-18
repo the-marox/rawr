@@ -278,37 +278,46 @@ private fun VideoAspectTopBarChoice(state: CaptureUiState, dispatch: CaptureDisp
                     properties = androidx.compose.ui.window.PopupProperties(focusable = true)
                 ) {
                     val shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
-                    Column(
+                    // Turned, the panel's height runs along the screen's width: cap it there and scroll,
+                    // with the groups in two columns so it rarely needs to.
+                    val maxAlong = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp - 24.dp
+                    val groups = com.rawr.camera.video.VideoAspect.groups
+                    Row(
                         Modifier
                             .uprightPanelInLandscape(state.orientation)
                             .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = .85f), shape)
                             .border(1.dp, CaptureColors.Outline, shape)
-                            .padding(vertical = 6.dp)
-                            .width(IntrinsicSize.Max)
+                            .heightIn(max = maxAlong)
+                            .verticalScroll(androidx.compose.foundation.rememberScrollState())
+                            .padding(vertical = 4.dp)
                     ) {
-                        com.rawr.camera.video.VideoAspect.groups.forEach { group ->
-                            val items = com.rawr.camera.video.VideoAspect.entries.filter { it.group == group }
-                            if (items.isEmpty()) return@forEach
-                            Text(group, color = CaptureColors.Muted, fontSize = 10.sp,
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp))
-                            items.forEach { option ->
-                                val selected = option == aspect
-                                Text(
-                                    option.label,
-                                    color = if (selected) CaptureColors.Accent else androidx.compose.ui.graphics.Color.White,
-                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                                    fontSize = 13.sp,
-                                    maxLines = 1,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable {
-                                            haptics.selection()
-                                            open = false
-                                            dispatch(com.rawr.camera.architecture.SetVideoAspect(option))
-                                        }
-                                        .padding(horizontal = 12.dp, vertical = 6.dp)
-                                        .testTag("topbar_video_aspect_${option.id}")
-                                )
+                        listOf(groups.take(3), groups.drop(3)).forEach { columnGroups ->
+                            Column(Modifier.width(IntrinsicSize.Max)) {
+                                columnGroups.forEach { group ->
+                                    val items = com.rawr.camera.video.VideoAspect.entries.filter { it.group == group }
+                                    if (items.isEmpty()) return@forEach
+                                    Text(group, color = CaptureColors.Muted, fontSize = 10.sp,
+                                        modifier = Modifier.padding(start = 10.dp, end = 10.dp, top = 4.dp))
+                                    items.forEach { option ->
+                                        val selected = option == aspect
+                                        Text(
+                                            option.label,
+                                            color = if (selected) CaptureColors.Accent else androidx.compose.ui.graphics.Color.White,
+                                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                                            fontSize = 12.sp,
+                                            maxLines = 1,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable {
+                                                    haptics.selection()
+                                                    open = false
+                                                    dispatch(com.rawr.camera.architecture.SetVideoAspect(option))
+                                                }
+                                                .padding(horizontal = 10.dp, vertical = 5.dp)
+                                                .testTag("topbar_video_aspect_${option.id}")
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
