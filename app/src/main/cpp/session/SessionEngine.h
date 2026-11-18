@@ -60,7 +60,9 @@ class SessionEngine {
     // Idle video-mode preview crop: recording output size (0 = full frame).
     // Shows exactly the record window in the viewfinder before recording
     // starts, so framing never jumps. No-op for Open Gate (already full).
-    void setVideoPreviewCropOut(uint32_t width, uint32_t height);
+    // Base record frame (1920x1080, 3840x2160, or 0x0 = Open Gate) and the
+    // aspect crop inside it (0:0 = none). 0x0 with no aspect clears the crop.
+    void setVideoPreviewCropOut(uint32_t width, uint32_t height, uint32_t aspectNum = 0, uint32_t aspectDen = 0);
     // Keeps the recording processing for this size (0x0 = full RAW, Open
     // Gate) built ahead of recordings. The prewarm thread builds it off the
     // engine lock and rebuilds after camera reconfiguration and recordings.
@@ -280,6 +282,14 @@ class SessionEngine {
     // Armed idle-preview crop output size (mu_). Zero disables.
     uint32_t videoCropOutWidth_ = 0;
     uint32_t videoCropOutHeight_ = 0;
+    // What Kotlin asked for (mu_); the effective crop above follows the active lens.
+    uint32_t videoCropBaseWidth_ = 0;
+    uint32_t videoCropBaseHeight_ = 0;
+    uint32_t videoAspectNum_ = 0;
+    uint32_t videoAspectDen_ = 0;
+    void applyVideoCropLocked();
+    // Base frame (0x0 = the image area) with the aspect crop applied.
+    void videoFrameLocked(uint32_t& width, uint32_t& height) const;
     rawrcam::diagnostics::PipelineDiagnostics pipelineDiagnostics_{
         [this](const std::string& line) { appendDiagnostic(line); }};
     capture::CaptureCoordinator capture_{

@@ -31,7 +31,7 @@ class NativePreviewEngine {
 
     external fun setSurface(handle: Long, surface: Surface?, displayRotationDegrees: Int): Boolean
     external fun setVideoSurface(handle: Long, surface: Surface?, width: Int, height: Int, bitDepth: Int): Boolean
-    external fun setVideoPreviewCrop(handle: Long, width: Int, height: Int)
+    external fun setVideoPreviewCrop(handle: Long, width: Int, height: Int, aspectNum: Int, aspectDen: Int)
     external fun prewarmVideo(handle: Long, width: Int, height: Int, bitDepth: Int)
     external fun releaseVideoProcessing(handle: Long)
     external fun videoStats(handle: Long): String

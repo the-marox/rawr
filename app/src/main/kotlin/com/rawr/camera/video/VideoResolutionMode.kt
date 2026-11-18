@@ -9,7 +9,7 @@ enum class VideoResolutionMode(val label: String) {
 
     fun next(): VideoResolutionMode = entries[(ordinal + 1) % entries.size]
 
-    fun resolve(cameraSnapshot: JSONObject): VideoFrameSize {
+    fun resolve(cameraSnapshot: JSONObject, aspect: VideoAspect = VideoAspect.Native): VideoFrameSize {
         val rawWidth = cameraSnapshot.optInt("rawWidth")
         val rawHeight = cameraSnapshot.optInt("rawHeight")
         require(rawWidth > 0 && rawHeight > 0) { "Active RAW camera geometry is unavailable" }
@@ -25,7 +25,7 @@ enum class VideoResolutionMode(val label: String) {
                 size.width <= rawWidth && size.height <= rawHeight) {
             "$label needs at least ${size.width}×${size.height} RAW; active camera is ${rawWidth}×${rawHeight}"
         }
-        return size
+        return aspect.fit(size)
     }
 
     companion object {

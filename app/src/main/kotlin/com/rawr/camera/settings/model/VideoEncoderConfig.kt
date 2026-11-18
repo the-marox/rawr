@@ -96,7 +96,9 @@ data class VideoEncoderConfig(
     /** Digital gain after capture; Android exposes no analog mic gain. */
     val audioGainDb: Int = 0,
     /** High-pass corner in Hz; 0 = off. */
-    val audioLowCutHz: Int = 0
+    val audioLowCutHz: Int = 0,
+    /** Cinema/panoramic crop inside the selected resolution; Native keeps the frame. */
+    val aspect: com.rawr.camera.video.VideoAspect = com.rawr.camera.video.VideoAspect.Native
 ) {
     fun sanitized(): VideoEncoderConfig = copy(
         bitDepth = if (bitDepth == 8) 8 else 10,

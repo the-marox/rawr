@@ -72,6 +72,21 @@ struct VideoKeptArea {
     return rect;
 }
 
+// Recording aspect crop (cinema/panoramic, num:den) inside a base frame: the
+// largest such frame, the cropped side floored to a multiple of 16 for the
+// encoder. 0:0 leaves the frame. Kotlin's VideoAspect.fit is the same rule.
+inline void videoAspectFit(uint32_t& width, uint32_t& height, uint32_t num, uint32_t den) noexcept {
+    if (num == 0 || den == 0 || width == 0 || height == 0) return;
+    const uint64_t w = width, h = height;
+    if (w * den < h * num) {
+        const auto fitted = uint32_t(w * den / num) & ~15u;
+        if (fitted >= 16) height = fitted;
+    } else if (w * den > h * num) {
+        const auto fitted = uint32_t(h * num / den) & ~15u;
+        if (fitted >= 16) width = fitted;
+    }
+}
+
 // Scales a full-RAW-space rect into another source space (e.g. the half-res
 // preview image). Exact for even halvings; otherwise truncates with even
 // alignment and clamps inside the target. Returns empty when degenerate.

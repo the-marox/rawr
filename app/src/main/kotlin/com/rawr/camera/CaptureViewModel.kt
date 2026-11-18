@@ -207,6 +207,12 @@ class CaptureViewModel(application: Application) : AndroidViewModel(application)
             }
         }
         viewModelScope.launch {
+            // Video aspect crop: the viewfinder and the prewarm follow it at once.
+            settingsEditor.values.map { it.videoEncoder.sanitized().aspect }.distinctUntilChanged().collect {
+                settingsSync.updatePreviewCrop(controller.state.value.captureMode, controller.state.value.videoResolution)
+            }
+        }
+        viewModelScope.launch {
             settingsEditor.values.map { it.toRenderProfileQuickState() }.distinctUntilChanged().collect {
                 mutableRenderProfiles.value = it
             }

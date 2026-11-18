@@ -214,9 +214,11 @@ extern "C" JNIEXPORT void JNICALL Java_com_rawr_camera_integration_NativePreview
     rawrcam::session::releaseVideoProcessing(handle(h));
 }
 extern "C" JNIEXPORT void JNICALL Java_com_rawr_camera_integration_NativePreviewEngine_setVideoPreviewCrop(
-    JNIEnv*, jobject, jlong h, jint width, jint height) {
+    JNIEnv*, jobject, jlong h, jint width, jint height, jint aspectNum, jint aspectDen) {
     rawrcam::session::setVideoPreviewCropOut(handle(h), static_cast<uint32_t>(std::max(width, 0)),
-                                             static_cast<uint32_t>(std::max(height, 0)));
+                                             static_cast<uint32_t>(std::max(height, 0)),
+                                             static_cast<uint32_t>(std::max(aspectNum, 0)),
+                                             static_cast<uint32_t>(std::max(aspectDen, 0)));
 }
 extern "C" JNIEXPORT jstring JNICALL Java_com_rawr_camera_integration_NativePreviewEngine_videoStats(JNIEnv* env,
                                                                                                      jobject, jlong h) {

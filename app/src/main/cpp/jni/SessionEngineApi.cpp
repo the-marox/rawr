@@ -35,8 +35,9 @@ void requestVideoPrewarm(EngineHandle h, uint32_t width, uint32_t height, uint32
 void releaseVideoProcessing(EngineHandle h) noexcept {
     if (h) engine(h)->releaseVideoProcessing();
 }
-void setVideoPreviewCropOut(EngineHandle h, uint32_t width, uint32_t height) noexcept {
-    if (h) engine(h)->setVideoPreviewCropOut(width, height);
+void setVideoPreviewCropOut(EngineHandle h, uint32_t width, uint32_t height, uint32_t aspectNum,
+                            uint32_t aspectDen) noexcept {
+    if (h) engine(h)->setVideoPreviewCropOut(width, height, aspectNum, aspectDen);
 }
 std::string videoStats(EngineHandle h) { return h ? engine(h)->videoStats() : std::string("{}"); }
 void setVideoImageSettings(EngineHandle h, const rawrcam::video::VideoProcessingConfig& config) noexcept {

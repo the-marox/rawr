@@ -83,6 +83,8 @@ SessionEngine::SessionEngine(std::string filesDir) : filesDir_(std::move(filesDi
         videoSession_.setKeptArea(rawrcam::video::videoKeptArea(realtime_.rawWidth(), realtime_.rawHeight(),
                                                                 metadata.cropLeft, metadata.cropTop,
                                                                 metadata.cropRight, metadata.cropBottom));
+        // An Open Gate aspect crop follows the new lens's image area.
+        if (configured && videoCropBaseWidth_ == 0 && videoAspectNum_ != 0) applyVideoCropLocked();
         profileReaderUsage_ = metadata.rawReaderUsage;
         profileMaxImages_ = metadata.rawBufferCount;
         profileReaderProbe_ = metadata.rawBufferTestFirst;
@@ -299,8 +301,39 @@ bool SessionEngine::setVideoSurface(JNIEnv* env, jobject surfaceObj, uint32_t wi
     }
 }
 
-void SessionEngine::setVideoPreviewCropOut(uint32_t width, uint32_t height) {
+void SessionEngine::setVideoPreviewCropOut(uint32_t width, uint32_t height, uint32_t aspectNum, uint32_t aspectDen) {
     std::lock_guard<std::mutex> lock(mu_);
+    videoCropBaseWidth_ = width;
+    videoCropBaseHeight_ = height;
+    videoAspectNum_ = aspectNum;
+    videoAspectDen_ = aspectDen;
+    applyVideoCropLocked();
+}
+
+void SessionEngine::videoFrameLocked(uint32_t& width, uint32_t& height) const {
+    if (width == 0 || height == 0) {
+        // Open Gate: the image area, padded raw edges left out (as VideoSession resolves it).
+        const uint32_t rawW = realtime_.rawWidth(), rawH = realtime_.rawHeight();
+        const auto kept = lastCameraContext_
+                              ? rawrcam::video::videoKeptArea(rawW, rawH, lastCameraContext_->cropLeft,
+                                                              lastCameraContext_->cropTop,
+                                                              lastCameraContext_->cropRight,
+                                                              lastCameraContext_->cropBottom)
+                              : rawrcam::video::VideoKeptArea{};
+        width = (kept.valid() ? kept.width : rawW) & ~1u;
+        height = (kept.valid() ? kept.height : rawH) & ~1u;
+    }
+    rawrcam::video::videoAspectFit(width, height, videoAspectNum_, videoAspectDen_);
+}
+
+void SessionEngine::applyVideoCropLocked() {
+    uint32_t width = videoCropBaseWidth_, height = videoCropBaseHeight_;
+    const bool aspect = videoAspectNum_ != 0 && videoAspectDen_ != 0;
+    if ((width != 0 && height != 0) || aspect) {
+        videoFrameLocked(width, height);
+    } else {
+        width = height = 0;
+    }
     videoCropOutWidth_ = width;
     videoCropOutHeight_ = height;
     realtime_.coordinator().setVideoPreviewCropOut(width, height);
@@ -481,6 +514,11 @@ void SessionEngine::shutdown() {
 }
 
 void SessionEngine::requestVideoPrewarm(uint32_t width, uint32_t height, uint32_t bitDepth) {
+    {
+        // The recording will use the aspect-cropped frame: prewarm exactly that.
+        std::lock_guard<std::mutex> lock(mu_);
+        if (videoAspectNum_ != 0 && videoAspectDen_ != 0 && realtime_.configured()) videoFrameLocked(width, height);
+    }
     videoSession_.requestVideoPrewarm(width, height, bitDepth);
 }
 void SessionEngine::releaseVideoProcessing() { videoSession_.releaseVideoProcessing(); }

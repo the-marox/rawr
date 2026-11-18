@@ -29,6 +29,15 @@ internal fun VideoEncoderSettings(state: SettingsUiState, dispatch: SettingsDisp
             description = "HEVC settings apply to the next recording. Some encoders ignore B-frame limits; the recording monitor shows the actual GOP."
         ) {
             SettingsRow(
+                "Aspect ratio",
+                value = encoder.aspect.label,
+                supportingText = "Centred crop of the selected resolution (1080p, 4K or Open Gate). The viewfinder shows the crop."
+            )
+            CompactChoiceRow(com.rawr.camera.video.VideoAspect.entries, encoder.aspect, { it.shortLabel }) {
+                set(encoder.copy(aspect = it))
+            }
+            SettingDivider()
+            SettingsRow(
                 "Bit depth"
             )
             if (state.values.videoLogEnabled) SettingsRow("10-bit", value = "Required by LOG")
