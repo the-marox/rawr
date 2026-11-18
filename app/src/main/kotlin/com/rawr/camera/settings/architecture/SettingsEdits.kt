@@ -73,6 +73,7 @@ internal fun SettingsValues.withCapturePreferenceChanges(
     captureModeId = if (before.captureMode != after.captureMode) after.captureMode.persistedId() else captureModeId,
     videoResolutionId = if (before.videoResolution != after.videoResolution) after.videoResolution.persistedId() else videoResolutionId,
     videoLogEnabled = if (before.videoLogEnabled != after.videoLogEnabled) after.videoLogEnabled else videoLogEnabled,
+    videoEncoder = if (before.videoAspect != after.videoAspect) videoEncoder.copy(aspect = after.videoAspect) else videoEncoder,
     videoFps = if (before.videoFps != after.videoFps) videoFpsOrDefault(after.videoFps) else videoFps,
     selfTimer = if (before.selfTimer != after.selfTimer) after.selfTimer else selfTimer
 )
@@ -94,5 +95,6 @@ internal fun SettingsValues.capturePreferences(lenses: List<LensProfile> = empty
     videoResolution = videoResolutionForId(videoResolutionId),
     videoFps = videoFpsOrDefault(videoFps),
     videoLogEnabled = videoLogEnabled,
+    videoAspect = videoEncoder.sanitized().aspect,
     selfTimer = selfTimer
 )

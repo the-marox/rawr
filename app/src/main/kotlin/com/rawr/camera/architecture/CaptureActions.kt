@@ -23,6 +23,7 @@ data class RestoreCapturePreferences(
         com.rawr.camera.video.VideoResolutionMode.HD1080,
     val videoFps: Int = 30,
     val videoLogEnabled: Boolean = false,
+    val videoAspect: com.rawr.camera.video.VideoAspect = com.rawr.camera.video.VideoAspect.Native,
     val selfTimer: com.rawr.camera.settings.model.SelfTimer =
         com.rawr.camera.settings.model.SelfTimer.Off
 ) : PresentationCaptureAction
@@ -59,6 +60,8 @@ val VIDEO_FPS_CHOICES = listOf(24, 30, 60, 120)
 data object CycleVideoFps : PresentationCaptureAction
 
 data object ToggleVideoLog : PresentationCaptureAction
+
+data class SetVideoAspect(val value: com.rawr.camera.video.VideoAspect) : PresentationCaptureAction
 
 /** Cycles the self-timer Off → 3s → 5s → 10s → Off; cancels any active countdown. */
 data object CycleSelfTimer : PresentationCaptureAction

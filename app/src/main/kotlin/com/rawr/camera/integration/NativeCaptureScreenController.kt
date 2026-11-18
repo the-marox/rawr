@@ -94,7 +94,7 @@ class NativeCaptureScreenController(
     }
 
     override fun dispatch(action: CaptureAction) {
-        if (videoLocked() && (action is SetCaptureMode || action is ToggleVideoLog ||
+        if (videoLocked() && (action is SetCaptureMode || action is ToggleVideoLog || action is SetVideoAspect ||
                 action is CycleVideoResolution || action is CycleVideoFps)) return
         if ((action is ScrubTone || action is ScrubRenderExposure || action is SetAgxControl ||
                 action is SetRenderExposureTenths) &&
@@ -277,7 +277,7 @@ class NativeCaptureScreenController(
         is ToggleOverlayArmed, is ToggleFalseColor, is ToggleScope -> true
         ToggleFilmSim, ToggleMultiframe -> true
         is SetCaptureLayout -> true
-        is SetCaptureMode, CycleVideoResolution, CycleVideoFps, ToggleVideoLog -> true
+        is SetCaptureMode, CycleVideoResolution, CycleVideoFps, ToggleVideoLog, is SetVideoAspect -> true
         CycleSelfTimer, is SetCaptureSelfTimer -> true
         else -> false
     }

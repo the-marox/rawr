@@ -301,8 +301,10 @@ bool SessionEngine::setVideoSurface(JNIEnv* env, jobject surfaceObj, uint32_t wi
     }
 }
 
-void SessionEngine::setVideoPreviewCropOut(uint32_t width, uint32_t height, uint32_t aspectNum, uint32_t aspectDen) {
+void SessionEngine::setVideoPreviewCropOut(uint32_t width, uint32_t height, uint32_t aspectNum, uint32_t aspectDen,
+                                           bool halve) {
     std::lock_guard<std::mutex> lock(mu_);
+    videoCropHalve_ = halve;
     videoCropBaseWidth_ = width;
     videoCropBaseHeight_ = height;
     videoAspectNum_ = aspectNum;
@@ -324,6 +326,11 @@ void SessionEngine::videoFrameLocked(uint32_t& width, uint32_t& height) const {
         height = (kept.valid() ? kept.height : rawH) & ~1u;
     }
     rawrcam::video::videoAspectFit(width, height, videoAspectNum_, videoAspectDen_);
+    // Same as Kotlin's VideoCropRequest.resolve: halved, each side a multiple of 16.
+    if (videoCropHalve_) {
+        width = (width / 2u) & ~15u;
+        height = (height / 2u) & ~15u;
+    }
 }
 
 void SessionEngine::applyVideoCropLocked() {
@@ -517,7 +524,12 @@ void SessionEngine::requestVideoPrewarm(uint32_t width, uint32_t height, uint32_
     {
         // The recording will use the aspect-cropped frame: prewarm exactly that.
         std::lock_guard<std::mutex> lock(mu_);
-        if (videoAspectNum_ != 0 && videoAspectDen_ != 0 && realtime_.configured()) videoFrameLocked(width, height);
+        // Kotlin sends the base size; the crop request (set just before) knows the turned aspect and halving.
+        if (videoAspectNum_ != 0 && videoAspectDen_ != 0 && realtime_.configured()) {
+            width = videoCropBaseWidth_;
+            height = videoCropBaseHeight_;
+            videoFrameLocked(width, height);
+        }
     }
     videoSession_.requestVideoPrewarm(width, height, bitDepth);
 }

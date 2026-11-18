@@ -142,6 +142,8 @@ data class CaptureUiState(
     /** Recording frame rate; only 24 and 30 are supported by the native recorder. */
     val videoFps: Int = 30,
     val videoLogEnabled: Boolean = false,
+    /** Cinema/panoramic crop of the recording, kept horizontal in the world. */
+    val videoAspect: com.rawr.camera.video.VideoAspect = com.rawr.camera.video.VideoAspect.Native,
     val jpegEnabled: Boolean = true,
     val dngEnabled: Boolean = true,
     val grid: GridMode = GridMode.Off,

@@ -23,7 +23,7 @@ bool setSurface(EngineHandle handle, JNIEnv* env, jobject surface, int rotation)
 bool setVideoSurface(EngineHandle handle, JNIEnv* env, jobject surface, uint32_t width, uint32_t height,
                      uint32_t bitDepth) noexcept;
 void setVideoPreviewCropOut(EngineHandle handle, uint32_t width, uint32_t height, uint32_t aspectNum = 0,
-                            uint32_t aspectDen = 0) noexcept;
+                            uint32_t aspectDen = 0, bool halve = false) noexcept;
 void requestVideoPrewarm(EngineHandle handle, uint32_t width, uint32_t height, uint32_t bitDepth) noexcept;
 void releaseVideoProcessing(EngineHandle handle) noexcept;
 std::string videoStats(EngineHandle handle);

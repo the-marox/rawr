@@ -144,18 +144,14 @@ internal class CaptureSettingsSync(
      * sensor-landscape, matching the recorder's frame sizes.
      */
     fun updatePreviewCrop(mode: CaptureMode, resolution: VideoResolutionMode) {
-        // The aspect crop is applied natively (same rule as VideoAspect.fit), also to the prewarm.
-        val aspect = latestSettings().videoEncoder.sanitized().aspect
-        when {
-            mode != CaptureMode.Video -> previewCoordinator.clearVideoPreviewCrop()
-            resolution == VideoResolutionMode.HD1080 ->
-                previewCoordinator.setVideoPreviewCropOut(1920, 1080, aspect.num, aspect.den)
-            resolution == VideoResolutionMode.UHD4K ->
-                previewCoordinator.setVideoPreviewCropOut(3840, 2160, aspect.num, aspect.den)
-            aspect != com.rawr.camera.video.VideoAspect.Native ->
-                previewCoordinator.setVideoPreviewCropOut(0, 0, aspect.num, aspect.den)
-            else -> previewCoordinator.clearVideoPreviewCrop()
-        }
+        // The recorder's frame (VideoCropRequest); native resolves Open Gate and applies the
+        // aspect and halving with the same rule, for the viewfinder and the prewarm.
+        val state = controller.state.value
+        val request = if (mode != CaptureMode.Video) null else com.rawr.camera.video.videoCropRequest(
+            resolution, state.videoAspect, state.orientation == com.rawr.camera.model.Orientation.Portrait)
+        if (request == null) previewCoordinator.clearVideoPreviewCrop()
+        else previewCoordinator.setVideoPreviewCropOut(request.width, request.height, request.num, request.den,
+            request.halve)
         prewarmVideo(mode, resolution)
     }
 

@@ -53,10 +53,10 @@ class RawPreviewCoordinator(application: Application) : AutoCloseable {
      * submit path and focus/face mapping pick it up for subsequent frames.
      */
     /** [width]x[height] 0x0 with an aspect = Open Gate (the image area) cropped to that aspect. */
-    fun setVideoPreviewCropOut(width: Int, height: Int, aspectNum: Int = 0, aspectDen: Int = 0) =
-        postNative { native.setVideoPreviewCrop(nativeHandle, width, height, aspectNum, aspectDen) }
+    fun setVideoPreviewCropOut(width: Int, height: Int, aspectNum: Int = 0, aspectDen: Int = 0, halve: Boolean = false) =
+        postNative { native.setVideoPreviewCrop(nativeHandle, width, height, aspectNum, aspectDen, halve) }
 
-    fun clearVideoPreviewCrop() = postNative { native.setVideoPreviewCrop(nativeHandle, 0, 0, 0, 0) }
+    fun clearVideoPreviewCrop() = postNative { native.setVideoPreviewCrop(nativeHandle, 0, 0, 0, 0, false) }
 
     /**
      * Keeps the recording pipeline for this size (0x0 = Open Gate) built so

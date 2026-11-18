@@ -31,11 +31,9 @@ internal fun VideoEncoderSettings(state: SettingsUiState, dispatch: SettingsDisp
             SettingsRow(
                 "Aspect ratio",
                 value = encoder.aspect.label,
-                supportingText = "Centred crop of the selected resolution (1080p, 4K or Open Gate). The viewfinder shows the crop."
+                supportingText = "Pick it from the aspect button in the video top bar. A centred crop of 1080p, 4K or " +
+                    "Open Gate that stays horizontal; with the phone upright it comes from the sensor's short side."
             )
-            CompactChoiceRow(com.rawr.camera.video.VideoAspect.entries, encoder.aspect, { it.shortLabel }) {
-                set(encoder.copy(aspect = it))
-            }
             SettingDivider()
             SettingsRow(
                 "Bit depth"

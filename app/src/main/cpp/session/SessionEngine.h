@@ -62,7 +62,9 @@ class SessionEngine {
     // starts, so framing never jumps. No-op for Open Gate (already full).
     // Base record frame (1920x1080, 3840x2160, or 0x0 = Open Gate) and the
     // aspect crop inside it (0:0 = none). 0x0 with no aspect clears the crop.
-    void setVideoPreviewCropOut(uint32_t width, uint32_t height, uint32_t aspectNum = 0, uint32_t aspectDen = 0);
+    // [halve]: 2x smaller after the aspect crop (1080p with the phone upright).
+    void setVideoPreviewCropOut(uint32_t width, uint32_t height, uint32_t aspectNum = 0, uint32_t aspectDen = 0,
+                                bool halve = false);
     // Keeps the recording processing for this size (0x0 = full RAW, Open
     // Gate) built ahead of recordings. The prewarm thread builds it off the
     // engine lock and rebuilds after camera reconfiguration and recordings.
@@ -287,6 +289,7 @@ class SessionEngine {
     uint32_t videoCropBaseHeight_ = 0;
     uint32_t videoAspectNum_ = 0;
     uint32_t videoAspectDen_ = 0;
+    bool videoCropHalve_ = false;
     void applyVideoCropLocked();
     // Base frame (0x0 = the image area) with the aspect crop applied.
     void videoFrameLocked(uint32_t& width, uint32_t& height) const;

@@ -207,9 +207,11 @@ class CaptureViewModel(application: Application) : AndroidViewModel(application)
             }
         }
         viewModelScope.launch {
-            // Video aspect crop: the viewfinder and the prewarm follow it at once.
-            settingsEditor.values.map { it.videoEncoder.sanitized().aspect }.distinctUntilChanged().collect {
-                settingsSync.updatePreviewCrop(controller.state.value.captureMode, controller.state.value.videoResolution)
+            // An aspect crop stays horizontal in the world, so it follows the phone's orientation;
+            // never mid-recording (the recorder keeps the frame it started with).
+            controller.state.map { it.orientation to it.videoAspect }.distinctUntilChanged().collect {
+                if (!videoSelectionLocked())
+                    settingsSync.updatePreviewCrop(controller.state.value.captureMode, controller.state.value.videoResolution)
             }
         }
         viewModelScope.launch {

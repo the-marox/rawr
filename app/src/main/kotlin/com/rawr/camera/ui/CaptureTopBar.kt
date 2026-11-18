@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.*
 import com.rawr.camera.ui.icons.Icons
 import com.rawr.camera.ui.icons.outlined.AspectRatio
 import com.rawr.camera.ui.icons.outlined.Hd
+import com.rawr.camera.ui.icons.outlined.MovieFilter
 import com.rawr.camera.ui.icons.outlined.HighQuality
 import com.rawr.camera.ui.icons.outlined.Settings
 import com.rawr.camera.ui.icons.outlined.SlowMotionVideo
@@ -14,6 +15,8 @@ import com.rawr.camera.ui.icons.outlined.TimerOff
 import com.rawr.camera.ui.icons.outlined.Visibility
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -73,6 +76,9 @@ internal fun CaptureTopBar(
                         dispatch(CycleVideoResolution)
                     }
                 )
+            }
+            TopBarSlot {
+                VideoAspectTopBarChoice(state = state, dispatch = dispatch, enabled = !videoLocked)
             }
             TopBarSlot {
                 VideoTopBarChoice(
@@ -232,6 +238,61 @@ private fun VideoResolutionMode.topBarLabel(): String = when (this) {
     VideoResolutionMode.HD1080 -> "1080p"
     VideoResolutionMode.UHD4K -> "4K"
     VideoResolutionMode.OPEN_GATE -> "OPEN"
+}
+
+/**
+ * Recording aspect ratio: tap for the cinema formats, grouped. The crop stays
+ * horizontal; the viewfinder shows it.
+ */
+@Composable
+private fun VideoAspectTopBarChoice(state: CaptureUiState, dispatch: CaptureDispatch, enabled: Boolean) {
+    val haptics = LocalCaptureHaptics.current
+    var open by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    val aspect = state.videoAspect
+    Box {
+        VideoTopBarChoice(
+            icon = Icons.Outlined.MovieFilter,
+            label = aspect.shortLabel,
+            testTag = "topbar_video_aspect",
+            description = "Video aspect ratio ${aspect.label}. Tap to choose.",
+            enabled = enabled,
+            orientation = state.orientation,
+            onClick = {
+                haptics.selection()
+                open = true
+            }
+        )
+        DropdownMenu(expanded = open && enabled, onDismissRequest = { open = false }) {
+            com.rawr.camera.video.VideoAspect.groups.forEach { group ->
+                val items = com.rawr.camera.video.VideoAspect.entries.filter { it.group == group }
+                if (items.isEmpty()) return@forEach
+                Text(
+                    group,
+                    color = CaptureColors.Muted,
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                )
+                items.forEach { option ->
+                    val selected = option == aspect
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                option.label,
+                                color = if (selected) CaptureColors.Accent else androidx.compose.ui.graphics.Color.Unspecified,
+                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
+                            )
+                        },
+                        onClick = {
+                            haptics.selection()
+                            open = false
+                            dispatch(com.rawr.camera.architecture.SetVideoAspect(option))
+                        },
+                        modifier = Modifier.testTag("topbar_video_aspect_${option.id}")
+                    )
+                }
+            }
+        }
+    }
 }
 
 @Composable
