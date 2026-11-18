@@ -166,6 +166,13 @@ bool VideoSession::prewarmVideo(uint32_t width, uint32_t height, uint32_t bitDep
             width = (kept_.valid() ? kept_.width : rawWidth) & ~1u;
             height = (kept_.valid() ? kept_.height : rawHeight) & ~1u;
         }
+        if (aspectNum_ != 0 && aspectDen_ != 0) {
+            videoAspectFit(width, height, aspectNum_, aspectDen_);
+            if (aspectHalve_) {
+                width = (width / 2u) & ~15u;
+                height = (height / 2u) & ~15u;
+            }
+        }
         if (width == 0 || height == 0 || width > rawWidth || height > rawHeight) {
             videoPrewarmStatus_ = "skipped: raw " + std::to_string(rawWidth) + "x" + std::to_string(rawHeight);
             return false;

@@ -1,6 +1,8 @@
 package com.rawr.camera.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import com.rawr.camera.ui.icons.Icons
 import com.rawr.camera.ui.icons.outlined.AspectRatio
@@ -257,12 +259,62 @@ private fun VideoAspectTopBarChoice(state: CaptureUiState, dispatch: CaptureDisp
             description = "Video aspect ratio ${aspect.label}. Tap to choose.",
             enabled = enabled,
             orientation = state.orientation,
+            // "2.39"/"XPan" are wider than the slot: turn the label's layout box, not just its pixels.
+            labelTurnsLayout = true,
             onClick = {
                 haptics.selection()
                 open = true
             }
         )
-        DropdownMenu(expanded = open && enabled, onDismissRequest = { open = false }) {
+        if (state.orientation == com.rawr.camera.model.Orientation.Landscape) {
+            // The Activity stays portrait: a dropdown would read sideways. The app's own panel, turned
+            // like the rest of the landscape controls, opens beside the bar instead.
+            if (open && enabled) {
+                val gap = with(androidx.compose.ui.platform.LocalDensity.current) { 52.dp.roundToPx() }
+                androidx.compose.ui.window.Popup(
+                    alignment = Alignment.TopStart,
+                    offset = androidx.compose.ui.unit.IntOffset(0, gap),
+                    onDismissRequest = { open = false },
+                    properties = androidx.compose.ui.window.PopupProperties(focusable = true)
+                ) {
+                    val shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+                    Column(
+                        Modifier
+                            .uprightPanelInLandscape(state.orientation)
+                            .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = .85f), shape)
+                            .border(1.dp, CaptureColors.Outline, shape)
+                            .padding(vertical = 6.dp)
+                            .width(IntrinsicSize.Max)
+                    ) {
+                        com.rawr.camera.video.VideoAspect.groups.forEach { group ->
+                            val items = com.rawr.camera.video.VideoAspect.entries.filter { it.group == group }
+                            if (items.isEmpty()) return@forEach
+                            Text(group, color = CaptureColors.Muted, fontSize = 10.sp,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp))
+                            items.forEach { option ->
+                                val selected = option == aspect
+                                Text(
+                                    option.label,
+                                    color = if (selected) CaptureColors.Accent else androidx.compose.ui.graphics.Color.White,
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                                    fontSize = 13.sp,
+                                    maxLines = 1,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            haptics.selection()
+                                            open = false
+                                            dispatch(com.rawr.camera.architecture.SetVideoAspect(option))
+                                        }
+                                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                                        .testTag("topbar_video_aspect_${option.id}")
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        } else DropdownMenu(expanded = open && enabled, onDismissRequest = { open = false }) {
             com.rawr.camera.video.VideoAspect.groups.forEach { group ->
                 val items = com.rawr.camera.video.VideoAspect.entries.filter { it.group == group }
                 if (items.isEmpty()) return@forEach
@@ -304,6 +356,8 @@ private fun VideoTopBarChoice(
     enabled: Boolean,
     orientation: com.rawr.camera.model.Orientation,
     rotateLabel: Boolean = true,
+    /** Turn the label's measured box too (uprightPanelInLandscape), so a longer label is not clipped. */
+    labelTurnsLayout: Boolean = false,
     onClick: () -> Unit
 ) {
     TextButton(
@@ -328,7 +382,11 @@ private fun VideoTopBarChoice(
                 lineHeight = 8.sp,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
-                modifier = if (rotateLabel) Modifier.uprightInLandscape(orientation) else Modifier
+                modifier = when {
+                    !rotateLabel -> Modifier
+                    labelTurnsLayout -> Modifier.wrapContentWidth(unbounded = true).uprightPanelInLandscape(orientation)
+                    else -> Modifier.uprightInLandscape(orientation)
+                }
             )
         }
     }

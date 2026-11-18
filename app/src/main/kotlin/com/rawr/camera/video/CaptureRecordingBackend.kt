@@ -47,8 +47,7 @@ internal class CaptureRecordingBackend(
                             requireNotNull(options.iso))
                 }
                 val frameSize = selectedMode.resolve(
-                    JSONObject(preview.cameraControlSnapshot()), captureSnapshot.videoAspect,
-                    captureSnapshot.orientation == com.rawr.camera.model.Orientation.Portrait)
+                    JSONObject(preview.cameraControlSnapshot()), captureSnapshot.videoAspect)
                 // Settings → Video Encoder; debug builds let scripted runs override via extras.
                 fun extra(name: String, value: Int) =
                     options.encoderOverrides[name] ?: value

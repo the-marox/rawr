@@ -524,11 +524,14 @@ void SessionEngine::requestVideoPrewarm(uint32_t width, uint32_t height, uint32_
     {
         // The recording will use the aspect-cropped frame: prewarm exactly that.
         std::lock_guard<std::mutex> lock(mu_);
-        // Kotlin sends the base size; the crop request (set just before) knows the turned aspect and halving.
-        if (videoAspectNum_ != 0 && videoAspectDen_ != 0 && realtime_.configured()) {
+        // Kotlin sends the base size; the crop request (set just before) knows the turned aspect and
+        // halving, which VideoSession applies when the prewarm runs (after any lens change).
+        const bool aspect = videoAspectNum_ != 0 && videoAspectDen_ != 0;
+        videoSession_.setAspect(aspect ? videoAspectNum_ : 0u, aspect ? videoAspectDen_ : 0u,
+                                aspect && videoCropHalve_);
+        if (aspect) {
             width = videoCropBaseWidth_;
             height = videoCropBaseHeight_;
-            videoFrameLocked(width, height);
         }
     }
     videoSession_.requestVideoPrewarm(width, height, bitDepth);

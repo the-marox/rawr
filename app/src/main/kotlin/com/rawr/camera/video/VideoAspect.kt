@@ -2,10 +2,10 @@ package com.rawr.camera.video
 
 /**
  * Recording aspect ratio: a centred crop of the 1080p, 4K or Open Gate frame.
- * [num]:[den] 0:0 keeps the frame. The frame stays horizontal in the world:
- * with the phone upright the crop runs along the sensor's short side
- * ([cropRequest]). Native mirrors the rule (SessionEngine::videoFrameLocked,
- * VideoCrop.h videoAspectFit) for the viewfinder and the prewarm.
+ * [num]:[den] 0:0 keeps the frame. The crop turns with the recording: upright,
+ * the video is upright and the frame is tall. Native mirrors the rule
+ * (SessionEngine::videoFrameLocked, VideoSession, VideoCrop.h videoAspectFit)
+ * for the viewfinder and the prewarm.
  */
 enum class VideoAspect(
     val id: String, val num: Int, val den: Int, val label: String, val shortLabel: String, val group: String
@@ -63,21 +63,17 @@ data class VideoCropRequest(val width: Int, val height: Int, val num: Int, val d
 }
 
 /**
- * Crop for [mode] at [aspect] with the phone [portrait] or not; null = no crop
- * (Open Gate, full frame). Upright, a horizontal frame comes from the sensor's
- * short side (the aspect is turned), so 4K and Open Gate give the same size and
- * 1080p is that size halved.
+ * Crop for [mode] at [aspect], in sensor orientation; null = no crop (Open Gate,
+ * full frame). The recording's rotation turns it with the phone, so upright it
+ * plays as a tall frame.
  */
-fun videoCropRequest(mode: VideoResolutionMode, aspect: VideoAspect, portrait: Boolean): VideoCropRequest? {
-    if (aspect == VideoAspect.Native || !portrait) {
-        val n = aspect.num
-        val d = aspect.den
-        return when (mode) {
-            VideoResolutionMode.HD1080 -> VideoCropRequest(1920, 1080, n, d, false)
-            VideoResolutionMode.UHD4K -> VideoCropRequest(3840, 2160, n, d, false)
-            VideoResolutionMode.OPEN_GATE ->
-                if (aspect == VideoAspect.Native) null else VideoCropRequest(0, 0, n, d, false)
-        }
+fun videoCropRequest(mode: VideoResolutionMode, aspect: VideoAspect): VideoCropRequest? {
+    val n = aspect.num
+    val d = aspect.den
+    return when (mode) {
+        VideoResolutionMode.HD1080 -> VideoCropRequest(1920, 1080, n, d, false)
+        VideoResolutionMode.UHD4K -> VideoCropRequest(3840, 2160, n, d, false)
+        VideoResolutionMode.OPEN_GATE ->
+            if (aspect == VideoAspect.Native) null else VideoCropRequest(0, 0, n, d, false)
     }
-    return VideoCropRequest(0, 0, aspect.den, aspect.num, mode == VideoResolutionMode.HD1080)
 }

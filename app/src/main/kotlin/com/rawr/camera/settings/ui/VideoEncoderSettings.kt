@@ -32,7 +32,7 @@ internal fun VideoEncoderSettings(state: SettingsUiState, dispatch: SettingsDisp
                 "Aspect ratio",
                 value = encoder.aspect.label,
                 supportingText = "Pick it from the aspect button in the video top bar. A centred crop of 1080p, 4K or " +
-                    "Open Gate that stays horizontal; with the phone upright it comes from the sensor's short side."
+                    "Open Gate; with the phone upright the video and the crop are upright too."
             )
             SettingDivider()
             SettingsRow(

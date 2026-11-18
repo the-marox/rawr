@@ -11,8 +11,7 @@ enum class VideoResolutionMode(val label: String) {
 
     fun resolve(
         cameraSnapshot: JSONObject,
-        aspect: VideoAspect = VideoAspect.Native,
-        portrait: Boolean = false
+        aspect: VideoAspect = VideoAspect.Native
     ): VideoFrameSize {
         val rawWidth = cameraSnapshot.optInt("rawWidth")
         val rawHeight = cameraSnapshot.optInt("rawHeight")
@@ -20,7 +19,7 @@ enum class VideoResolutionMode(val label: String) {
         // Image area without padded raw edges (lens profile cropEdges): Open Gate records just that.
         val keptWidth = cameraSnapshot.optInt("keptWidth").takeIf { it in 1..rawWidth } ?: rawWidth
         val keptHeight = cameraSnapshot.optInt("keptHeight").takeIf { it in 1..rawHeight } ?: rawHeight
-        val size = videoCropRequest(this, aspect, portrait)?.resolve(keptWidth, keptHeight)
+        val size = videoCropRequest(this, aspect)?.resolve(keptWidth, keptHeight)
             ?: VideoFrameSize(keptWidth and -2, keptHeight and -2)
         require(size.width > 0 && size.height > 0 &&
                 size.width <= rawWidth && size.height <= rawHeight) {

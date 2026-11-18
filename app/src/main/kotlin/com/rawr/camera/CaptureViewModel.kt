@@ -207,9 +207,9 @@ class CaptureViewModel(application: Application) : AndroidViewModel(application)
             }
         }
         viewModelScope.launch {
-            // An aspect crop stays horizontal in the world, so it follows the phone's orientation;
-            // never mid-recording (the recorder keeps the frame it started with).
-            controller.state.map { it.orientation to it.videoAspect }.distinctUntilChanged().collect {
+            // The aspect picked in the top bar: viewfinder crop and prewarm follow it
+            // (never mid-recording; the picker is locked then anyway).
+            controller.state.map { it.videoAspect }.distinctUntilChanged().collect {
                 if (!videoSelectionLocked())
                     settingsSync.updatePreviewCrop(controller.state.value.captureMode, controller.state.value.videoResolution)
             }
