@@ -112,6 +112,11 @@ class VideoOutput final {
     bool yuvStopping_ = false;
     std::thread feeder_;
     std::atomic<uint64_t> yuvNoBuffer_{0};
+    // Why a frame found no encoder buffer: none dequeued yet (encoder holding
+    // them) or every GPU output image still in flight (GPU behind).
+    uint64_t yuvNoReady_ = 0, yuvNoImage_ = 0, yuvAcquires_ = 0;  // yuvMutex_
+    double yuvDequeueMs_ = 0, yuvDequeueMaxMs_ = 0, yuvFenceMs_ = 0, yuvFenceMaxMs_ = 0;  // feeder
+    uint64_t yuvDequeues_ = 0, yuvQueued_ = 0;  // feeder
     VkDescriptorSetLayout packSetLayout_ = VK_NULL_HANDLE;
     VkPipelineLayout packLayout_ = VK_NULL_HANDLE;
     VkPipeline packPipeline_ = VK_NULL_HANDLE;
