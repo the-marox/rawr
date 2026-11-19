@@ -55,6 +55,10 @@ androidComponents {
         variant.applicationId.set(debugApplicationId)
         variant.outputs.forEach { it.versionName.set(debugVersionName) }
     }
+    // Optimized build for device measurements (debug key, installs next to the debug build).
+    onVariants(selector().withBuildType("benchmark")) { variant ->
+        variant.applicationId.set("x17u.rawr.camera.benchmark")
+    }
     onVariants(selector().withBuildType("release")) { variant ->
         variant.applicationId.set(releaseApplicationId)
         val base = requireNotNull(android.defaultConfig.versionName)
@@ -172,7 +176,7 @@ android {
         create("benchmark") {
             initWith(getByName("release"))
             applicationIdSuffix = ".benchmark"
-            resValue("string", "app_name", "Rawr Benchmark")
+            resValue("string", "app_name", "Rawr 17U Benchmark")
             signingConfig = signingConfigs.getByName("debug")
             matchingFallbacks += "release"
         }
