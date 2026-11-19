@@ -324,6 +324,7 @@ class FrameSubmitCoordinator final {
     std::atomic<bool> filmSimEnabled_ = false;
     std::atomic<uint32_t> videoCropOutWidth_{0};
     std::atomic<bool> videoHighFps_{false};
+    uint32_t videoMonitorTick_ = 0;  // viewfinder throttle while recording above 30 fps
     std::atomic<uint32_t> videoCropOutHeight_{0};
     spektrafilm_native::FilmLook filmLook_{};
     uint32_t viewfinderDivisor_ = 2;

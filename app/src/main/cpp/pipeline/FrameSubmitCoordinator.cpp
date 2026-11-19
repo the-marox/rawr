@@ -329,7 +329,13 @@ std::optional<FrameSubmitCoordinator::AcquiredSubmit> FrameSubmitCoordinator::ac
             vkCheck(preview, "video preview fence status");
     }
     const bool uiActive = uiPresentationActive_.load(std::memory_order_relaxed) || capturePort_.multiframeEnabled();
-    if (uiActive && !presentationPaused_ && !metadata.hidePreview && swapchainRenderer_.ready() && !slot->previewSubmitted) {
+    // Recording above 30 fps: refresh the viewfinder on every other frame. The
+    // recorded video is untouched; the skipped frames save the monitor write
+    // in the tonemap plus the scopes/present pass (~1.2 ms GPU at 4K60).
+    const bool monitorThrottled =
+        videoIndex && videoHighFps_.load(std::memory_order_relaxed) && ((videoMonitorTick_++ & 1u) != 0u);
+    if (uiActive && !presentationPaused_ && !metadata.hidePreview && swapchainRenderer_.ready() && !slot->previewSubmitted &&
+        !monitorThrottled) {
         uint32_t index = 0;
         const VkResult acquire = swapchainRenderer_.acquireNextImage(slot->imageAvailable, &index);
         trace.record(rawrcam::diagnostics::RuntimeTraceStage::SwapAcquire, params.timestampNs, metadata.frameOrdinal,
@@ -347,7 +353,7 @@ std::optional<FrameSubmitCoordinator::AcquiredSubmit> FrameSubmitCoordinator::ac
         } else {
             vkCheck(acquire, "vkAcquireNextImageKHR");
         }
-    } else if (videoIndex) {
+    } else if (videoIndex && !monitorThrottled) {
         ++previewSkippedDuringVideo_;
     }
     if (!swapIndex && !videoIndex) {
