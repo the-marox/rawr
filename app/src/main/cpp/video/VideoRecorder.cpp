@@ -80,7 +80,7 @@ void VideoRecorder::record(VkCommandBuffer command, uint32_t frameSlot, uint32_t
         b.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
     };
     addBegin(output_.images_[imageIndex],
-             output_.initialized_[imageIndex] ? VK_IMAGE_LAYOUT_PRESENT_SRC_KHR : VK_IMAGE_LAYOUT_UNDEFINED, 0);
+             output_.initialized_[imageIndex] ? output_.restingLayout() : VK_IMAGE_LAYOUT_UNDEFINED, 0);
     if (monitorEnabled)
         addBegin(resources_.monitor_[frameSlot].image,
                  resources_.monitorInitialized_[frameSlot] ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
@@ -191,17 +191,22 @@ void VideoRecorder::record(VkCommandBuffer command, uint32_t frameSlot, uint32_t
     resources_.tonemap_->record(tone);
     vkCmdWriteTimestamp(command, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, stagePool, 15);
     resources_.stagePending_[frameSlot] = true;
-    VkImageMemoryBarrier end{};
-    end.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    end.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
-    end.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-    end.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-    end.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    end.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    end.image = output_.images_[imageIndex];
-    end.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-    vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0,
-                         nullptr, 0, nullptr, 1, &end);
+    if (output_.yuv()) {
+        // YUV encoder input: pack the tonemapped frame into the encoder buffer.
+        output_.recordYuvPack(command, imageIndex);
+    } else {
+        VkImageMemoryBarrier end{};
+        end.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        end.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
+        end.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+        end.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+        end.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        end.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        end.image = output_.images_[imageIndex];
+        end.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0,
+                             nullptr, 0, nullptr, 1, &end);
+    }
     if (monitorEnabled) {
         VkImageMemoryBarrier monitorReady{};
         monitorReady.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -210,7 +215,7 @@ void VideoRecorder::record(VkCommandBuffer command, uint32_t frameSlot, uint32_t
         monitorReady.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
         monitorReady.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
         monitorReady.image = resources_.monitor_[frameSlot].image;
-        monitorReady.subresourceRange = end.subresourceRange;
+        monitorReady.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
         vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0,
                              nullptr, 0, nullptr, 1, &monitorReady);
         resources_.monitorInitialized_[frameSlot] = true;

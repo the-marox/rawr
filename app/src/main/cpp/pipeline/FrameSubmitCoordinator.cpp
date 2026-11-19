@@ -551,8 +551,10 @@ void FrameSubmitCoordinator::submitSplitVideoAndMonitor(const SubmitParams& para
         waits[waitCount] = slot->cameraAcquire;
         stages[waitCount++] = rawWaitStage;
     }
-    waits[waitCount] = videoOutput_->available(slotIndex);
-    stages[waitCount++] = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+    if (const VkSemaphore available = videoOutput_->available(slotIndex)) {
+        waits[waitCount] = available;
+        stages[waitCount++] = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+    }
 
     // Each frame goes to the queue in three parts (demosaic, post, tonemap).
     VkCommandBuffer current = slot->videoCommand;
@@ -888,8 +890,10 @@ void FrameSubmitCoordinator::submitAndPresent(const SubmitParams& params, const 
         stages[waitCount++] = recorded.rawWaitStage;
     }
     if (acquired.videoIndex && videoOutput_) {
-        waits[waitCount] = videoOutput_->available(slotIndex);
-        stages[waitCount++] = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+        if (const VkSemaphore available = videoOutput_->available(slotIndex)) {
+            waits[waitCount] = available;
+            stages[waitCount++] = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+        }
     }
 
     VkSubmitInfo si{};
