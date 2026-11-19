@@ -91,7 +91,7 @@ class VideoOutput final {
     // Headroom for a slow (warm) GPU: frames in flight plus buffers already in
     // hand. 6 writer images ran dry at 4K60 (~60 drops per 12 s on a warm phone).
     static constexpr uint32_t kYuvImages = 6;       // output images (GPU side)
-    static constexpr uint32_t kYuvWriterImages = 10;  // encoder buffers we may hold at once
+    static constexpr uint32_t kYuvWriterImages = 16;  // encoder buffers we may hold at once
     static constexpr uint32_t kYuvReady = 4;        // encoder buffers kept dequeued ahead
     bool yuv_ = false;
     JavaVM* vm_ = nullptr;
@@ -117,6 +117,8 @@ class VideoOutput final {
     uint64_t yuvNoReady_ = 0, yuvNoImage_ = 0, yuvAcquires_ = 0;  // yuvMutex_
     double yuvDequeueMs_ = 0, yuvDequeueMaxMs_ = 0, yuvFenceMs_ = 0, yuvFenceMaxMs_ = 0;  // feeder
     uint64_t yuvDequeues_ = 0, yuvQueued_ = 0;  // feeder
+    double yuvWriterMs_ = 0, yuvWriterMaxMs_ = 0, yuvImportMs_ = 0, yuvImportMaxMs_ = 0;  // feeder
+    uint64_t yuvImports_ = 0;  // feeder
     VkDescriptorSetLayout packSetLayout_ = VK_NULL_HANDLE;
     VkPipelineLayout packLayout_ = VK_NULL_HANDLE;
     VkPipeline packPipeline_ = VK_NULL_HANDLE;
