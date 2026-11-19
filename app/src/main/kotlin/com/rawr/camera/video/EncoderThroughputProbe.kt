@@ -26,7 +26,7 @@ internal object EncoderThroughputProbe {
     private const val WIDTH = 3840
     private const val HEIGHT = 2160
 
-    fun run(): JSONObject {
+    fun run(contents: List<String> = listOf("static", "noise")): JSONObject {
         val cases = listOf(
             Case("nv12", ImageFormat.YUV_420_888, MediaCodecInfo.CodecProfileLevel.HEVCProfileMain),
             Case("p010", ImageFormat.YCBCR_P010, MediaCodecInfo.CodecProfileLevel.HEVCProfileMain10),
@@ -34,7 +34,7 @@ internal object EncoderThroughputProbe {
             Case("rgba1010102", HardwareBuffer.RGBA_1010102, MediaCodecInfo.CodecProfileLevel.HEVCProfileMain10)
         )
         val out = JSONArray()
-        for (content in listOf("static", "noise")) for (case in cases) out.put(runCase(case, content))
+        for (content in contents) for (case in cases) out.put(runCase(case, content))
         return JSONObject().put("width", WIDTH).put("height", HEIGHT).put("frames", FRAMES).put("cases", out)
     }
 

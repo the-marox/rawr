@@ -109,6 +109,15 @@ class MainActivity : ComponentActivity() {
             java.io.File(filesDir, "encoder_throughput_probe.json").writeText(report)
             android.util.Log.i("RawrVideoProbe", "Wrote encoder_throughput_probe.json")
         }
+        if (intent.getBooleanExtra("encoder_throughput_probe_live", false)) {
+            // Same probe while the camera and the 4K60 viewfinder load the GPU.
+            Thread {
+                Thread.sleep(8_000)
+                val report = com.rawr.camera.video.EncoderThroughputProbe.run(listOf("static")).toString(2)
+                java.io.File(filesDir, "encoder_throughput_probe_live.json").writeText(report)
+                android.util.Log.i("RawrVideoProbe", "Wrote encoder_throughput_probe_live.json")
+            }.apply { name = "EncoderProbeLive" }.start()
+        }
         if (intent.getBooleanExtra("yuv_buffer_probe", false)) {
             val report = runBlocking(Dispatchers.IO) { com.rawr.camera.video.YuvBufferProbe.run().toString(2) }
             java.io.File(filesDir, "yuv_buffer_probe.json").writeText(report)
