@@ -530,7 +530,8 @@ void main() {
     if (pc.monitorEnabled != 0u)
         imageStore(monitorImage, p, vec4(clamp(encoded + vec3(outputDither(up)), 0.0, 1.0), 1.0));
 #elif RAWR_TONEMAP_VIDEO_MONITOR
-    if (videoMonitor.monitorEnabled != 0u)
-        imageStore(monitorImage, p, vec4(clamp(encoded + vec3(outputDither(up)), 0.0, 1.0), 1.0));
+    // Half-resolution monitor: the screen never needs the full 4K frame.
+    if (videoMonitor.monitorEnabled != 0u && ((up.x | up.y) & 1u) == 0u)
+        imageStore(monitorImage, p >> 1, vec4(clamp(encoded + vec3(outputDither(up)), 0.0, 1.0), 1.0));
 #endif
 }

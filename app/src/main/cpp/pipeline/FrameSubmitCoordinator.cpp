@@ -677,7 +677,7 @@ void FrameSubmitCoordinator::submitSplitVideoAndMonitor(const SubmitParams& para
         vkCheck(vkResetCommandBuffer(slot->command, 0), "video monitor reset command");
         vkCheck(vkBeginCommandBuffer(slot->command, &begin), "video monitor begin command");
         videoOutput_->beginMonitorTiming(slot->command, slotIndex);
-        const auto extent = videoOutput_->extent();
+        const auto extent = videoOutput_->monitorExtent();
         resources_.recorder()->recordVideoScopes(slot->command, slotIndex, videoOutput_->monitorView(slotIndex),
                                                  videoOutput_->monitorImage(slotIndex), extent.width, extent.height,
                                                  config_.sensorOrientationDegrees, scopeDeviceRotationDegrees_);

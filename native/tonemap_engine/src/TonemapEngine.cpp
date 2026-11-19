@@ -934,8 +934,8 @@ void TonemapEngine::record(const TonemapRecordInfo& recordInfo) {
     if (impl_->videoMonitorOutput && (!recordInfo.monitor.view ||
         recordInfo.monitor.format != VK_FORMAT_R8G8B8A8_UNORM ||
         recordInfo.monitor.layout != VK_IMAGE_LAYOUT_GENERAL ||
-        recordInfo.monitor.width != recordInfo.output.width ||
-        recordInfo.monitor.height != recordInfo.output.height))
+        recordInfo.monitor.width != (recordInfo.output.width + 1u) / 2u ||
+        recordInfo.monitor.height != (recordInfo.output.height + 1u) / 2u))
         throw std::invalid_argument("TonemapEngine: invalid linear video monitor");
 
     const GpuParameters parameters =

@@ -776,7 +776,7 @@ int main(int argc, char** argv) {
                               VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
         size_t n = size_t(a.w) * a.h;
         auto up = makeBuf(c, n * 8, VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
-        auto monitor = a.videoMonitor ? makeImg(c, a.w, a.h, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_STORAGE_BIT) : Img{};
+        auto monitor = a.videoMonitor ? makeImg(c, (a.w + 1u) / 2u, (a.h + 1u) / 2u, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_STORAGE_BIT) : Img{};
         auto down = makeBuf(c, n * outputStride, VK_BUFFER_USAGE_TRANSFER_DST_BIT);
         auto* hp = (uint16_t*)up.p;
         std::vector<Pixel> quant(n);
@@ -894,7 +894,7 @@ int main(int argc, char** argv) {
         ri.frameSlot = 0;
         ri.output.format = outputFormat;
         if (a.videoMonitor) {
-            ri.monitor = {monitor.v, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_LAYOUT_GENERAL, a.w, a.h};
+            ri.monitor = {monitor.v, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_LAYOUT_GENERAL, (a.w + 1u) / 2u, (a.h + 1u) / 2u};
             ri.monitorEnabled = true;
         }
         ri.highlightCompression = a.highlightCompression;

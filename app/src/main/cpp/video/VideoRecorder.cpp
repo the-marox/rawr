@@ -177,7 +177,8 @@ void VideoRecorder::record(VkCommandBuffer command, uint32_t frameSlot, uint32_t
     tone.output = {output_.views_[imageIndex], output_.outputFormat_, VK_IMAGE_LAYOUT_GENERAL, output_.extent_.width,
                    output_.extent_.height};
     tone.monitor = {monitorEnabled ? resources_.monitor_[frameSlot].view : resources_.dummyMonitor_.view,
-                    VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_LAYOUT_GENERAL, output_.extent_.width, output_.extent_.height};
+                    VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_LAYOUT_GENERAL, (output_.extent_.width + 1u) / 2u,
+                    (output_.extent_.height + 1u) / 2u};
     tone.monitorEnabled = monitorEnabled;
     if (stage.coloroppToneRequired() && params.renderTransform == tonemap::RenderTransform::Existing) {
         tone.highlightCompression = rawr::highlight::coloroppToneCompression(activeConfig.highlightCompression);
