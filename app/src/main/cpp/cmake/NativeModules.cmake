@@ -179,6 +179,7 @@ rawrcam_module(video
   DEPENDS color develop diagnostics_logging diagnostics_timing imaging vulkan
   SOURCES
     video/VideoOutput.cpp
+    video/VideoFastPath.cpp
     video/VideoProcessingResources.cpp
     video/VideoRecorder.cpp
     video/VideoSession.cpp

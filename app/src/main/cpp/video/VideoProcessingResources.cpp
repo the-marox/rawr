@@ -149,6 +149,7 @@ void VideoProcessingResources::beginRecording() {
     monitorPending_.fill(false);
     monitorSumMs_ = 0.0;
     monitorSamples_ = 0;
+    fastLogged_ = false;
     stagePending_.fill(false);
     stageSumMs_.fill(0.0);
     stageSamples_ = 0;
@@ -190,6 +191,22 @@ VideoProcessingResources::Prepared VideoProcessingResources::prepare(rawrcam::vu
         if (config.highlightEnabled && config.highlightMethod == 1u) stage->prepareColoropp();
     }
     out.tonemap = makeTonemap(context, key.outputFormat, renderLut);
+    // 17U fast path: 1:1 quad demosaic into a 10-bit YUV encoder. Off with
+    // `adb shell setprop debug.rawr.video.fast 0`.
+    char fastProp[PROP_VALUE_MAX] = {};
+    __system_property_get("debug.rawr.video.fast", fastProp);
+    if (fastProp[0] != '0' && key.outputFormat == VK_FORMAT_A2B10G10R10_UNORM_PACK32 &&
+        out.demosaic->sensorScale() == 1u && std::string(out.demosaic->method()) == "quad_guided_chroma") {
+        try {
+            out.fastBake = makeTonemap(context, VK_FORMAT_R16G16B16A16_SFLOAT, renderLut);
+            out.fast = std::make_unique<VideoFastPath>(context.physicalDevice(), context.device(), key.width,
+                                                       key.height);
+        } catch (const std::exception& error) {
+            __android_log_print(ANDROID_LOG_WARN, "RawrNativeVideo", "VIDEO_FAST_PATH unavailable: %s", error.what());
+            out.fast.reset();
+            out.fastBake.reset();
+        }
+    }
     return out;
 }
 void VideoProcessingResources::install(Prepared&& prepared) {
@@ -198,6 +215,8 @@ void VideoProcessingResources::install(Prepared&& prepared) {
     processingKey_ = prepared.key;
     tonemap_ = std::move(prepared.tonemap);
     demosaic_ = std::move(prepared.demosaic);
+    fastBake_ = std::move(prepared.fastBake);
+    fast_ = std::move(prepared.fast);
     post_ = std::move(prepared.post);
     for (uint32_t i = 0; i < monitor_.size(); ++i) {
         monitor_[i] = prepared.monitor[i];
@@ -219,6 +238,8 @@ void VideoProcessingResources::release() noexcept {
     if (device && tonemap_) (void)context_.waitIdle();
     for (auto& stage : dcp_) stage.reset();
     tonemap_.reset();
+    fast_.reset();
+    fastBake_.reset();
     for (auto& stage : post_) stage.reset();
     demosaic_.reset();
     if (device) {
@@ -240,6 +261,7 @@ void VideoProcessingResources::updateRenderLut(const tonemap::lut::LutChain* ren
     if (!tonemap_) return;
     if (recording) check(context_.waitIdle(), "video LUT wait");
     tonemap_ = makeTonemap(context_, processingKey_.outputFormat, renderLut);
+    if (fastBake_) fastBake_ = makeTonemap(context_, VK_FORMAT_R16G16B16A16_SFLOAT, renderLut);
 }
 void VideoProcessingResources::collectStageTiming(uint32_t frameSlot) {
     if (!stagePending_[frameSlot]) return;

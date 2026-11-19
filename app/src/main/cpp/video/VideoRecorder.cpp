@@ -113,6 +113,61 @@ void VideoRecorder::record(VkCommandBuffer command, uint32_t frameSlot, uint32_t
         developedFrame.lensShading = nullptr;
         developedFrame.lensShadingCount = 0;
     }
+    const auto finishFrame = [&] {
+        if (monitorEnabled) {
+            VkImageMemoryBarrier monitorReady{};
+            monitorReady.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+            monitorReady.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
+            monitorReady.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            monitorReady.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+            monitorReady.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+            monitorReady.image = resources_.monitor_[frameSlot].image;
+            monitorReady.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+            vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                                 0, 0, nullptr, 0, nullptr, 1, &monitorReady);
+            resources_.monitorInitialized_[frameSlot] = true;
+        }
+        output_.initialized_[imageIndex] = true;
+    };
+    // 17U fast path: RAW -> P010 in one pass when no stage needs neighbouring
+    // pixels after the demosaic (and no DCP/geometry). Otherwise the full path below.
+    const char* fastReason = nullptr;
+    if (!resources_.fast_ || !resources_.fastBake_)
+        fastReason = "unavailable";
+    else if (!output_.yuv() || imageIndex >= VideoOutput::kYuvImages || !output_.yuvFrames_[imageIndex].buffer)
+        fastReason = "no_yuv";
+    else if (activeConfig.highlightEnabled)
+        fastReason = "highlight";
+    else if (rawFrame.noiseProfileValid && activeConfig.waveletDenoiseStrength > 0.0f)
+        fastReason = "denoise";
+    else if (resources_.processingKey_.fccSteps != 0u || resources_.processingKey_.defringeStrength > 0.0f)
+        fastReason = "fcc_defringe";
+    else if (dcp)
+        fastReason = "dcp";
+    else if (lensDistortion || lensMirror != 0u)
+        fastReason = "geometry";
+    if (!resources_.fastLogged_) {
+        resources_.fastLogged_ = true;
+        __android_log_print(ANDROID_LOG_INFO, "RawrNativeVideo", "VIDEO_FAST_PATH active=%d reason=%s",
+                            fastReason ? 0 : 1, fastReason ? fastReason : "none");
+    }
+    if (!fastReason) {
+        tonemap::TonemapRecordInfo bakeTone{};
+        bakeTone.cameraToWorkingColumnMajor3x3 = cameraToAp1.data();
+        bakeTone.params = params;
+        const auto& buffer = *output_.yuvFrames_[imageIndex].buffer;
+        const VideoFastPath::EncoderTarget target{buffer.buffer,       buffer.yOffsetWords, buffer.yStrideWords,
+                                                  buffer.cOffsetWords, buffer.cStrideWords, buffer.swapUV};
+        resources_.fast_->record(command, frameSlot, developedFrame, *resources_.demosaic_, *resources_.fastBake_,
+                                 bakeTone, target, output_.context_.queueFamily(),
+                                 monitorEnabled ? resources_.monitor_[frameSlot].view : resources_.dummyMonitor_.view,
+                                 monitorEnabled, stagePool);
+        timing.markVideoDemosaicDone(command, frameSlot);
+        timing.markVideoPostDone(command, frameSlot);
+        resources_.stagePending_[frameSlot] = true;
+        finishFrame();
+        return;
+    }
     resources_.demosaic_->record(command, frameSlot, developedFrame);
     if (sceneMeter)
         sceneMeter(command, resources_.demosaic_->outputView(frameSlot), output_.extent_.width, output_.extent_.height);
@@ -207,19 +262,6 @@ void VideoRecorder::record(VkCommandBuffer command, uint32_t frameSlot, uint32_t
         vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0,
                              nullptr, 0, nullptr, 1, &end);
     }
-    if (monitorEnabled) {
-        VkImageMemoryBarrier monitorReady{};
-        monitorReady.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        monitorReady.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
-        monitorReady.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        monitorReady.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-        monitorReady.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-        monitorReady.image = resources_.monitor_[frameSlot].image;
-        monitorReady.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-        vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0,
-                             nullptr, 0, nullptr, 1, &monitorReady);
-        resources_.monitorInitialized_[frameSlot] = true;
-    }
-    output_.initialized_[imageIndex] = true;
+    finishFrame();
 }
 }  // namespace rawrcam::video
