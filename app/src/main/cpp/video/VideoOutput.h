@@ -88,9 +88,11 @@ class VideoOutput final {
     EncoderBuffer* importEncoderBuffer(AHardwareBuffer* ahb);
     bool dequeueEncoderImage(JNIEnv* env);
     void queueEncoderImage(JNIEnv* env, uint32_t index);
-    static constexpr uint32_t kYuvImages = 5;      // output images (GPU side)
-    static constexpr uint32_t kYuvWriterImages = 6;  // encoder buffers we may hold at once
-    static constexpr uint32_t kYuvReady = 2;       // encoder buffers kept dequeued ahead
+    // Headroom for a slow (warm) GPU: frames in flight plus buffers already in
+    // hand. 6 writer images ran dry at 4K60 (~60 drops per 12 s on a warm phone).
+    static constexpr uint32_t kYuvImages = 6;       // output images (GPU side)
+    static constexpr uint32_t kYuvWriterImages = 10;  // encoder buffers we may hold at once
+    static constexpr uint32_t kYuvReady = 3;        // encoder buffers kept dequeued ahead
     bool yuv_ = false;
     JavaVM* vm_ = nullptr;
     jobject writer_ = nullptr;
