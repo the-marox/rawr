@@ -544,7 +544,14 @@ void VideoOutput::feederLoop() {
     const VkDevice device = context_.device();
     std::unique_lock<std::mutex> lock(yuvMutex_);
     while (!yuvStopping_) {
-        if (!pendingImages_.empty()) {
+        // Order: hand finished frames to the encoder, then keep encoder buffers
+        // dequeued ahead, and only then block on a GPU fence. Blocking on fences
+        // first (~15 ms per frame at 4K60) starved the ready list and dropped
+        // frames (VIDEO_YUV_FLOW noReady). Finished frames still go first so an
+        // encoder holding buffers for lookahead always gets its next input.
+        const bool topUp = readyImages_.size() < kYuvReady && outstandingImages_ < kYuvWriterImages;
+        if (!pendingImages_.empty() &&
+            (!topUp || vkGetFenceStatus(device, yuvFences_[pendingImages_.front()]) == VK_SUCCESS)) {
             const uint32_t index = pendingImages_.front();
             const VkFence fence = yuvFences_[index];
             lock.unlock();
@@ -573,7 +580,7 @@ void VideoOutput::feederLoop() {
             }
             continue;
         }
-        if (readyImages_.size() < kYuvReady && outstandingImages_ < kYuvWriterImages) {
+        if (topUp) {
             ++outstandingImages_;
             lock.unlock();
             // Blocks while the encoder holds every buffer.

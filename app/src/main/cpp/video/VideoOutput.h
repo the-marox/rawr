@@ -92,7 +92,7 @@ class VideoOutput final {
     // hand. 6 writer images ran dry at 4K60 (~60 drops per 12 s on a warm phone).
     static constexpr uint32_t kYuvImages = 6;       // output images (GPU side)
     static constexpr uint32_t kYuvWriterImages = 10;  // encoder buffers we may hold at once
-    static constexpr uint32_t kYuvReady = 3;        // encoder buffers kept dequeued ahead
+    static constexpr uint32_t kYuvReady = 4;        // encoder buffers kept dequeued ahead
     bool yuv_ = false;
     JavaVM* vm_ = nullptr;
     jobject writer_ = nullptr;
