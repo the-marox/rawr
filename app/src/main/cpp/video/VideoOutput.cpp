@@ -455,14 +455,12 @@ VideoOutput::EncoderBuffer* VideoOutput::importEncoderBuffer(AHardwareBuffer* ah
     VkAndroidHardwareBufferPropertiesANDROID props{};
     props.sType = VK_STRUCTURE_TYPE_ANDROID_HARDWARE_BUFFER_PROPERTIES_ANDROID;
     check(context_.getAhbProperties()(device, ahb, &props), "encoder buffer properties");
-    VkExternalMemoryBufferCreateInfo external{};
-    external.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO;
-    external.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID;
+    // Same recipe as the validated probe (VideoGpuProbe): a plain storage buffer.
+    // Declaring the AHB handle type on the buffer crashes vkBindBufferMemory on Adreno 840.
     VkBufferCreateInfo bufferInfo{};
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    bufferInfo.pNext = &external;
     bufferInfo.size = props.allocationSize;
-    bufferInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+    bufferInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     check(vkCreateBuffer(device, &bufferInfo, nullptr, &out->buffer), "encoder buffer");
     VkImportAndroidHardwareBufferInfoANDROID import{};
