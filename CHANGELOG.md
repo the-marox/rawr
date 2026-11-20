@@ -57,6 +57,11 @@ first and moves to `xiaomi-17u` once verified.
   follows the gravity sensor instead, keeping the horizon level in
   landscape, as far as the margin allows; it fades out past 45 degrees
   (portrait).
+- Start of recording: the realtime RAW reader holds 8 images (was 6) and
+  the ingress queue keeps 3 waiting frames (was 1), so the one-time
+  45-80 ms stall ~0.2 s into a take no longer evicts a frame. Traced and
+  fixed on the X14U by apos-fandango (rawr-xiaomi14u, commits 39a49615 and
+  b2d85abe). ~38 MB more at 4K; full-size still readers unchanged.
 
 ## 0.5.1-17u.3
 

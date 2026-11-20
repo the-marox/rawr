@@ -4,6 +4,7 @@
 #include <stdexcept>
 
 #include "diagnostics/logging/NativeLog.h"
+#include "imaging/FrameLimits.h"
 #include "session/SessionEngine.h"
 #include "vulkan/RawAhbImporter.h"
 #include "vulkan/VulkanDispatch.h"
@@ -87,7 +88,9 @@ bool SessionEngine::setPresentationSurface(JNIEnv* env, jobject surfaceObj, int 
 }
 ANativeWindow* SessionEngine::createRawReader(uint64_t generation, uint32_t width, uint32_t height,
                                               rawrcam::geometry::RawPixelFormat format, uint64_t usage) {
-    return rawFrameIngress_.create(generation, width, height, format, usage, profileMaxImages_);
+    return rawFrameIngress_.create(generation, width, height, format, usage,
+                                   profileMaxImages_ ? profileMaxImages_
+                                                     : uint32_t(imaging::kRealtimeRawReaderMaxImages));
 }
 
 // Whether the allocator takes a RAW buffer of this size with the given usage plus what the camera adds.
