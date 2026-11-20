@@ -255,7 +255,6 @@ struct NativeCameraController::Impl final : CameraEventSink {
         active = true;
         lensSwitchHolding = true;
         lensSwitchHoldFrames = 0;
-        lensSwitchRawrAeFrames = 0;
         lensSwitchHoldStart = std::chrono::steady_clock::now();
         diag("CAMERA_LENS_SWITCH_RESTART lensId=" + lensId +
              " generation=" + std::to_string(deviceSession.generation()));
@@ -651,7 +650,6 @@ struct NativeCameraController::Impl final : CameraEventSink {
     // (the HAL's defaults, a black frame and AE/AWB still converging showed as a flash and colour jumps).
     bool lensSwitchHolding = false;
     unsigned lensSwitchHoldFrames = 0;
-    unsigned lensSwitchRawrAeFrames = 0;  // frames since Rawr AE took over after the switch
     std::chrono::steady_clock::time_point lensSwitchHoldStart{};
     // Reported/requested ISO ratios already measured, per camera, lens,
     // profile and the exact session keys applied: the ratio belongs to the
@@ -1453,21 +1451,10 @@ struct NativeCameraController::Impl final : CameraEventSink {
             const bool aeSettled = autoSettled || frame.aeMode == ACAMERA_CONTROL_AE_MODE_OFF;
             const auto heldMs = std::chrono::duration_cast<std::chrono::milliseconds>(
                                     std::chrono::steady_clock::now() - lensSwitchHoldStart).count();
-            // With Rawr AE on, its first manual requests can make the HAL change sensor mode: on the 17U in video
-            // mode the readout drops to the 2560-row mode (zero rows appear at the bottom of the RAW buffer) and the
-            // viewfinder crop jumps. Wait for Rawr AE to take over and 3 frames after it (at most 1500 ms).
-            if (control.rawrAeActive) ++lensSwitchRawrAeFrames;
-            const bool rawrAeExpected = rawrAeConfig.enabled && control.capabilities.manualExposureSupported &&
-                                        (control.exposureMode == ExposureControlMode::Auto ||
-                                         control.exposureMode == ExposureControlMode::ShutterPriority ||
-                                         control.exposureMode == ExposureControlMode::IsoPriority);
-            const bool rawrAeSettled = !rawrAeExpected || lensSwitchRawrAeFrames > 3;
-            const bool settled = (lensSwitchHoldFrames > 2 && aeSettled && awbSettled) ||
-                                 (lensSwitchHoldFrames > 4 && heldMs > 450) || heldMs > 800;
-            if ((rawrAeSettled && settled) || heldMs > 1500) {
+            if ((lensSwitchHoldFrames > 2 && aeSettled && awbSettled) || (lensSwitchHoldFrames > 4 && heldMs > 450) ||
+                heldMs > 800) {
                 lensSwitchHolding = false;
-                diag("CAMERA_LENS_SWITCH_REVEAL rawrAeFrames=" + std::to_string(lensSwitchRawrAeFrames) +
-                     " frames=" + std::to_string(lensSwitchHoldFrames) +
+                diag("CAMERA_LENS_SWITCH_REVEAL frames=" + std::to_string(lensSwitchHoldFrames) +
                      " ms=" + std::to_string(heldMs) + " ae=" + std::to_string(frame.aeState) +
                      " awb=" + std::to_string(frame.awbState));
             } else {
