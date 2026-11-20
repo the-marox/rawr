@@ -193,7 +193,7 @@ internal fun PhysicalCaptureLayout(
                         onSelectDcp = { file -> onQuickEvent(CaptureQuickEvent.SelectDcp(state.selectedLensId, file)) },
                         videoControls = videoControls,
                         onToggleVideoRecording = onToggleVideoRecording,
-                        overlay = videoBleed,
+                        overlay = videoBleed || openGateHighFps,
                         selectorsAlpha = cleanAlpha,
                         modifier = if (compactControls) {
                             Modifier.fillMaxWidth().weight(1f)
@@ -235,8 +235,11 @@ private fun Modifier.viewfinderFrame(videoBleed: Boolean, photoWidth: Dp, openGa
         .wrapContentHeight(Alignment.Top, unbounded = true)
         .aspectRatio(9f / 16f)
 } else if (openGateHighFps) {
-    // Same height as the photo box, narrower: 2560:4096 upright.
-    this.height(photoWidth * 4f / 3f).aspectRatio(10f / 16f, matchHeightConstraintsFirst = true)
+    // 2560:4096 upright, full-bleed width like 16:9; the overflow draws
+    // behind the shutter cluster.
+    this.fillMaxWidth()
+        .wrapContentHeight(Alignment.Top, unbounded = true)
+        .aspectRatio(10f / 16f)
 } else {
     this.width(photoWidth).aspectRatio(3f / 4f)
 }
