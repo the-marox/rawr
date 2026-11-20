@@ -1462,10 +1462,9 @@ struct NativeCameraController::Impl final : CameraEventSink {
                                          control.exposureMode == ExposureControlMode::ShutterPriority ||
                                          control.exposureMode == ExposureControlMode::IsoPriority);
             const bool rawrAeSettled = !rawrAeExpected || lensSwitchRawrAeFrames > 3;
-            if (rawrAeSettled &&
-                ((lensSwitchHoldFrames > 2 && aeSettled && awbSettled) || (lensSwitchHoldFrames > 4 && heldMs > 450) ||
-                 heldMs > 800) ||
-                heldMs > 1500) {
+            const bool settled = (lensSwitchHoldFrames > 2 && aeSettled && awbSettled) ||
+                                 (lensSwitchHoldFrames > 4 && heldMs > 450) || heldMs > 800;
+            if ((rawrAeSettled && settled) || heldMs > 1500) {
                 lensSwitchHolding = false;
                 diag("CAMERA_LENS_SWITCH_REVEAL rawrAeFrames=" + std::to_string(lensSwitchRawrAeFrames) +
                      " frames=" + std::to_string(lensSwitchHoldFrames) +
