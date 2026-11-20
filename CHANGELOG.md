@@ -25,6 +25,12 @@ first and moves to `xiaomi-17u` once verified.
   (1.6 to 3.3 px). With OIS off the gyro matches the image (correlation
   0.89, gain 0.94, no frame lag) and Standard cut the fine jitter of the
   same take by about half. Not yet better than OIS alone: work in progress.
+- Smoothing: Standard 1.0 s (was 0.45 s), Strong 2.0 s (was 1.0 s). Walking
+  test on the 17U, same route, separate takes (x / y, px at 4K): fine jitter
+  OIS alone 1.7 / 0.7, Strong (1.0 s) 1.0 / 0.7; slow sway 0.3-1 Hz OIS
+  alone 4.2 / 2.8, Strong 1.4 / 1.8. The old Standard (0.45 s) was no
+  better than OIS. Standing still, OIS alone still has less fine jitter
+  (it also corrects within the frame). Motion blur without OIS not measured.
 
 ## 0.5.1-17u.3
 

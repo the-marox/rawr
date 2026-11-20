@@ -116,7 +116,10 @@ internal class StabilizerSensor(context: Context) : SensorEventListener {
                 .putInt(KEY, mode.coerceIn(0, 2)).apply()
         }
 
-        /** Smoothing time constant per mode: longer follows the hand less. */
-        fun smoothingSeconds(mode: Int): Float = if (mode >= 2) 1.0f else .45f
+        /**
+         * Smoothing time constant per mode: longer follows the hand less. 17U walking test (Nov 2026): 0.45 s was no
+         * better than OIS alone, 1.0 s beat it; the crop used at most ~22 of its 120 px, so Strong goes to 2 s.
+         */
+        fun smoothingSeconds(mode: Int): Float = if (mode >= 2) 2.0f else 1.0f
     }
 }
