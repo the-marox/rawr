@@ -23,7 +23,8 @@ class VideoFastPath final {
     static constexpr uint32_t kLutSize = 65;
     static constexpr uint32_t kSlots = rawrcam::imaging::kRealtimeFramesInFlight;
 
-    VideoFastPath(VkPhysicalDevice physical, VkDevice device, uint32_t width, uint32_t height);
+    // tenBit: P010 encoder input, otherwise NV12.
+    VideoFastPath(VkPhysicalDevice physical, VkDevice device, uint32_t width, uint32_t height, bool tenBit);
     ~VideoFastPath();
     VideoFastPath(const VideoFastPath&) = delete;
     VideoFastPath& operator=(const VideoFastPath&) = delete;

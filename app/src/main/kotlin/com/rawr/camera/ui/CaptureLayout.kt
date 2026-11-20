@@ -3,7 +3,20 @@ package com.rawr.camera.ui
 import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
@@ -55,6 +68,22 @@ internal fun PhysicalCaptureLayout(
     // 16:9 viewfinders run past the photo frame and behind the shutter
     // cluster; Open Gate is exactly the photo box, so nothing bleeds.
     val videoBleed = isVideo && state.videoResolution != VideoResolutionMode.OPEN_GATE
+    // 17U: while recording, controls that cannot change mid-record (and the
+    // exposure/look overlays) step aside so the frame is clear. A tap anywhere
+    // on the viewfinder brings them back for 3 s; it still reaches tap-to-focus.
+    val recordingNow = isVideo && videoControls.recording
+    var revealTick by remember { mutableStateOf(0) }
+    var revealed by remember { mutableStateOf(false) }
+    LaunchedEffect(revealTick) {
+        if (revealTick > 0) {
+            revealed = true
+            delay(3_000L)
+            revealed = false
+        }
+    }
+    LaunchedEffect(recordingNow) { if (!recordingNow) revealed = false }
+    val cleanRecording = recordingNow && !revealed
+    val cleanAlpha by animateFloatAsState(if (cleanRecording) 0f else 1f, tween(150), label = "recordingClean")
     BoxWithConstraints(modifier) {
         // Reserve the shutter/record area and both monitors before sizing the
         // 3:4 viewfinder. A short display must not push the readout below nav.
@@ -72,10 +101,26 @@ internal fun PhysicalCaptureLayout(
         // Open Gate, and 16:9 video share identical control geometry.
         val photoFrame = DpSize(viewfinderWidth, viewfinderWidth * 4f / 3f)
         Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
-            CaptureTopBar(state, dispatch, onOpenSettings, videoLocked = videoLocked, vfControlsHidden = quick.anyVfControlHidden)
+            if (cleanRecording) {
+                Spacer(Modifier.fillMaxWidth().height(CaptureDimens.TopBarHeight).background(CaptureColors.Surface))
+            } else {
+                Box(Modifier.graphicsLayer { alpha = cleanAlpha }) {
+                    CaptureTopBar(state, dispatch, onOpenSettings, videoLocked = videoLocked,
+                        vfControlsHidden = quick.anyVfControlHidden)
+                }
+            }
             // The info bar can be hidden (VF CONTROLS); its row keeps its height so the frame never moves.
             if (quick.showInfoBar) monitor() else Spacer(Modifier.fillMaxWidth().height(CaptureDimens.MonitorHeight))
-            Box(Modifier.fillMaxWidth().weight(1f)) {
+            Box(
+                Modifier.fillMaxWidth().weight(1f).pointerInput(recordingNow) {
+                    if (!recordingNow) return@pointerInput
+                    // Observe taps without consuming them: focus and controls still get them.
+                    awaitEachGesture {
+                        awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                        revealTick++
+                    }
+                }
+            ) {
                 CaptureViewfinder(
                     state = state,
                     dispatch = dispatch,
@@ -89,7 +134,11 @@ internal fun PhysicalCaptureLayout(
                     forceTonemapStrip = isVideo,
                     filmQuick = filmQuick,
                     onFilmEvent = onFilmEvent,
-                    quick = quick.copy(locked = isVideo && videoLocked),
+                    quick = quick.copy(
+                        locked = isVideo && videoLocked,
+                        showLook = quick.showLook && !cleanRecording,
+                        showExposure = quick.showExposure && !cleanRecording
+                    ),
                     onQuickEvent = onQuickEvent
                 )
                 if (isVideo && videoControls.recording) {
@@ -119,6 +168,7 @@ internal fun PhysicalCaptureLayout(
                         videoControls = videoControls,
                         onToggleVideoRecording = onToggleVideoRecording,
                         overlay = videoBleed,
+                        selectorsAlpha = cleanAlpha,
                         modifier = if (compactControls) {
                             Modifier.fillMaxWidth().weight(1f)
                         } else {

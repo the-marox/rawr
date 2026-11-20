@@ -1,5 +1,7 @@
 #include "pipeline/FrameSubmitCoordinator.h"
 
+#include <chrono>
+
 #include "video/ContextKeptArea.h"
 
 #include <android/log.h>
@@ -687,9 +689,18 @@ void FrameSubmitCoordinator::submitSplitVideoAndMonitor(const SubmitParams& para
         vkCheck(vkBeginCommandBuffer(slot->command, &begin), "video monitor begin command");
         videoOutput_->beginMonitorTiming(slot->command, slotIndex);
         const auto extent = videoOutput_->monitorExtent();
+        // Scopes while recording: each slot recomputes at most every 300 ms (~10
+        // scope updates/s over the rotating slots); other frames reuse the slot's
+        // last scope image. Saves ~2 ms GPU per shown frame at 342 MHz.
+        const int64_t scopeNow = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                     std::chrono::steady_clock::now().time_since_epoch()).count();
+        int64_t& scopeLast = videoScopeLastNs_[slotIndex % videoScopeLastNs_.size()];
+        const bool scopeCompute = scopeNow - scopeLast >= 300'000'000;
+        if (scopeCompute) scopeLast = scopeNow;
         resources_.recorder()->recordVideoScopes(slot->command, slotIndex, videoOutput_->monitorView(slotIndex),
                                                  videoOutput_->monitorImage(slotIndex), extent.width, extent.height,
-                                                 config_.sensorOrientationDegrees, scopeDeviceRotationDegrees_);
+                                                 config_.sensorOrientationDegrees, scopeDeviceRotationDegrees_,
+                                                 scopeCompute);
         swapchainRenderer_.record(slot->command, slotIndex, *acquired.swapIndex, extent.width, extent.height,
                                   config_.sensorOrientationDegrees, displayRotationDegrees_, 0u, false, 0u, true);
         resources_.recorder()->restoreVideoScopes(slot->command, slotIndex);

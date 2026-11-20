@@ -12,7 +12,8 @@
 #include <string>
 #include <vector>
 
-#include "video_fast_yuv.h"
+#include "video_fast_yuv_nv12.h"
+#include "video_fast_yuv_p010.h"
 #include "vulkan/HostMemory.h"
 
 namespace rawrcam::video {
@@ -91,7 +92,8 @@ void VideoFastPath::destroyHostBuffer(HostBuffer& buffer) noexcept {
     buffer = {};
 }
 
-VideoFastPath::VideoFastPath(VkPhysicalDevice physical, VkDevice device, uint32_t width, uint32_t height)
+VideoFastPath::VideoFastPath(VkPhysicalDevice physical, VkDevice device, uint32_t width, uint32_t height,
+                             bool tenBit)
     : physical_(physical), device_(device), width_(width), height_(height) {
     try {
         constexpr uint32_t n = kLutSize;
@@ -160,8 +162,8 @@ VideoFastPath::VideoFastPath(VkPhysicalDevice physical, VkDevice device, uint32_
 
         VkShaderModuleCreateInfo module{};
         module.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-        module.codeSize = video_fast_yuv_spv_size;
-        module.pCode = reinterpret_cast<const uint32_t*>(video_fast_yuv_spv);
+        module.codeSize = tenBit ? video_fast_yuv_p010_spv_size : video_fast_yuv_nv12_spv_size;
+        module.pCode = reinterpret_cast<const uint32_t*>(tenBit ? video_fast_yuv_p010_spv : video_fast_yuv_nv12_spv);
         VkShaderModule shader = VK_NULL_HANDLE;
         check(vkCreateShaderModule(device, &module, nullptr, &shader), "fast path shader");
         VkComputePipelineCreateInfo pipeline{};
@@ -197,8 +199,8 @@ VideoFastPath::VideoFastPath(VkPhysicalDevice physical, VkDevice device, uint32_
             params_[i] = makeHostBuffer(sizeof(Params), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
             lsc_[i] = makeHostBuffer(kMaxLscBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
         }
-        __android_log_print(ANDROID_LOG_INFO, "RawrNativeVideo", "VIDEO_FAST_PATH ready %ux%u lut=%u", width, height,
-                            n);
+        __android_log_print(ANDROID_LOG_INFO, "RawrNativeVideo", "VIDEO_FAST_PATH ready %ux%u lut=%u %s", width, height,
+                            n, tenBit ? "p010" : "nv12");
     } catch (...) {
         destroy();
         throw;

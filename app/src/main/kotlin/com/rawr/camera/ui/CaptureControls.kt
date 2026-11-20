@@ -92,7 +92,9 @@ internal fun CaptureControls(
     videoControls: VideoControlState = VideoControlState(),
     onToggleVideoRecording: () -> Unit = {},
     /** Transparent background for floating over the 16:9 bleed (video overlay slot). */
-    overlay: Boolean = false
+    overlay: Boolean = false,
+    /** Lens and mode selectors fade out while recording (17U clean recording view). */
+    selectorsAlpha: Float = 1f
 ) {
     val isVideo = state.captureMode == CaptureMode.Video
     // Lens switching and mode switching are disabled while a video recording
@@ -117,7 +119,7 @@ internal fun CaptureControls(
                 dispatch = dispatch,
                 onOpenLensSettings = onOpenLensSettings,
                 enabled = !recordingLock,
-                modifier = Modifier.padding(top = 10.dp)
+                modifier = Modifier.padding(top = 10.dp).graphicsLayer { alpha = selectorsAlpha }
             )
             Row(
                 Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 8.dp),
@@ -159,7 +161,7 @@ internal fun CaptureControls(
                 state = state,
                 dispatch = dispatch,
                 enabled = !recordingLock,
-                modifier = Modifier.padding(bottom = 6.dp)
+                modifier = Modifier.padding(bottom = 6.dp).graphicsLayer { alpha = selectorsAlpha }
             )
         }
         return

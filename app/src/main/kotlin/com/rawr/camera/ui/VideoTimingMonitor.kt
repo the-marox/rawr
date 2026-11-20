@@ -30,6 +30,8 @@ internal fun VideoTimingMonitor(state: VideoControlState) {
         MonitorMetric("FPS", (timing?.let { "${state.fps}/${"%.1f".format(it.actualFps)}" } ?: "${state.fps}/—").padEnd(7))
         MonitorMetric("DROP", (timing?.let { t -> t.dropReason?.let { "${t.dropped}·$it" } ?: "${t.dropped}" } ?: "—").padEnd(7),
             valueColor = if (timing != null && timing.dropped > 0) CaptureColors.Danger else Color.White)
+        // While recording only the essentials update (17U): fewer redraws of the bar.
+        if (state.recording) return@Row
         MonitorMetric("SHORT", (timing?.shortfall?.toString() ?: "—").padEnd(3))
         // Average/recent peak: a drop comes from one slow frame, which the average hides.
         MonitorMetric("GPU", (timing?.let { "%.0f/%.0fms".format(it.gpuMs, it.gpuPeakMs) } ?: "—").padEnd(9))

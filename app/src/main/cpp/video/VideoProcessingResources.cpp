@@ -191,16 +191,17 @@ VideoProcessingResources::Prepared VideoProcessingResources::prepare(rawrcam::vu
         if (config.highlightEnabled && config.highlightMethod == 1u) stage->prepareColoropp();
     }
     out.tonemap = makeTonemap(context, key.outputFormat, renderLut);
-    // 17U fast path: 1:1 quad demosaic into a 10-bit YUV encoder. Off with
+    // 17U fast path: 1:1 quad demosaic into a YUV encoder (P010 or NV12). Off with
     // `adb shell setprop debug.rawr.video.fast 0`.
     char fastProp[PROP_VALUE_MAX] = {};
     __system_property_get("debug.rawr.video.fast", fastProp);
-    if (fastProp[0] != '0' && key.outputFormat == VK_FORMAT_A2B10G10R10_UNORM_PACK32 &&
+    const bool fastTenBit = key.outputFormat == VK_FORMAT_A2B10G10R10_UNORM_PACK32;
+    if (fastProp[0] != '0' && (fastTenBit || key.outputFormat == VK_FORMAT_R8G8B8A8_UNORM) &&
         out.demosaic->sensorScale() == 1u && std::string(out.demosaic->method()) == "quad_guided_chroma") {
         try {
             out.fastBake = makeTonemap(context, VK_FORMAT_R16G16B16A16_SFLOAT, renderLut);
             out.fast = std::make_unique<VideoFastPath>(context.physicalDevice(), context.device(), key.width,
-                                                       key.height);
+                                                       key.height, fastTenBit);
         } catch (const std::exception& error) {
             __android_log_print(ANDROID_LOG_WARN, "RawrNativeVideo", "VIDEO_FAST_PATH unavailable: %s", error.what());
             out.fast.reset();

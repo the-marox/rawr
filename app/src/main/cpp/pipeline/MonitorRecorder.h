@@ -47,7 +47,7 @@ class MonitorRecorder final {
                  uint32_t cropH = 0) const;
     void recordVideoScopes(VkCommandBuffer command, uint32_t frameSlot, VkImageView monitorView, VkImage monitorImage,
                            uint32_t width, uint32_t height, int sensorOrientationDegrees,
-                           int deviceRotationDegrees) const;
+                           int deviceRotationDegrees, bool compute = true) const;
     void restoreVideoScopes(VkCommandBuffer command, uint32_t frameSlot) const;
 
    private:

@@ -710,8 +710,9 @@ void RawDevelopRecorder::recordSceneExposure(VkCommandBuffer command, uint32_t f
 }
 
 void RawDevelopRecorder::recordVideoScopes(VkCommandBuffer command, uint32_t slot, VkImageView view, VkImage image,
-                                           uint32_t width, uint32_t height, int sensor, int rotation) const {
-    monitor_.recordVideoScopes(command, slot, view, image, width, height, sensor, rotation);
+                                           uint32_t width, uint32_t height, int sensor, int rotation,
+                                           bool compute) const {
+    monitor_.recordVideoScopes(command, slot, view, image, width, height, sensor, rotation, compute);
 }
 void RawDevelopRecorder::restoreVideoScopes(VkCommandBuffer command, uint32_t slot) const {
     monitor_.restoreVideoScopes(command, slot);
