@@ -215,7 +215,7 @@ private fun StabilisationGroup() {
     SettingsGroup(
         title = "Stabilisation",
         description = "Gyro stabilisation (gyro tracking from apos-fandango's Rawr X14U). Takes out hand shake (up/down, " +
-            "left/right and tilt) by moving and turning the frame inside the sensor's spare area, so it needs a " +
+            "left/right) by moving the frame inside the sensor's spare area, so it needs a " +
             "recording smaller than the sensor (4K or 1080p, not Open Gate) and works on the fast recording path " +
             "only. The lens OIS is turned off while it runs. Don't stabilise the video again in Gyroflow."
     ) {
@@ -231,7 +231,8 @@ private fun StabilisationGroup() {
             enabled = mode > 0,
             supportingText = "Keeps the horizon level from the gravity sensor, in landscape. Zooms in 1.1x so the " +
                 "frame can turn about 10 degrees; past that it only turns part of the way. Levelling comes before " +
-                "shake: a big tilt leaves less room for the shake.",
+                "shake: a big tilt leaves less room for the shake. Turning the frame costs about twice the GPU " +
+                "work (more heat and battery).",
             testTag = SettingsTestTags.row("VideoEncoder", "level_horizon")
         ) {
             levelHorizon = it

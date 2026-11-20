@@ -25,7 +25,8 @@ namespace {
 // its tilt) out: a shift in RAW pixels and a rotation about the record crop's centre, kept inside the margin the crop
 // leaves in the image area minus an 8-pixel apron for the demosaic. Publishes that margin as angles so the gyro
 // integrator keeps its shake within it. nullopt when off.
-std::optional<VideoFastPath::Warp> stabilizerWarp(const VideoDemosaic& demosaic, const VideoKeptArea& keptArea) {
+std::optional<VideoFastPath::Warp> stabilizerWarp(const VideoDemosaic& demosaic, const VideoKeptArea& keptArea,
+                                                  bool turnAvailable) {
     using namespace rawrcam::geometry;
     const float focal = stabilizerFocalPx().load(std::memory_order_relaxed);
     if (!stabilizerEnabled().load(std::memory_order_relaxed) || !(focal > 0.0f) || demosaic.sensorScale() != 1u) {
@@ -46,7 +47,9 @@ std::optional<VideoFastPath::Warp> stabilizerWarp(const VideoDemosaic& demosaic,
     // Horizon levelling zooms in a little (kLevelScale samples a smaller window) so the frame can turn about 10
     // degrees and still shift; without it the margin allows ~5 degrees with no shift left.
     constexpr float kLevelScale = 1.0f / 1.1f;
-    const bool levelling = stabilizerLevelHorizon().load(std::memory_order_relaxed);
+    // Turning needs the turned shader variant (a wider tile ring, ~2.4x the GPU work on the 17U), so only horizon
+    // levelling turns; plain stabilisation shifts only.
+    const bool levelling = stabilizerLevelHorizon().load(std::memory_order_relaxed) && turnAvailable;
     const float scale = levelling ? kLevelScale : 1.0f;
     // Room for the window's corners: half the frame plus the margin, against the scaled, turned half frame.
     const auto fits = [&](float angle, float sx, float sy) {
@@ -66,11 +69,12 @@ std::optional<VideoFastPath::Warp> stabilizerWarp(const VideoDemosaic& demosaic,
     const float roomX = halfW + marginX - scale * halfW, roomY = halfH + marginY - scale * halfH;
     stabilizerRoomX().store(roomX / focal, std::memory_order_relaxed);
     stabilizerRoomY().store(roomY / focal, std::memory_order_relaxed);
-    stabilizerRoomRoll().store(maxTurn(0.0f, 0.0f), std::memory_order_relaxed);
+    stabilizerRoomRoll().store(levelling ? maxTurn(0.0f, 0.0f) : 0.0f, std::memory_order_relaxed);
     const int64_t frameNs = stabilizerFrameTimeNs().load(std::memory_order_relaxed);
     StabilizerSample shake;
     VideoFastPath::Warp warp{};
     warp.cosAngle = scale;
+    warp.turn = levelling;
     if (!stabilizerTrack().at(frameNs, shake)) return warp;
     // A camera turn about y moves the scene sideways in the image, about x up and down: the window follows the
     // scene. A turn about the lens axis turns the scene the other way, so the window turns back by the same angle
@@ -87,11 +91,9 @@ std::optional<VideoFastPath::Warp> stabilizerWarp(const VideoDemosaic& demosaic,
         warp.shiftX = std::clamp(want[0], -leftX, leftX);
         warp.shiftY = std::clamp(want[1], -leftY, leftY);
     } else {
-        // Shift first; the turn gets the margin the shift leaves.
         warp.shiftX = std::clamp(want[0], -roomX, roomX);
         warp.shiftY = std::clamp(want[1], -roomY, roomY);
-        const float turn = maxTurn(warp.shiftX, warp.shiftY);
-        angle = std::clamp(angle, -turn, turn);
+        angle = 0.0f;
     }
     warp.cosAngle = scale * std::cos(angle);
     warp.sinAngle = scale * std::sin(angle);
@@ -246,7 +248,8 @@ void VideoRecorder::record(VkCommandBuffer command, uint32_t frameSlot, uint32_t
         bakeTone.params = params;
         const auto& buffer = *output_.yuvFrames_[imageIndex].buffer;
         const auto warp = resources_.fast_->warpAvailable()
-                              ? stabilizerWarp(*resources_.demosaic_, resources_.processingKey_.kept)
+                              ? stabilizerWarp(*resources_.demosaic_, resources_.processingKey_.kept,
+                                               resources_.fast_->turnAvailable())
                               : std::nullopt;
         const VideoFastPath::EncoderTarget target{buffer.buffer,       buffer.yOffsetWords, buffer.yStrideWords,
                                                   buffer.cOffsetWords, buffer.cStrideWords, buffer.swapUV};

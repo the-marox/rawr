@@ -25,11 +25,18 @@ layout(local_size_x = VIDEO_QT, local_size_y = VIDEO_QT, local_size_z = 1) in;
 // VIDEO_FAST_WARP: the stabilised variant. Each output pixel samples the sensor at a rotated, sub-pixel shifted
 // position (gyro stabilisation and horizon levelling, geometry/Stabilizer.h), bilinear between demosaiced pixels.
 // The workgroup's RAW tile follows the warped position of its output tile. The tile's cells are demosaiced once into
-// a shared RGB tile (3-cell ring: the turn and the levelling zoom move a pixel up to ~4 px inside the tile at 10
-// degrees and 1.1x, plus the rounding of the tile base and the bilinear tap), and every output pixel interpolates
-// from it: each demosaiced pixel then serves the ~4 output pixels around it instead of being recomputed per tap.
+// a shared RGB tile and every output pixel interpolates from it: each demosaiced pixel then serves the ~4 output
+// pixels around it instead of being recomputed per tap. The ring around the tile is what costs: with
+// VIDEO_FAST_WARP_TURN (horizon levelling: turn and 1.1x zoom, a pixel moves up to ~4 px inside the tile at 10
+// degrees) it is 3 cells, ~2.4x the GPU work of the plain pass on the 17U; the shift-only variant needs 1 cell.
 #ifdef VIDEO_FAST_WARP
+#ifdef VIDEO_FAST_WARP_TURN
 #define VIDEO_QUAD_CELL_RING 4
+#define VIDEO_RGB_CELL_RING 3
+#else
+#define VIDEO_QUAD_CELL_RING 2
+#define VIDEO_RGB_CELL_RING 1
+#endif
 #define VIDEO_CUSTOM_TILE_BASE 1
 #endif
 
@@ -58,7 +65,7 @@ ivec2 videoTileBase() {
     return ivec2(round(sourceCentre * 0.5)) * 2 - ivec2(VIDEO_QT);
 }
 
-const int kRgbCellRing = 3;
+const int kRgbCellRing = VIDEO_RGB_CELL_RING;
 const int kRgbRing = 2 * kRgbCellRing;
 const int kRgbSide = 2 * VIDEO_QT + 2 * kRgbRing;
 const int kRgbCells = VIDEO_QT + 2 * kRgbCellRing;

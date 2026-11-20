@@ -51,18 +51,22 @@ first and moves to `xiaomi-17u` once verified.
   10-bit recording with both changes vs the morning build: average GPU
   clock 348 -> 286 MHz at similar load (busy x clock -21%), no dropped
   frames.
-- Stabilisation now warps the frame in the fast pass instead of moving the
-  crop in 2-pixel steps: sub-pixel shift plus a turn about the frame centre
-  (roll), bilinear between demosaiced pixels (stabilised shader variant
-  only; the unstabilised path is unchanged). Roll shake is now corrected
-  too, within the margin the shift leaves (about 5 degrees at 4K).
-- Level horizon (Settings › Video Encoder › Stabilisation): the turn
-  follows the gravity sensor instead, keeping the horizon level in
+- Stabilisation now resamples the frame in the fast pass instead of moving
+  the crop in 2-pixel steps: sub-pixel shift, bilinear between demosaiced
+  pixels (stabilised shader variant only; the unstabilised path is
+  unchanged).
+- Level horizon (Settings › Video Encoder › Stabilisation): turns the
+  frame by the tilt from the gravity sensor, keeping the horizon level in
   landscape; it fades out past 45 degrees (portrait). It zooms in 1.1x so
   the frame can turn about 10 degrees, and levels before taking out shake.
   The stabilised pass demosaics the tile once into shared memory and
   interpolates from it (the first version re-demosaiced every bilinear tap:
-  13-14 ms of GPU per 4K frame against ~9.7 ms unstabilised).
+  13-14 ms of GPU per 4K frame against ~9.7 ms unstabilised). Even so,
+  turning needs a wide ring around each tile: 3-minute 4K60 takes measured
+  busy x clock 215 (Off) vs 525 (Strong with turns, GPU up to 902 MHz). So
+  Standard/Strong now only shift (sub-pixel, narrow ring) and roll shake is
+  no longer corrected there; only Level horizon turns (and costs the
+  ~2.4x).
   First test (no zoom yet): the turn's direction is right (in the video the
   applied turn cancelled the camera's roll, -0.81 vs -0.83 per degree), but
   tilts of up to 15 degrees ran past the ~5 degrees the margin allowed.

@@ -33,8 +33,10 @@ class VideoFastPath final {
     // a shift in sensor pixels.
     struct Warp {
         float cosAngle = 1.0f, sinAngle = 0.0f, shiftX = 0.0f, shiftY = 0.0f;
+        bool turn = false;  // turned/zoomed variant (horizon levelling); otherwise shift only
     };
     bool warpAvailable() const noexcept { return warpPipeline_ != VK_NULL_HANDLE; }
+    bool turnAvailable() const noexcept { return turnPipeline_ != VK_NULL_HANDLE; }
 
     struct EncoderTarget {
         VkBuffer buffer = VK_NULL_HANDLE;
@@ -73,7 +75,8 @@ class VideoFastPath final {
     VkDescriptorSetLayout setLayout_ = VK_NULL_HANDLE;
     VkPipelineLayout pipelineLayout_ = VK_NULL_HANDLE;
     VkPipeline pipeline_ = VK_NULL_HANDLE;
-    VkPipeline warpPipeline_ = VK_NULL_HANDLE;
+    VkPipeline warpPipeline_ = VK_NULL_HANDLE;   // shift only
+    VkPipeline turnPipeline_ = VK_NULL_HANDLE;   // turn and zoom (horizon levelling)
     VkDescriptorPool pool_ = VK_NULL_HANDLE;
     std::array<VkDescriptorSet, kSlots> sets_{};
     std::array<HostBuffer, kSlots> params_{};
