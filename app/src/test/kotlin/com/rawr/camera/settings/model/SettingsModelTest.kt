@@ -454,6 +454,25 @@ class SettingsModelTest {
         assertTrue(controller.state.value.values.toViewfinderQuickState().levelMeterEnabled)
     }
 
+    @Test fun lightMeterIsOffByDefaultAndReachesTheViewfinder() {
+        val controller = PersistentSettingsController()
+        assertFalse(controller.state.value.values.lightMeterEnabled)
+        assertFalse(controller.state.value.values.toViewfinderQuickState().lightMeterEnabled)
+        controller.dispatch(SetLightMeter(true))
+        assertTrue(controller.state.value.values.lightMeterEnabled)
+        assertTrue(controller.state.value.values.toViewfinderQuickState().lightMeterEnabled)
+    }
+
+    @Test fun autoAntiFlickerFollowsTheFlickerSensor() {
+        assertEquals(1, antibandingModeFor(AntiFlicker.Auto, 100))
+        assertEquals(2, antibandingModeFor(AntiFlicker.Auto, 120))
+        assertEquals(3, antibandingModeFor(AntiFlicker.Auto, null))
+        // An explicit choice always wins over the sensor.
+        assertEquals(2, antibandingModeFor(AntiFlicker.Hz60, 100))
+        assertEquals(1, antibandingModeFor(AntiFlicker.Hz50, 120))
+        assertEquals(0, antibandingModeFor(AntiFlicker.Off, 100))
+    }
+
     @Test fun viewfinderDivisorIsDisplaySettingClampedToOneThroughFour() {
         val controller = PersistentSettingsController()
         controller.dispatch(SetViewfinderDivisor(3))

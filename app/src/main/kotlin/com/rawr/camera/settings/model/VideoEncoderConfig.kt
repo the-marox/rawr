@@ -98,7 +98,9 @@ data class VideoEncoderConfig(
     /** High-pass corner in Hz; 0 = off. */
     val audioLowCutHz: Int = 0,
     /** Cinema/panoramic crop inside the selected resolution; Native keeps the frame. */
-    val aspect: com.rawr.camera.video.VideoAspect = com.rawr.camera.video.VideoAspect.Native
+    val aspect: com.rawr.camera.video.VideoAspect = com.rawr.camera.video.VideoAspect.Native,
+    /** Record the gyroscope into a Gyroflow .gcsv log beside each video. */
+    val gyroflowLog: Boolean = false
 ) {
     fun sanitized(): VideoEncoderConfig = copy(
         bitDepth = if (bitDepth == 8) 8 else 10,

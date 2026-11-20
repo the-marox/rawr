@@ -8,6 +8,7 @@
 #include "encoding/OutputFd.h"
 #include "metadata/GpsMetadata.h"
 #include "metadata/LevelMetadata.h"
+#include "metadata/AmbientMetadata.h"
 
 namespace tonemap {
 struct TonemapParams;
@@ -35,6 +36,8 @@ struct DngCaptureContext {
     std::optional<tinydng_gps> gps;
     // Camera attitude at the shutter press. Not part of the capture journal: a recovered capture has none.
     std::optional<rawrcam::metadata::CaptureLevel> level;
+    // Auxiliary sensor readings (light, flicker, ToF, pressure) at the shutter press; absent on phones without them.
+    std::optional<rawrcam::metadata::CaptureAmbient> ambient;
     std::shared_ptr<const tonemap::TonemapParams> captureTone;
     std::shared_ptr<const spektrafilm_native::FilmLook> captureFilm;
     bool captureFilmEnabled = false;

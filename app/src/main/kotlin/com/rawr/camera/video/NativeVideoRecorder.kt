@@ -132,7 +132,9 @@ class NativeVideoRecorder(private val context: Context, private val preview: Raw
                         val logProfile: com.rawr.camera.settings.model.VideoLogProfile? = null,
                         val timestampPolicy: VideoTimestampPolicy = VideoTimestampPolicy.REALTIME,
                         val saveLocationId: String = "storage.dcim_camera",
-                        val gps: com.rawr.camera.location.CaptureGps? = null) {
+                        val gps: com.rawr.camera.location.CaptureGps? = null,
+                        /** Write a Gyroflow .gcsv gyro log beside the video. */
+                        val gyroflowLog: Boolean = false) {
         /** Rec.709 and AgX (video) write BT.709; other display profiles write sRGB. */
         val rec709: Boolean get() = renderProfileId == com.rawr.camera.settings.model.ColorRenderProfile.Rec709.nativeId ||
             renderProfileId == com.rawr.camera.settings.model.ColorRenderProfile.AGX_REC709_NATIVE_ID
@@ -148,6 +150,8 @@ class NativeVideoRecorder(private val context: Context, private val preview: Raw
     private var metadataGamut = ""
     private var metadataTransfer = ""
     private var settings = Settings()
+    private var displayName = ""
+    private var gyroLog: GyroflowLogger? = null
     override val isRecording: Boolean get() = handle != 0L
     override val outputUri: Uri? get() = uri
 
@@ -177,6 +181,7 @@ class NativeVideoRecorder(private val context: Context, private val preview: Raw
         check(rotation >= 0) { "Camera orientation is not ready for recording" }
         val captureTime = CaptureTime.snapshot()
         val displayName = CaptureFileNames.baseName(captureTime) + if (request.audioPcmBits > 0) ".mov" else ".mp4"
+        this.displayName = displayName
         uri = null
         journal = null
         try {
@@ -203,6 +208,10 @@ class NativeVideoRecorder(private val context: Context, private val preview: Raw
                 metadataGamut, metadataTransfer, request.logProfile != null, requireNotNull(index).path,
                 request.gps, captureTime)
             check(handle != 0L) { "Native recorder did not start" }
+            // Gyro samples from here on; a phone without a gyroscope records the video alone.
+            if (request.gyroflowLog) {
+                gyroLog = GyroflowLogger(context).takeIf { it.start(displayName, "RAWR ${BuildConfig.VERSION_NAME}") }
+            }
             surface = engine.nativeSurface(handle)
             check(preview.setVideoSurface(surface, request.width, request.height, request.bitDepth)) {
                 "GPU encoder surface unavailable at ${request.width}×${request.height}"
@@ -228,6 +237,8 @@ class NativeVideoRecorder(private val context: Context, private val preview: Raw
                 .put("metadataGamut", metadataGamut).put("metadataTransfer", metadataTransfer)
                 .put("processing", preview.videoImageSettingsSnapshot()?.toJson()))
         } catch (error: Throwable) {
+            gyroLog?.abort()
+            gyroLog = null
             runCatching { preview.setVideoSurface(null) }
             runCatching { preview.endVideoFps() }
             surface?.release()
@@ -291,11 +302,14 @@ class NativeVideoRecorder(private val context: Context, private val preview: Raw
             check(result.optBoolean("ok")) { "Native recording failed: ${result.optJSONObject("stats")?.optString("failure")}" }
             uri?.let(outputStore::publish)
             append(JSONObject().put("event", "published"))
+            saveGyroLog(result.optJSONObject("stats"))
             index?.delete()
         } catch (error: Throwable) {
             failure = error
             append(JSONObject().put("event", "error").put("error", error.toString()))
         } finally {
+            gyroLog?.abort()
+            gyroLog = null
             if (handle != 0L) {
                 runCatching { engine.nativeStop(handle) }
                 handle = 0L
@@ -305,6 +319,30 @@ class NativeVideoRecorder(private val context: Context, private val preview: Raw
             surface = null
         }
         if (failure != null) throw requireNotNull(failure)
+    }
+
+    /** The video is saved; a failed gyro log never fails the recording, the journal notes it. */
+    private fun saveGyroLog(stats: JSONObject?) {
+        val logger = gyroLog ?: return
+        gyroLog = null
+        // t = 0 at the first frame, on the file's own clock; without frame times the log keeps the start time.
+        val timeline = stats?.let {
+            Gcsv.VideoTimeline.of(it.optLong("firstVideoPtsUs", -1), it.optLong("lastVideoPtsUs", -1),
+                it.optLong("lastFileVideoPtsUs", -1))
+        }
+        val log = logger.stop()?.let { raw -> timeline?.let { runCatching { logger.retime(raw, it) }.getOrNull() } ?: raw }
+        val video = uri
+        if (log == null || video == null) {
+            append(JSONObject().put("event", "gyroflow").put("saved", false))
+            return
+        }
+        runCatching { outputStore.saveSidecar(video, settings.saveLocationId, Gcsv.sidecarName(displayName), log) }
+            .onSuccess {
+                append(JSONObject().put("event", "gyroflow").put("saved", true).put("uri", it.toString())
+                    .put("timeScale", timeline?.scale ?: 1.0))
+            }
+            .onFailure { append(JSONObject().put("event", "gyroflow").put("saved", false).put("error", it.toString())) }
+        log.delete()
     }
 
     private fun append(event: JSONObject) { journal?.appendText(event.toString() + "\n") }

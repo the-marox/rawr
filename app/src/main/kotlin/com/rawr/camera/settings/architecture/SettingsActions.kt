@@ -80,6 +80,8 @@ data class SetEyeControlsViewfinder(val enabled: Boolean) : SettingsApplicationA
 
 data class SetLevelMeter(val enabled: Boolean) : SettingsApplicationAction
 
+data class SetLightMeter(val enabled: Boolean) : SettingsApplicationAction
+
 data class SetColorRenderProfile(val value: ColorRenderProfile) : SettingsApplicationAction
 
 data class SelectUserLutProfile(val profileId: String) : SettingsApplicationAction

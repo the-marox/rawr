@@ -170,6 +170,21 @@ std::vector<uint8_t> buildDngProvenance(const rawrcam::imaging::RawSnapshot& fra
             prov.extensions.emplace_back("com.rawrcam.level.roll_deg",
                                          rawrcam::metadata::formatAngle(*captureContext.level->rollDeg));
     }
+    if (captureContext.ambient) {
+        const auto& ambient = *captureContext.ambient;
+        if (ambient.lux)
+            prov.extensions.emplace_back("com.rawrcam.ambient.lux", rawrcam::metadata::formatDecimal(*ambient.lux, 1));
+        if (ambient.cctK)
+            prov.extensions.emplace_back("com.rawrcam.ambient.cct_k", rawrcam::metadata::formatDecimal(*ambient.cctK, 0));
+        if (ambient.flickerHz)
+            prov.extensions.emplace_back("com.rawrcam.ambient.flicker_hz", std::to_string(*ambient.flickerHz));
+        if (ambient.flickerRawHz)
+            prov.extensions.emplace_back("com.rawrcam.ambient.flicker_raw_hz",
+                                         rawrcam::metadata::formatDecimal(*ambient.flickerRawHz, 2));
+        if (ambient.tofDistanceMm)
+            prov.extensions.emplace_back("com.rawrcam.tof.distance_mm",
+                                         rawrcam::metadata::formatDecimal(*ambient.tofDistanceMm, 0));
+    }
     if (!frame.metadata.hotPixelMap.empty())
         prov.extensions.emplace_back("com.rawrcam.hot_pixel.count",
                                      std::to_string(frame.metadata.hotPixelMap.size() / 2));

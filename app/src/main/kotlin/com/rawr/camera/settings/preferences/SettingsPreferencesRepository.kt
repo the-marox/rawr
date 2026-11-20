@@ -518,6 +518,7 @@ class SettingsPreferencesRepository(context: Context, private val defaults: Sett
             vfShowInfoBar = p[Keys.vfShowInfoBar] ?: d.vfShowInfoBar,
             vfEyeControls = p[Keys.vfEyeControls] ?: d.vfEyeControls,
             levelMeterEnabled = p[Keys.levelMeterEnabled] ?: d.levelMeterEnabled,
+            lightMeterEnabled = p[Keys.lightMeterEnabled] ?: d.lightMeterEnabled,
             armedOverlays = decodeArmedOverlays(p, d.armedOverlays),
             falseColorManual = p[Keys.falseColorManual] ?: d.falseColorManual,
             activeScopes = decodeScopes(p[Keys.activeScopes], d.activeScopes),
@@ -650,7 +651,8 @@ class SettingsPreferencesRepository(context: Context, private val defaults: Sett
                 audioRoute = p[Keys.videoAudioRoute]?.let(VideoAudioRoute::of) ?: d.videoEncoder.audioRoute,
                 audioGainDb = p[Keys.videoAudioGainDb] ?: d.videoEncoder.audioGainDb,
                 audioLowCutHz = p[Keys.videoAudioLowCutHz] ?: d.videoEncoder.audioLowCutHz,
-                aspect = p[Keys.videoAspect]?.let(com.rawr.camera.video.VideoAspect::fromId) ?: d.videoEncoder.aspect
+                aspect = p[Keys.videoAspect]?.let(com.rawr.camera.video.VideoAspect::fromId) ?: d.videoEncoder.aspect,
+                gyroflowLog = p[Keys.videoGyroflowLog] ?: d.videoEncoder.gyroflowLog
             ).sanitized(),
             photoLensShadingEnabled = p[Keys.photoLensShading] ?: p[Keys.lensShadingCorrection] ?: d.photoLensShadingEnabled,
             videoLensShadingEnabled = p[Keys.videoLensShading] ?: d.videoLensShadingEnabled,
@@ -733,6 +735,7 @@ class SettingsPreferencesRepository(context: Context, private val defaults: Sett
         p[Keys.vfShowInfoBar] = v.vfShowInfoBar
         p[Keys.vfEyeControls] = v.vfEyeControls
         p[Keys.levelMeterEnabled] = v.levelMeterEnabled
+        p[Keys.lightMeterEnabled] = v.lightMeterEnabled
         // Blank (not absent) = all off, so a non-empty default can't come back.
         p[Keys.armedOverlays] = v.armedOverlays.map { it.name }.distinct().sorted().joinToString(",")
         p[Keys.falseColorManual] = v.falseColorManual
@@ -887,6 +890,7 @@ class SettingsPreferencesRepository(context: Context, private val defaults: Sett
         p[Keys.videoAudioGainDb] = encoder.audioGainDb
         p[Keys.videoAudioLowCutHz] = encoder.audioLowCutHz
         p[Keys.videoAspect] = encoder.aspect.id
+        p[Keys.videoGyroflowLog] = encoder.gyroflowLog
         p[Keys.photoLensShading] = v.photoLensShadingEnabled
         p[Keys.videoLensShading] = v.videoLensShadingEnabled
         p[Keys.distortionCorrection] = v.distortionCorrectionEnabled
@@ -1104,6 +1108,7 @@ class SettingsPreferencesRepository(context: Context, private val defaults: Sett
         val vfShowInfoBar = booleanPreferencesKey("capture_vf_show_info_bar")
         val vfEyeControls = booleanPreferencesKey("capture_vf_eye_controls")
         val levelMeterEnabled = booleanPreferencesKey("capture_level_meter")
+        val lightMeterEnabled = booleanPreferencesKey("capture_light_meter")
         val overlayMode = stringPreferencesKey("capture_overlay_mode")
         val armedOverlays = stringPreferencesKey("capture_armed_overlays")
         val falseColorManual = booleanPreferencesKey("capture_false_color_manual")
@@ -1242,6 +1247,7 @@ class SettingsPreferencesRepository(context: Context, private val defaults: Sett
         val videoAudioGainDb = intPreferencesKey("video_audio_gain_db")
         val videoAudioLowCutHz = intPreferencesKey("video_audio_low_cut_hz")
         val videoAspect = stringPreferencesKey("video_aspect")
+        val videoGyroflowLog = booleanPreferencesKey("video_gyroflow_log")
         val photoLensShading = booleanPreferencesKey("photo_lens_shading")
         val videoLensShading = booleanPreferencesKey("video_lens_shading")
         val distortionCorrection = booleanPreferencesKey("distortion_correction")

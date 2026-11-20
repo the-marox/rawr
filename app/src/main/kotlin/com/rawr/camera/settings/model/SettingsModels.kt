@@ -662,6 +662,8 @@ data class SettingsValues(
     val vfEyeControls: Boolean = true,
     /** Horizon/level overlay on the capture viewfinder. */
     val levelMeterEnabled: Boolean = false,
+    /** Rear light sensor readout (lux, EV, colour temperature, flicker) on the capture viewfinder. */
+    val lightMeterEnabled: Boolean = false,
     // Preview-only look-stage (tonemap or film) downsample divisor, 1..4.
     // Film always runs at 2 or more. Never touches stills, video, or EXIF.
     val viewfinderDivisor: Int = 2,
@@ -1069,6 +1071,18 @@ fun antibandingModeFor(value: AntiFlicker): Int = when (value) {
     AntiFlicker.Hz60 -> 2
     AntiFlicker.Off -> 0
     AntiFlicker.Auto -> 3
+}
+
+/**
+ * Auto follows the phone's flicker sensor when it has confirmed mains flicker (100 Hz -> 50HZ,
+ * 120 Hz -> 60HZ) and otherwise leaves the decision to the camera's own detection. The explicit
+ * choices always win.
+ */
+fun antibandingModeFor(value: AntiFlicker, sensedFlickerHz: Int?): Int = when {
+    value != AntiFlicker.Auto -> antibandingModeFor(value)
+    sensedFlickerHz == 100 -> 1
+    sensedFlickerHz == 120 -> 2
+    else -> 3
 }
 
 /** Post-gain soft-knee width in EV for a HighlightProtection level. */

@@ -35,6 +35,15 @@ internal fun DisplayControlsSettings(state: SettingsUiState, dispatch: SettingsD
             ) { dispatch.invoke(SetLevelMeter(it)) }
             SettingDivider()
             SettingsSwitchRow(
+                title = "Light meter",
+                checked = state.values.lightMeterEnabled,
+                supportingText = "Reads the sensors beside the rear cameras: lux, incident EV, colour temperature, " +
+                    "mains flicker and the laser AF distance, with a warning when the shutter speed will band. " +
+                    "Phones without these sensors show nothing.",
+                testTag = SettingsTestTags.row("DisplayControls", "light_meter")
+            ) { dispatch.invoke(SetLightMeter(it)) }
+            SettingDivider()
+            SettingsSwitchRow(
                 title = "DCP Quick Select",
                 checked = state.values.showDcpQuickSelect,
                 supportingText = "Show the DCP profile shortcut beside the lens selector on the capture screen.",

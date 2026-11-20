@@ -77,7 +77,31 @@ inline std::optional<tinydng_gps> sanitizeGps(tinydng_gps gps) {
     if (!gps.speed[1] || (gps.speed_ref != 'K' && gps.speed_ref != 'M' && gps.speed_ref != 'N')) gps.has_speed = 0;
     if (!gps.track[1] || (gps.track_ref != 'T' && gps.track_ref != 'M') ||
         (gps.track[1] && double(gps.track[0]) / gps.track[1] >= 360)) gps.has_track = 0;
+    if (!gps.img_direction[1] || (gps.img_direction_ref != 'T' && gps.img_direction_ref != 'M') ||
+        double(gps.img_direction[0]) / gps.img_direction[1] >= 360) gps.has_img_direction = 0;
     return gps;
+}
+
+// GPSImgDirection: the compass direction the lens pointed, degrees in [0, 360) from true ('T') or magnetic ('M')
+// north. Out-of-range values leave the record without a direction.
+inline tinydng_gps withImageDirection(tinydng_gps gps, double degrees, char ref) {
+    gps.has_img_direction = 0;
+    if (!std::isfinite(degrees) || (ref != 'T' && ref != 'M')) return gps;
+    double normalized = std::fmod(degrees, 360.0);
+    if (normalized < 0) normalized += 360.0;
+    const auto hundredths = std::llround(normalized * 100.0) % 36000;
+    gps.img_direction[0] = uint32_t(hundredths);
+    gps.img_direction[1] = 100;
+    gps.img_direction_ref = ref;
+    gps.has_img_direction = 1;
+    return gps;
+}
+
+// The app measures the direction of the rear lens axis; a front camera (Camera2 LENS_FACING_FRONT = 0) looks the
+// other way.
+inline tinydng_gps gpsForLensFacing(tinydng_gps gps, int lensFacing) {
+    if (lensFacing != 0 || !gps.has_img_direction || !gps.img_direction[1]) return gps;
+    return withImageDirection(gps, double(gps.img_direction[0]) / gps.img_direction[1] + 180.0, gps.img_direction_ref);
 }
 
 inline bool sameGpsRecord(const tinydng_gps& left, const tinydng_gps& right) {
@@ -99,7 +123,10 @@ inline bool sameGpsRecord(const tinydng_gps& left, const tinydng_gps& right) {
         left.has_speed == right.has_speed && (!left.has_speed || (left.speed_ref == right.speed_ref &&
             std::memcmp(left.speed, right.speed, sizeof(left.speed)) == 0)) &&
         left.has_track == right.has_track && (!left.has_track || (left.track_ref == right.track_ref &&
-            std::memcmp(left.track, right.track, sizeof(left.track)) == 0));
+            std::memcmp(left.track, right.track, sizeof(left.track)) == 0)) &&
+        left.has_img_direction == right.has_img_direction && (!left.has_img_direction ||
+            (left.img_direction_ref == right.img_direction_ref &&
+             std::memcmp(left.img_direction, right.img_direction, sizeof(left.img_direction)) == 0));
 }
 
 struct SourceGps {

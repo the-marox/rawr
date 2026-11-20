@@ -62,6 +62,7 @@
 #define TD_WTAG_XMP 700u
 #define TD_WTAG_EXPOSURE_COMPENSATION 37380u
 #define TD_WTAG_CAMERA_ELEVATION_ANGLE 37893u
+#define TD_WTAG_PRESSURE 37890u
 #define TD_WTAG_SHARPNESS 41994u
 #define TD_WTAG_MAKER_NOTE 37500u
 #define TD_WTAG_DATETIME_ORIGINAL 36867u
@@ -971,6 +972,7 @@ static void td_stage_gps(tinydng_writer *writer, const tinydng_gps *gps) {
   td_writer *directory = &writer->gps;
   const char latitude_ref[2] = {gps ? gps->latitude_ref : 0, 0}, longitude_ref[2] = {gps ? gps->longitude_ref : 0, 0};
   const char speed_ref[2] = {gps ? gps->speed_ref : 0, 0}, track_ref[2] = {gps ? gps->track_ref : 0, 0};
+  const char img_direction_ref[2] = {gps ? gps->img_direction_ref : 0, 0};
   const uint8_t version[4] = {2, 4, 0, 0};
   if (!gps || !gps->has_coordinates) return;
   directory->ctx = writer->ctx;
@@ -995,6 +997,10 @@ static void td_stage_gps(tinydng_writer *writer, const tinydng_gps *gps) {
   if (gps->has_track) {
     td_add_ascii(directory, 14, track_ref);
     td_gps_ratio(directory, 15, &gps->track, 1);
+  }
+  if (gps->has_img_direction) {
+    td_add_ascii(directory, 16, img_direction_ref);
+    td_gps_ratio(directory, 17, &gps->img_direction, 1);
   }
   if (gps->map_datum[0]) td_add_ascii(directory, 18, gps->map_datum);
   if (gps->processing_method_size)
@@ -2160,6 +2166,9 @@ tinydng_status tinydng_writer_create(tinydng_context *ctx,
             td_add_srational_pairs(e, TD_WTAG_CAMERA_ELEVATION_ANGLE,
                                    &ex->camera_elevation_angle[0],
                                    &ex->camera_elevation_angle[1], 1);
+          }
+          if (ex->has_pressure) {
+            td_add_urational_pairs(e, TD_WTAG_PRESSURE, &ex->pressure[0], &ex->pressure[1], 1);
           }
           if (ex->has_sharpness) {
             td_add_short(e, TD_WTAG_SHARPNESS, ex->sharpness);
