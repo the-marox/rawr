@@ -78,9 +78,12 @@ class CaptureViewModel(application: Application) : AndroidViewModel(application)
     private val latestSettings: SettingsValues get() = settingsEditor.state.value
     val cameraLocation = com.rawr.camera.location.CameraLocation.get(application)
     private val levelSensor = com.rawr.camera.integration.CaptureLevelSensor(application)
+    /** Rear light, colour temperature and flicker sensors, on phones that have them. */
+    val auxSensors = com.rawr.camera.integration.AuxSensors(application)
     val foreground = com.rawr.camera.integration.CaptureForeground { active ->
         cameraLocation.setForeground(active)
         levelSensor.setActive(active)
+        auxSensors.setActive(active)
     }
     fun videoImageSettings(): com.rawr.camera.video.VideoImageSettings = latestSettings.toVideoImageSettings()
     fun videoEncoderConfig(): com.rawr.camera.settings.model.VideoEncoderConfig = latestSettings.videoEncoder.sanitized()
@@ -122,7 +125,8 @@ class CaptureViewModel(application: Application) : AndroidViewModel(application)
             onJpegPublished = ::onJpegPublished,
             onDngPublished = ::refreshLatestGalleryImage,
             gpsSnapshot = cameraLocation::snapshot,
-            levelSnapshot = levelSensor::snapshot
+            levelSnapshot = levelSensor::snapshot,
+            ambientSnapshot = auxSensors::snapshot
         )
     val controller: CaptureScreenController =
         NativeCaptureScreenController(
@@ -153,7 +157,8 @@ class CaptureViewModel(application: Application) : AndroidViewModel(application)
 
     private val settingsSync by lazy {
         com.rawr.camera.integration.CaptureSettingsSync(
-            viewModelScope, settingsEditor.values, { latestSettings }, previewCoordinator, controller
+            viewModelScope, settingsEditor.values, { latestSettings }, previewCoordinator, controller,
+            sensedFlicker = auxSensors.flickerFrequency
         )
     }
 
@@ -200,6 +205,20 @@ class CaptureViewModel(application: Application) : AndroidViewModel(application)
     init {
         refreshLatestGalleryImage()
         viewModelScope.launch { recordingBackend.recoverInterrupted() }
+        // The light meter and capture metadata read the front light sensor while a front camera is in use.
+        viewModelScope.launch {
+            kotlinx.coroutines.flow.combine(
+                controller.state.map { it.selectedLensId }.distinctUntilChanged(),
+                settingsEditor.state.map { it.effectiveLensProfiles(DeviceLensDefaults.lenses) }.distinctUntilChanged()
+            ) { lensId, profiles -> profiles.firstOrNull { it.name == lensId }?.camera?.id }
+                .distinctUntilChanged()
+                .collect { cameraId ->
+                    val front = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        cameraId != null && com.rawr.camera.integration.isFrontCamera(getApplication(), cameraId)
+                    }
+                    auxSensors.setFrontCamera(front)
+                }
+        }
         viewModelScope.launch {
             settingsEditor.values.map { it.capturePreferences(DeviceLensDefaults.lenses) }.distinctUntilChanged().collect { preferences ->
                 controller.dispatch(preferences)
@@ -368,6 +387,7 @@ class CaptureViewModel(application: Application) : AndroidViewModel(application)
 
     override fun onCleared() {
         levelSensor.setActive(false)
+        auxSensors.setActive(false)
         recording.closeWhenIdle {
             stillCaptureCoordinator.closeWhenIdle {
                 controller.close()

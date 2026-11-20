@@ -31,7 +31,8 @@ class StillCaptureCoordinator(
     private val onJpegPublished: (Uri) -> Unit = {},
     private val onDngPublished: () -> Unit = {},
     private val gpsSnapshot: () -> com.rawr.camera.location.CaptureGps?,
-    private val levelSnapshot: () -> CaptureLevel? = { null }
+    private val levelSnapshot: () -> CaptureLevel? = { null },
+    private val ambientSnapshot: () -> AuxSensorReading? = { null }
 ) {
     data class CompletionEvent(val requestId: Long, val artifact: Artifact, val success: Boolean, val jpegRequested: Boolean = false,
                                 val filmFallbackMemory: Boolean = false, val dngFailed: Boolean = false) {
@@ -71,6 +72,7 @@ class StillCaptureCoordinator(
                                     var frozenAssetId: String? = null,
                                     val gps: com.rawr.camera.location.CaptureGps? = null,
                                     val level: CaptureLevel? = null,
+                                    val ambient: AuxSensorReading? = null,
                                     val requestedAtNs: Long = android.os.SystemClock.elapsedRealtimeNanos())
     private val queuedInputs = java.util.concurrent.ConcurrentLinkedQueue<CaptureInput>()
     private val activeCaptures = java.util.concurrent.atomic.AtomicInteger(0)
@@ -93,8 +95,11 @@ class StillCaptureCoordinator(
         val snapshot = settings().copy(dngEnabled = format.dng, jpegEnabled = format.jpeg)
         val releaseAssets = com.rawr.camera.settings.preferences.CaptureLutPins.acquire(
             snapshot.userLutProfiles.firstOrNull { it.id == snapshot.selectedUserLutProfileId })
+        val ambient = ambientSnapshot()
+        // The lens heading is a location fact (EXIF GPSImgDirection): it is recorded only with a location.
+        val gps = if (snapshot.locationTagging) gpsSnapshot()?.withLensHeading(ambient?.headingMagneticDeg) else null
         queuedInputs.add(CaptureInput(snapshot, CaptureTime.snapshot(), releaseAssets,
-            gps = if (snapshot.locationTagging) gpsSnapshot() else null, level = levelSnapshot(),
+            gps = gps, level = levelSnapshot(), ambient = ambient,
             requestedAtNs = requestedAtNs))
         activeCaptures.incrementAndGet()
         pressCameraLeases += 1
@@ -287,6 +292,7 @@ class StillCaptureCoordinator(
                     wallClockMillis = now,
                     gps = input.gps,
                     level = input.level,
+                    ambient = input.ambient,
                     utcOffsetMinutes = offsetMinutes,
                     deviceMake = Build.MANUFACTURER,
                     deviceModel = DeviceNames.marketingModel(),
@@ -332,6 +338,7 @@ class StillCaptureCoordinator(
                     wallClockMillis = now,
                     gps = input.gps,
                     level = input.level,
+                    ambient = input.ambient,
                     utcOffsetMinutes = offsetMinutes,
                     deviceMake = Build.MANUFACTURER,
                     deviceModel = DeviceNames.marketingModel(),

@@ -239,7 +239,8 @@ class MainActivity : ComponentActivity() {
                         timing = recording.timing,
                         audio = videoAudioInput
                     ),
-                    onToggleVideoRecording = ::toggleVideoRecording
+                    onToggleVideoRecording = ::toggleVideoRecording,
+                    auxSensors = captureViewModel.auxSensors.reading
                 )
             }
         }

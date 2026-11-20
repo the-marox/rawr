@@ -13,9 +13,33 @@ data class CaptureGps internal constructor(
     val altitude: Double?,
     val accuracy: Double?,
     val fixTimeMillis: Long,
-    val providerCode: Int = 0
+    val providerCode: Int = 0,
+    /** EXIF GPSImgDirection: compass direction of the rear lens axis, degrees; null = unknown. */
+    val imageDirectionDeg: Double? = null,
+    /** True when [imageDirectionDeg] is from true north (declination applied), false for magnetic north. */
+    val imageDirectionTrueNorth: Boolean = false
 ) {
     override fun toString(): String = "CaptureGps"
+
+    /**
+     * This fix with the lens heading measured by the compass. The magnetic heading is turned to true north with
+     * the declination at this position and time (World Magnetic Model).
+     */
+    fun withLensHeading(magneticHeadingDeg: Float?): CaptureGps {
+        if (magneticHeadingDeg == null || !magneticHeadingDeg.isFinite()) return this
+        val declination = runCatching {
+            android.hardware.GeomagneticField(
+                latitude.toFloat(), longitude.toFloat(), (altitude ?: 0.0).toFloat(),
+                fixTimeMillis.takeIf { it > 0 } ?: System.currentTimeMillis()
+            ).declination
+        }.getOrNull()
+        return if (declination != null && declination.isFinite()) {
+            copy(imageDirectionDeg = CompassMath.normalizeDeg(magneticHeadingDeg + declination).toDouble(),
+                imageDirectionTrueNorth = true)
+        } else {
+            copy(imageDirectionDeg = CompassMath.normalizeDeg(magneticHeadingDeg).toDouble(), imageDirectionTrueNorth = false)
+        }
+    }
 }
 
 internal enum class LocationPrecision { NONE, COARSE, FINE }

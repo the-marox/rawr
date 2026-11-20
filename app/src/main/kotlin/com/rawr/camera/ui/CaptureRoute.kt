@@ -37,7 +37,9 @@ fun CaptureRoute(
     quick: ViewfinderQuickState = ViewfinderQuickState(),
     onQuickEvent: (CaptureQuickEvent) -> Unit = {},
     videoControls: VideoControlState = VideoControlState(),
-    onToggleVideoRecording: () -> Unit
+    onToggleVideoRecording: () -> Unit,
+    /** Rear light sensor readings for the light meter; null = not available. */
+    auxSensors: kotlinx.coroutines.flow.StateFlow<com.rawr.camera.integration.AuxSensorReading?>? = null
 ) {
     val controlFlow = androidx.compose.runtime.remember(controller) {
         controller.state.map { it.controlProjection() }.distinctUntilChanged()
@@ -97,25 +99,27 @@ fun CaptureRoute(
             deviceRotationDegrees = it
         }
     )
-    CaptureScreen(
-        state = state,
-        dispatch = controller::dispatch,
-        preview = preview,
-        monitor = monitor,
-        renderProfiles = renderProfiles,
-        onSelectRenderProfile = onSelectRenderProfile,
-        onOpenSettings = onOpenSettings,
-        latestImageUri = latestImageUri,
-        onOpenLatestImage = onOpenLatestImage,
-        onOpenRenderer = onOpenRenderer,
-        onOpenFilmSimSettings = onOpenFilmSimSettings,
-        onOpenMultiframeSettings = onOpenMultiframeSettings,
-        onOpenLensSettings = onOpenLensSettings,
-        filmQuick = filmQuick,
-        onFilmEvent = onFilmEvent,
-        quick = quick,
-        onQuickEvent = onQuickEvent,
-        videoControls = videoControls,
-        onToggleVideoRecording = onToggleVideoRecording
-    )
+    androidx.compose.runtime.CompositionLocalProvider(LocalAuxSensors provides auxSensors) {
+        CaptureScreen(
+            state = state,
+            dispatch = controller::dispatch,
+            preview = preview,
+            monitor = monitor,
+            renderProfiles = renderProfiles,
+            onSelectRenderProfile = onSelectRenderProfile,
+            onOpenSettings = onOpenSettings,
+            latestImageUri = latestImageUri,
+            onOpenLatestImage = onOpenLatestImage,
+            onOpenRenderer = onOpenRenderer,
+            onOpenFilmSimSettings = onOpenFilmSimSettings,
+            onOpenMultiframeSettings = onOpenMultiframeSettings,
+            onOpenLensSettings = onOpenLensSettings,
+            filmQuick = filmQuick,
+            onFilmEvent = onFilmEvent,
+            quick = quick,
+            onQuickEvent = onQuickEvent,
+            videoControls = videoControls,
+            onToggleVideoRecording = onToggleVideoRecording
+        )
+    }
 }

@@ -126,6 +126,47 @@ int main() {
         if (angle[1] != 100) return 94;
         if (md::levelXmpAttributes(*noRoll).find("rawr:Roll") != std::string::npos) return 95;
     }
+    {
+        // Auxiliary sensor values (Xiaomi 15 readings under a 50 Hz-mains LED and in the dark).
+        namespace md = rawrcam::metadata;
+        const float led[4] = {51.1f, 3329.0f, 100.0f, 101.5625f};
+        const auto lit = md::captureAmbientFromValues(led, 4);
+        if (!lit || !lit->lux || !lit->cctK || lit->flickerHz != 100 || !lit->flickerRawHz) return 96;
+        const float dark[4] = {0.1f, 662008.0f, 0.0f, std::nanf("")};
+        const auto dim = md::captureAmbientFromValues(dark, 4);
+        if (!dim || !dim->lux || dim->cctK || dim->flickerHz != 0 || dim->flickerRawHz) return 97;
+        const float nothing[4] = {std::nanf(""), std::nanf(""), 50.0f, std::nanf("")};
+        if (md::captureAmbientFromValues(nothing, 4) || md::captureAmbientFromValues(nullptr, 4) ||
+            md::captureAmbientFromValues(led, 3)) return 98;
+        const float covered[5] = {std::nanf(""), std::nanf(""), std::nanf(""), std::nanf(""), -5.0f};
+        const float wall[5] = {std::nanf(""), std::nanf(""), std::nanf(""), std::nanf(""), 218.0f};
+        const auto near = md::captureAmbientFromValues(wall, 5);
+        const float air[6] = {std::nanf(""), std::nanf(""), std::nanf(""), std::nanf(""), std::nanf(""), 1013.2f};
+        const float vacuum[6] = {std::nanf(""), std::nanf(""), std::nanf(""), std::nanf(""), std::nanf(""), 12.0f};
+        const auto pressure = md::captureAmbientFromValues(air, 6);
+        if (!pressure || pressure->pressureHpa != 1013.2f || md::captureAmbientFromValues(vacuum, 6) ||
+            md::pressureRational(1013.2f)[0] != 10132 || md::pressureRational(1013.2f)[1] != 10 ||
+            !md::captureXmpPacket(std::nullopt, pressure).empty()) return 88;
+        // Lens heading (EXIF GPSImgDirection): wrapped into one turn, turned around for a front camera.
+        const auto fix = md::makeGps(43.77, 11.25, 50.0, 5.0, 1793059200123LL);
+        if (!fix) return 87;
+        const auto west = md::withImageDirection(*fix, -90.0, 'T');
+        if (!west.has_img_direction || west.img_direction_ref != 'T' || west.img_direction[0] != 27000 ||
+            west.img_direction[1] != 100) return 87;
+        const auto selfie = md::gpsForLensFacing(west, 0);
+        if (selfie.img_direction[0] != 9000 || md::gpsForLensFacing(west, 1).img_direction[0] != 27000) return 87;
+        if (md::withImageDirection(*fix, std::nan(""), 'T').has_img_direction ||
+            md::withImageDirection(*fix, 10.0, 'X').has_img_direction ||
+            md::sameGpsRecord(west, *fix) || !md::sameGpsRecord(west, west)) return 87;
+        if (md::captureAmbientFromValues(covered, 5) || !near || near->tofDistanceMm != 218.0f ||
+            md::ambientXmpProperties(*near).find("rawr:TofDistance=\"0.218\"") == std::string::npos) return 89;
+        const std::string both = md::rawrXmpAttributes(md::CaptureLevel{3.2f, std::nullopt}, lit);
+        if (both.find("xmlns:rawr") != both.rfind("xmlns:rawr") || both.find("rawr:Pitch=\"3.20\"") == std::string::npos ||
+            both.find("rawr:AmbientLux=\"51.1\"") == std::string::npos ||
+            both.find("rawr:AmbientColorTemperature=\"3329\"") == std::string::npos ||
+            both.find("rawr:LightFlicker=\"100\"") == std::string::npos ||
+            !md::rawrXmpAttributes(std::nullopt, std::nullopt).empty()) return 99;
+    }
     if (!ljpegSsss16Conformant()) return 10;
     rawrcam::encoding::dng::DngCaptureContext capture{};
     capture.deviceMake = "vivo";
@@ -137,6 +178,8 @@ int main() {
     capture.displayName = "RAWR_20260826_01000012.dng";
     capture.gps = rawrcam::metadata::makeGps(0, 0, 12345.678, std::nullopt, 1793059200123LL);
     capture.level = rawrcam::metadata::CaptureLevel{3.2f, -1.8f};
+    capture.ambient = rawrcam::metadata::CaptureAmbient{51.1f, 3329.0f, 100, 101.5625f, 3384.0f, 1013.2f};
+    capture.gps = rawrcam::metadata::withImageDirection(*capture.gps, 123.45, 'T');
     capture.baselineExposureEV = 2.0f;
     capture.processingRecipe = R"({"schema":"com.rawrcam.processing-recipe","version":1,"filmSimEnabled":true})";
     capture.resolvedRecipe = R"({"version":1,"aePostGain":4})";
@@ -352,6 +395,7 @@ int main() {
             timed.utcOffsetMinutes = 0;
             timed.gps.reset();
             timed.level.reset();
+            timed.ambient.reset();
         }
         auto params = rawrcam::encoding::dng::makeTinyDngWriteParams(good, timed, &error);
         if (!params) {
@@ -372,6 +416,10 @@ int main() {
             !privateHas(params->privateData, "aePostGain") ||
             !privateHas(params->privateData, "com.rawrcam.processing.source_role") ||
             !privateHas(params->privateData, "1234"))
+            return 6;
+        if (privateHas(params->privateData, "com.rawrcam.ambient.cct_k") != (pass == 0) ||
+            privateHas(params->privateData, "com.rawrcam.tof.distance_mm") != (pass == 0) ||
+            privateHas(params->privateData, "com.rawrcam.ambient.flicker_hz") != (pass == 0))
             return 6;
         if (privateHas(params->privateData, "com.rawrcam.processing.frame.v1") != (pass == 0) ||
             privateHas(params->privateData, "frameMarker") != (pass == 0))
@@ -448,10 +496,15 @@ int main() {
                       img->exif.camera_elevation_angle[1] == 100;
                 ok &= xmp.find("rawr:Pitch=\"3.20\"") != std::string::npos &&
                       xmp.find("rawr:Roll=\"-1.80\"") != std::string::npos &&
-                      xmp.find("xmlns:rawr=\"urn:rawr:ns:1.0/\"") != std::string::npos;
+                      xmp.find("xmlns:rawr=\"urn:rawr:ns:1.0/\"") != std::string::npos &&
+                      xmp.find("rawr:AmbientLux=\"51.1\"") != std::string::npos &&
+                      xmp.find("rawr:LightFlicker=\"100\"") != std::string::npos;
+                ok &= img->exif.has_pressure && img->exif.pressure[0] == 10132 && img->exif.pressure[1] == 10;
+                ok &= img->gps.has_img_direction && img->gps.img_direction_ref == 'T' &&
+                      img->gps.img_direction[0] == 12345 && img->gps.img_direction[1] == 100;
                 ok &= img->raw.rawr_private_data != nullptr;
             } else {
-                ok &= !img->exif.has_camera_elevation_angle && !hasXmp;
+                ok &= !img->exif.has_camera_elevation_angle && !hasXmp && !img->exif.has_pressure;
             }
             for (const char* value : {img->exif.offset_time, img->exif.offset_time_original, img->exif.offset_time_digitized})
                 ok &= value && std::string(value) == (pass == 0 ? "+07:00" : "+00:00");

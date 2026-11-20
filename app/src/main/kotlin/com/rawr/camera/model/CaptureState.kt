@@ -151,6 +151,8 @@ data class CaptureUiState(
     val grid: GridMode = GridMode.Off,
     val exposureControl: ExposureControlState = ExposureControlState.initial(capabilities),
     val exposureApplied: ExposureAppliedState = ExposureAppliedState.initial(capabilities),
+    /** The shutter time behind [exposureApplied] (what the capture will use); null before the first result. */
+    val appliedExposureTimeNs: Long? = null,
     /** Camera2 POST_RAW_SENSITIVITY_BOOST result (100 == 1x); null before first result. */
     val sensitivityBoost: Int? = null,
     /** Long exposure (shutter past the 1/5 s viewfinder): see NativeCameraUiSnapshot. */

@@ -82,6 +82,7 @@ IfdEntry raw(std::uint16_t tag, std::uint16_t type, const void* data, std::uint3
 std::vector<IfdEntry> gpsIfd(const tinydng_gps& gps) {
     const char latitudeRef[2]{gps.latitude_ref, 0}, longitudeRef[2]{gps.longitude_ref, 0};
     const char speedRef[2]{gps.speed_ref, 0}, trackRef[2]{gps.track_ref, 0};
+    const char imgDirectionRef[2]{gps.img_direction_ref, 0};
     std::vector<IfdEntry> ifd;
     if (gps.has_version) ifd.push_back(raw(0, 1, gps.version, 4));
     ifd.push_back(raw(1, 2, latitudeRef, 2));
@@ -100,6 +101,10 @@ std::vector<IfdEntry> gpsIfd(const tinydng_gps& gps) {
     if (gps.has_track) {
         ifd.push_back(raw(14, 2, trackRef, 2));
         ifd.push_back(rationals(15, &gps.track, 1));
+    }
+    if (gps.has_img_direction) {
+        ifd.push_back(raw(16, 2, imgDirectionRef, 2));
+        ifd.push_back(rationals(17, &gps.img_direction, 1));
     }
     if (gps.map_datum[0]) ifd.push_back(raw(18, 2, gps.map_datum, std::uint32_t(std::strlen(gps.map_datum) + 1)));
     if (gps.processing_method_size) ifd.push_back(raw(27, 7, gps.processing_method, gps.processing_method_size));
@@ -203,6 +208,13 @@ std::vector<unsigned char> buildExif(const JpegCaptureContext& c, std::uint32_t 
         put32(value, static_cast<std::uint32_t>(angle[1]));
         exif.push_back({0x9405, 10, 1, value});  // CameraElevationAngle, SRATIONAL
     }
+    if (c.ambient && c.ambient->pressureHpa) {
+        const auto pressure = rawrcam::metadata::pressureRational(*c.ambient->pressureHpa);
+        std::vector<unsigned char> value;
+        put32(value, pressure[0]);
+        put32(value, pressure[1]);
+        exif.push_back({0x9402, 5, 1, value});  // Pressure, RATIONAL hPa
+    }
     exif.push_back({0xA001, 3, 1, shortData(1)});  // sRGB
     exif.push_back({0xA000, 7, 4, {'0', '1', '0', '0'}});
     exif.push_back({0xA002, 4, 1, longData(width)});
@@ -245,7 +257,8 @@ std::vector<unsigned char> buildExif(const JpegCaptureContext& c, std::uint32_t 
     std::sort(exif.begin(), exif.end(), [](const IfdEntry& a, const IfdEntry& b) { return a.tag < b.tag; });
     const std::uint32_t ifd0Offset = appendIfd(ifd0);
     const std::uint32_t exifOffset = appendIfd(exif);
-    const std::uint32_t gpsOffset = c.gps ? appendIfd(gpsIfd(*c.gps)) : 0;
+    const std::uint32_t gpsOffset =
+        c.gps ? appendIfd(gpsIfd(rawrcam::metadata::gpsForLensFacing(*c.gps, c.captureLensFacing))) : 0;
     // Locate ExifIFDPointer entry in IFD0 and patch its value.
     const std::size_t countPos = ifd0Offset;
     const std::uint16_t count =

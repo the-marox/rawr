@@ -41,12 +41,16 @@ inline std::string formatAngle(float deg) {
     return buf;
 }
 
-// Property attributes for an rdf:Description element, including the namespace declaration.
-inline std::string levelXmpAttributes(const CaptureLevel& level) {
-    std::string out = std::string(" xmlns:rawr=\"") + kLevelXmpNamespace + "\" rawr:Pitch=\"" +
-                      formatAngle(level.pitchDeg) + "\"";
+// The rawr: angle properties alone, without the namespace declaration (LightMetadata.h combines them).
+inline std::string levelXmpProperties(const CaptureLevel& level) {
+    std::string out = " rawr:Pitch=\"" + formatAngle(level.pitchDeg) + "\"";
     if (level.rollDeg) out += " rawr:Roll=\"" + formatAngle(*level.rollDeg) + "\"";
     return out;
+}
+
+// Property attributes for an rdf:Description element, including the namespace declaration.
+inline std::string levelXmpAttributes(const CaptureLevel& level) {
+    return std::string(" xmlns:rawr=\"") + kLevelXmpNamespace + "\"" + levelXmpProperties(level);
 }
 
 // A complete XMP packet for TIFF/DNG tag 700.

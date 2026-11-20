@@ -541,7 +541,8 @@ class RawPreviewCoordinator(application: Application) : AutoCloseable {
         ultraHdrEnabled: Boolean = false,
         ultraHdrGainmapQuality: Int = 95,
         gps: CaptureGps? = null,
-        level: CaptureLevel? = null
+        level: CaptureLevel? = null,
+        ambient: AuxSensorReading? = null
     ): Long {
         val subsampling = subsamplingCode(jpegChromaSubsamplingId)
         val demosaic = demosaicCode(demosaicAlgorithm)
@@ -578,7 +579,7 @@ class RawPreviewCoordinator(application: Application) : AutoCloseable {
             denoiseStrengths,
             captureRecipe, captureTone, captureFilmValues, captureFilmEnums, captureFilmEnabled,
             ultraHdrEnabled, ultraHdrGainmapQuality.coerceIn(1, 100),
-            dngCompressionCode(dngCompressionId), gps, level?.toNative()
+            dngCompressionCode(dngCompressionId), gps, level?.toNative(), ambient?.toNative()
         )
     }
 
@@ -628,7 +629,8 @@ class RawPreviewCoordinator(application: Application) : AutoCloseable {
         ultraHdrEnabled: Boolean = false,
         ultraHdrGainmapQuality: Int = 95,
         gps: CaptureGps? = null,
-        level: CaptureLevel? = null
+        level: CaptureLevel? = null,
+        ambient: AuxSensorReading? = null
     ): Long {
         val subsampling = subsamplingCode(jpegChromaSubsamplingId)
         val demosaic = demosaicCode(demosaicAlgorithm)
@@ -673,7 +675,7 @@ class RawPreviewCoordinator(application: Application) : AutoCloseable {
             denoiseStrengths,
             captureRecipe, captureTone, captureFilmValues, captureFilmEnums, captureFilmEnabled,
             ultraHdrEnabled, ultraHdrGainmapQuality.coerceIn(1, 100),
-            dngCompressionCode(dngCompressionId), gps, level?.toNative()
+            dngCompressionCode(dngCompressionId), gps, level?.toNative(), ambient?.toNative()
         )
     }
 

@@ -194,7 +194,8 @@ internal fun ExposureSettings(state: SettingsUiState, dispatch: SettingsDispatch
                 values = AntiFlicker.entries,
                 label = { it.label },
                 supportingText = "Keeps shutter speeds in step with mains lighting so it doesn't band. " +
-                    "Applies to both auto exposures; no effect in Manual."
+                    "Applies to both auto exposures; no effect in Manual. Auto follows the phone's flicker " +
+                    "sensor when it has one."
             ) { dispatch.invoke(SetAntiFlicker(it)) }
         }
         // Device AE only: rawr AE has its own Digital Gain and runs S/I itself.

@@ -9,8 +9,10 @@ import com.rawr.camera.video.VideoResolutionMode
 import com.rawr.camera.video.toVideoImageSettings
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.launch
@@ -21,7 +23,9 @@ internal class CaptureSettingsSync(
     private val values: Flow<SettingsValues>,
     private val latestSettings: () -> SettingsValues,
     private val previewCoordinator: RawPreviewCoordinator,
-    private val controller: CaptureScreenController
+    private val controller: CaptureScreenController,
+    /** Mains flicker confirmed by the phone's flicker sensor; must emit at once (null = none). */
+    private val sensedFlicker: Flow<FlickerFrequency?> = flowOf(null)
 ) {
     private val bindings = mutableListOf<suspend () -> Unit>()
     private var firstApplies = 0
@@ -43,9 +47,12 @@ internal class CaptureSettingsSync(
         // the user's own switches, and replaying one could undo a newer switch.
         // Native falls back to the first lens if this one left the profile.
         syncStream(values.map { it.lastLensId }.take(1)) { id -> id?.let(previewCoordinator::selectLens) }
-        syncSetting({ it.antiFlicker }) {
-            previewCoordinator.setAntibandingMode(com.rawr.camera.settings.model.antibandingModeFor(it))
-        }
+        // Auto follows the flicker sensor when the phone has one (see antibandingModeFor).
+        syncStream(
+            combine(values.map { it.antiFlicker }.distinctUntilChanged(), sensedFlicker) { setting, flicker ->
+                com.rawr.camera.settings.model.antibandingModeFor(setting, flicker?.hz)
+            }.distinctUntilChanged()
+        ) { previewCoordinator.setAntibandingMode(it) }
         syncSetting({ it.highlightProtection }) {
             previewCoordinator.setPostGainKneeWidthEv(com.rawr.camera.settings.model.postGainKneeWidthEvFor(it))
         }

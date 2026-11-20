@@ -23,6 +23,7 @@
 #include "diagnostics/logging/RuntimeTraceRecorder.h"
 #include "jni/CaptureGps.h"
 #include "metadata/LevelMetadata.h"
+#include "metadata/AmbientMetadata.h"
 #include "jni/DevelopSettingsReader.h"
 #include "jni/SessionEngineApi.h"
 #include "tonemap/ColorRenderProfile.h"
@@ -727,8 +728,11 @@ static void fillCaptureSharpening(JNIEnv* env, rawrcam::capture::JpegCaptureRequ
 static std::optional<tinydng_gps> captureGps(JNIEnv* env, jobject value) {
     const auto gps = rawrcam::jni::readCaptureGps(env, value);
     if (!gps) return std::nullopt;
-    return rawrcam::metadata::makeGps(gps->latitude, gps->longitude, gps->altitude, gps->accuracy,
-                                      gps->fixTimeMillis, gps->providerCode);
+    auto record = rawrcam::metadata::makeGps(gps->latitude, gps->longitude, gps->altitude, gps->accuracy,
+                                             gps->fixTimeMillis, gps->providerCode);
+    if (record && gps->imageDirectionDeg)
+        record = rawrcam::metadata::withImageDirection(*record, *gps->imageDirectionDeg, gps->imageDirectionTrue ? 'T' : 'M');
+    return record;
 }
 
 // {pitch, roll} in degrees, NaN roll = absent; null array = no level was measured.
@@ -737,6 +741,16 @@ static std::optional<rawrcam::metadata::CaptureLevel> captureLevel(JNIEnv* env, 
     float v[2];
     env->GetFloatArrayRegion(value, 0, 2, v);
     return rawrcam::metadata::captureLevelFromValues(v, 2);
+}
+
+// {lux, cctK, flickerHz, flickerRawHz, tofDistanceMm, pressureHpa}, NaN = unknown; null = no auxiliary sensors.
+static std::optional<rawrcam::metadata::CaptureAmbient> captureAmbient(JNIEnv* env, jfloatArray value) {
+    if (!value) return std::nullopt;
+    const jsize count = std::min<jsize>(env->GetArrayLength(value), 6);
+    if (count < 4) return std::nullopt;
+    float v[6];
+    env->GetFloatArrayRegion(value, 0, count, v);
+    return rawrcam::metadata::captureAmbientFromValues(v, static_cast<std::size_t>(count));
 }
 
 extern "C" JNIEXPORT jlong JNICALL Java_com_rawr_camera_integration_NativePreviewEngine_requestRawStillCapture(
@@ -749,7 +763,7 @@ extern "C" JNIEXPORT jlong JNICALL Java_com_rawr_camera_integration_NativePrevie
     jfloat defringeStrength, jfloat defringeEdgeThreshold, jfloat defringeLumaFloor, jintArray denoiseModes,
     jfloatArray denoiseStrengths, jstring captureRecipe, jfloatArray captureTone, jfloatArray captureFilmValues,
     jintArray captureFilmEnums, jboolean captureFilmEnabled, jboolean ultraHdrEnabled, jint ultraHdrGainmapQuality,
-    jint dngCompression, jobject gps, jfloatArray level) {
+    jint dngCompression, jobject gps, jfloatArray level, jfloatArray ambient) {
     const std::string deviceMake = jString(env, make);
     const std::string deviceModel = jString(env, model);
     const DenoiseIntent denoise = parseDenoiseSpec(env, denoiseModes, denoiseStrengths);
@@ -761,6 +775,7 @@ extern "C" JNIEXPORT jlong JNICALL Java_com_rawr_camera_integration_NativePrevie
     dng.processingRecipe = jString(env, captureRecipe);
     dng.gps = captureGps(env, gps);
     dng.level = captureLevel(env, level);
+    dng.ambient = captureAmbient(env, ambient);
     dng.appLensShadingCorrection = lensShadingCorrectionEnabled == JNI_TRUE;
     dng.appDistortionCorrection = distortionCorrectionEnabled == JNI_TRUE;
     freezeCaptureIntent(env, dng, captureTone, captureFilmValues, captureFilmEnums, captureFilmEnabled == JNI_TRUE);
@@ -776,6 +791,7 @@ extern "C" JNIEXPORT jlong JNICALL Java_com_rawr_camera_integration_NativePrevie
     fillCaptureSharpening(env, jpeg, captureRecipe);
     jpeg.output.gps = dng.gps;
     jpeg.output.level = dng.level;
+    jpeg.output.ambient = dng.ambient;
     return static_cast<jlong>(rawrcam::session::requestRawStillCapture(handle(h), std::move(dng), std::move(jpeg)));
 }
 extern "C" JNIEXPORT jlong JNICALL Java_com_rawr_camera_integration_NativePreviewEngine_startPreparedMultiframeCapture(
@@ -789,7 +805,7 @@ extern "C" JNIEXPORT jlong JNICALL Java_com_rawr_camera_integration_NativePrevie
     jfloat defringeStrength, jfloat defringeEdgeThreshold, jfloat defringeLumaFloor, jintArray denoiseModes,
     jfloatArray denoiseStrengths, jstring captureRecipe, jfloatArray captureTone, jfloatArray captureFilmValues,
     jintArray captureFilmEnums, jboolean captureFilmEnabled, jboolean ultraHdrEnabled, jint ultraHdrGainmapQuality,
-    jint dngCompression, jobject gps, jfloatArray level) {
+    jint dngCompression, jobject gps, jfloatArray level, jfloatArray ambient) {
     const std::string deviceMake = jString(env, make);
     const std::string deviceModel = jString(env, model);
     const DenoiseIntent denoise = parseDenoiseSpec(env, denoiseModes, denoiseStrengths);
@@ -802,6 +818,7 @@ extern "C" JNIEXPORT jlong JNICALL Java_com_rawr_camera_integration_NativePrevie
     base.processingRecipe = jString(env, captureRecipe);
     base.gps = captureGps(env, gps);
     base.level = captureLevel(env, level);
+    base.ambient = captureAmbient(env, ambient);
     base.appLensShadingCorrection = lensShadingCorrectionEnabled == JNI_TRUE;
     base.appDistortionCorrection = distortionCorrectionEnabled == JNI_TRUE;
     freezeCaptureIntent(env, base, captureTone, captureFilmValues, captureFilmEnums, captureFilmEnabled == JNI_TRUE);
@@ -822,6 +839,7 @@ extern "C" JNIEXPORT jlong JNICALL Java_com_rawr_camera_integration_NativePrevie
     jpeg.develop.multiframeChromaDenoise = multiframeChromaDenoise(env, tuningValues);
     jpeg.output.gps = base.gps;
     jpeg.output.level = base.level;
+    jpeg.output.ambient = base.ambient;
     auto baseMode = rawrcam::capture::multiframe::MultiframeBaseFrameMode::Sharpest;
     if (baseFrameMode == 0) baseMode = rawrcam::capture::multiframe::MultiframeBaseFrameMode::Middle;
     return static_cast<jlong>(rawrcam::session::startPreparedMultiframeCapture(

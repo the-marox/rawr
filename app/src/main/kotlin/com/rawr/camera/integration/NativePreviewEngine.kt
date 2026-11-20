@@ -188,7 +188,9 @@ class NativePreviewEngine {
         dngCompression: Int = 0,
         gps: CaptureGps? = null,
         // {pitch, roll} degrees, NaN roll = absent; null = no reading. See CaptureLevel.toNative.
-        level: FloatArray? = null
+        level: FloatArray? = null,
+        // {lux, cctK, flickerHz, flickerRawHz}, NaN = unknown; null = no light sensor. See AuxSensorReading.toNative.
+        ambient: FloatArray? = null
     ): Long
 
     external fun cancelPreparedMultiframeCapture(handle: Long)
@@ -253,7 +255,9 @@ class NativePreviewEngine {
         dngCompression: Int = 0,
         gps: CaptureGps? = null,
         // {pitch, roll} degrees, NaN roll = absent; null = no reading. See CaptureLevel.toNative.
-        level: FloatArray? = null
+        level: FloatArray? = null,
+        // {lux, cctK, flickerHz, flickerRawHz}, NaN = unknown; null = no light sensor. See AuxSensorReading.toNative.
+        ambient: FloatArray? = null
     ): Long
 
     external fun pollDngWriteCompletion(handle: Long): String
