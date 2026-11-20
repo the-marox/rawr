@@ -63,19 +63,36 @@ const int kPlaneCells = VIDEO_QT + 2 * kCellRing;
 // Half-precision raw cache (packed pairs along a row; kRawSide is even): half the shared memory of the float cache.
 // Normalized samples in [0, 1]: a half keeps 11 significant bits, finer than a 10-bit code everywhere and within a
 // 12-bit code's step only near clip.
+#ifdef VIDEO_QUAD_SHARED_POOL
+// One shared pool for the plane and the RAW cache, so an includer can reuse it once the plane is built
+// (VIDEO_QUAD_POOL_EXTRA: the size it needs then, in uints). Plane first, RAW pairs after it.
+const int kPlaneWords = kPlaneSide * kPlaneSide;
+const int kRawWords = kRawSide * kRawSide / 2;
+const int kPoolWords = max(kPlaneWords + kRawWords, VIDEO_QUAD_POOL_EXTRA);
+shared uint videoPool[kPoolWords];
+#define VIDEO_RAW_PAIR(i) videoPool[kPlaneWords + (i)]
+#define VIDEO_PLANE(i) videoPool[(i)]
+#else
 shared uint cachedRawPairs[kRawSide * kRawSide / 2];
+#define VIDEO_RAW_PAIR(i) cachedRawPairs[(i)]
+#endif
 #else
 shared float cachedRaw[kRawSide * kRawSide];
 #endif
 // One packed half pair per plane position: (sqrt(green), R/B difference).
+#ifndef VIDEO_QUAD_SHARED_POOL
 shared uint greenChroma[kPlaneSide * kPlaneSide];
+#endif
+#ifndef VIDEO_PLANE
+#define VIDEO_PLANE(i) greenChroma[(i)]
+#endif
 ivec2 gTileBase;  // absolute sensor position of the tile's first output pixel
 
 float videoCachedAt(ivec2 q) {
     ivec2 local = q - gTileBase + ivec2(kRawRing);
 #ifdef VIDEO_QUAD_HALF_CACHE
     int index = local.y * kRawSide + local.x;
-    vec2 pair = unpackHalf2x16(cachedRawPairs[index >> 1]);
+    vec2 pair = unpackHalf2x16(VIDEO_RAW_PAIR(index >> 1));
     return (index & 1) == 0 ? pair.x : pair.y;
 #else
     return cachedRaw[local.y * kRawSide + local.x];
@@ -127,7 +144,7 @@ void videoLoadTile() {
         ivec2 local = ivec2(int(index % uint(kRawSide)) - kRawRing, int(index / uint(kRawSide)) - kRawRing);
         ivec2 q0 = videoMirrored(gTileBase + local);
         ivec2 q1 = videoMirrored(gTileBase + local + ivec2(1, 0));
-        cachedRawPairs[pairIndex] = packHalf2x16(vec2(videoRawAt(q0, videoCodeAt(q0)), videoRawAt(q1, videoCodeAt(q1))));
+        VIDEO_RAW_PAIR(pairIndex) = packHalf2x16(vec2(videoRawAt(q0, videoCodeAt(q0)), videoRawAt(q1, videoCodeAt(q1))));
     }
 #else
     for (uint index = gl_LocalInvocationIndex; index < uint(kRawSide * kRawSide);
@@ -192,7 +209,7 @@ void videoBuildPlane() {
                     sqrtGreen = sqrt(videoGreenAtRedBlue(gCell + ivec2(dx, dy)));
                     diff = sqrt(value) - sqrtGreen;
                 }
-                greenChroma[(2 * cell.y + dy) * kPlaneSide + 2 * cell.x + dx] = packHalf2x16(vec2(sqrtGreen, diff));
+                VIDEO_PLANE((2 * cell.y + dy) * kPlaneSide + 2 * cell.x + dx) = packHalf2x16(vec2(sqrtGreen, diff));
             }
         }
     }
@@ -229,7 +246,7 @@ void videoLoadCellPlane(ivec2 cellOrigin) {
     ivec2 local = cellOrigin - gTileBase + ivec2(kPlaneRing - 2);
     [[unroll]] for (int y = 0; y < 4; ++y) {
         [[unroll]] for (int x = 0; x < 4; ++x) {
-            vec2 plane = unpackHalf2x16(greenChroma[(local.y + 1 + y) * kPlaneSide + local.x + 1 + x]);
+            vec2 plane = unpackHalf2x16(VIDEO_PLANE((local.y + 1 + y) * kPlaneSide + local.x + 1 + x));
             gSqrtGreen[y][x] = plane.x;
             gDiff[y][x] = plane.y;
         }

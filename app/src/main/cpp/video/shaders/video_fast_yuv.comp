@@ -37,6 +37,11 @@ layout(local_size_x = VIDEO_QT, local_size_y = VIDEO_QT, local_size_z = 1) in;
 #define VIDEO_QUAD_CELL_RING 2
 #define VIDEO_RGB_CELL_RING 1
 #endif
+// The RGB tile reuses the shared memory of the plane and the RAW cache (built into registers first, then written
+// after a barrier), which keeps the workgroup's shared memory near the plain pass's and its occupancy up.
+#define VIDEO_QUAD_SHARED_POOL 1
+#define VIDEO_RGB_SIDE (2 * VIDEO_QT + 4 * VIDEO_RGB_CELL_RING)
+#define VIDEO_QUAD_POOL_EXTRA (VIDEO_RGB_SIDE * VIDEO_RGB_SIDE + VIDEO_RGB_SIDE * VIDEO_RGB_SIDE / 2)
 #define VIDEO_CUSTOM_TILE_BASE 1
 #endif
 
@@ -69,23 +74,43 @@ const int kRgbCellRing = VIDEO_RGB_CELL_RING;
 const int kRgbRing = 2 * kRgbCellRing;
 const int kRgbSide = 2 * VIDEO_QT + 2 * kRgbRing;
 const int kRgbCells = VIDEO_QT + 2 * kRgbCellRing;
-// Demosaiced camera RGB of the tile plus its ring: R and G as a half pair, B as half pairs along a row.
-shared uint rgbRG[kRgbSide * kRgbSide];
-shared uint rgbB[kRgbSide * kRgbSide / 2];
+// Demosaiced camera RGB of the tile plus its ring, in the shared pool once the plane is no longer read: R and G as
+// a half pair per pixel, then B as half pairs along a row.
+const int kRgbWords = kRgbSide * kRgbSide;
+#define RGB_RG(i) videoPool[(i)]
+#define RGB_B(i) videoPool[kRgbWords + (i)]
+const int kRgbPasses = (kRgbCells * kRgbCells + VIDEO_QT * VIDEO_QT - 1) / (VIDEO_QT * VIDEO_QT);
 
 void warpBuildRgb() {
-    for (uint index = gl_LocalInvocationIndex; index < uint(kRgbCells * kRgbCells);
-         index += uint(VIDEO_QT * VIDEO_QT)) {
-        ivec2 cell = ivec2(int(index % uint(kRgbCells)), int(index / uint(kRgbCells)));
-        ivec2 origin = gTileBase + 2 * (cell - kRgbCellRing);
-        videoLoadCellPlane(origin);
-        [[unroll]] for (int dy = 0; dy < 2; ++dy) {
-            vec3 left = videoPixelRgb(0, dy, videoCachedAt(origin + ivec2(0, dy)));
-            vec3 right = videoPixelRgb(1, dy, videoCachedAt(origin + ivec2(1, dy)));
-            int at = (2 * cell.y + dy) * kRgbSide + 2 * cell.x;
-            rgbRG[at] = packHalf2x16(left.rg);
-            rgbRG[at + 1] = packHalf2x16(right.rg);
-            rgbB[at >> 1] = packHalf2x16(vec2(left.b, right.b));
+    // 1. Demosaic this thread's cells (at most kRgbPasses) into registers while the plane and RAW cache are intact.
+    uvec2 packedRG[kRgbPasses][2];
+    uint packedB[kRgbPasses][2];
+    [[unroll]] for (int pass = 0; pass < kRgbPasses; ++pass) {
+        uint index = gl_LocalInvocationIndex + uint(pass * VIDEO_QT * VIDEO_QT);
+        if (index < uint(kRgbCells * kRgbCells)) {
+            ivec2 cell = ivec2(int(index % uint(kRgbCells)), int(index / uint(kRgbCells)));
+            ivec2 origin = gTileBase + 2 * (cell - kRgbCellRing);
+            videoLoadCellPlane(origin);
+            [[unroll]] for (int dy = 0; dy < 2; ++dy) {
+                vec3 left = videoPixelRgb(0, dy, videoCachedAt(origin + ivec2(0, dy)));
+                vec3 right = videoPixelRgb(1, dy, videoCachedAt(origin + ivec2(1, dy)));
+                packedRG[pass][dy] = uvec2(packHalf2x16(left.rg), packHalf2x16(right.rg));
+                packedB[pass][dy] = packHalf2x16(vec2(left.b, right.b));
+            }
+        }
+    }
+    barrier();
+    // 2. Write them over the pool.
+    [[unroll]] for (int pass = 0; pass < kRgbPasses; ++pass) {
+        uint index = gl_LocalInvocationIndex + uint(pass * VIDEO_QT * VIDEO_QT);
+        if (index < uint(kRgbCells * kRgbCells)) {
+            ivec2 cell = ivec2(int(index % uint(kRgbCells)), int(index / uint(kRgbCells)));
+            [[unroll]] for (int dy = 0; dy < 2; ++dy) {
+                int at = (2 * cell.y + dy) * kRgbSide + 2 * cell.x;
+                RGB_RG(at) = packedRG[pass][dy].x;
+                RGB_RG(at + 1) = packedRG[pass][dy].y;
+                RGB_B(at >> 1) = packedB[pass][dy];
+            }
         }
     }
     barrier();
@@ -94,8 +119,8 @@ void warpBuildRgb() {
 vec3 warpRgbAt(ivec2 q) {
     ivec2 local = q - gTileBase + ivec2(kRgbRing);
     int at = local.y * kRgbSide + local.x;
-    vec2 rg = unpackHalf2x16(rgbRG[at]);
-    vec2 b = unpackHalf2x16(rgbB[at >> 1]);
+    vec2 rg = unpackHalf2x16(RGB_RG(at));
+    vec2 b = unpackHalf2x16(RGB_B(at >> 1));
     return vec3(rg, (at & 1) == 0 ? b.x : b.y);
 }
 #endif

@@ -65,8 +65,10 @@ first and moves to `xiaomi-17u` once verified.
   turning needs a wide ring around each tile: 3-minute 4K60 takes measured
   busy x clock 215 (Off) vs 525 (Strong with turns, GPU up to 902 MHz). So
   Standard/Strong now only shift (sub-pixel, narrow ring) and roll shake is
-  no longer corrected there; only Level horizon turns (and costs the
-  ~2.4x).
+  no longer corrected there; only Level horizon turns. Shift-only measured
+  440 (500-646 MHz): the extra shared memory for the RGB tile cut occupancy
+  (AOC 18% vs 31%), so the RGB tile now reuses the memory of the plane and
+  the RAW cache once they are read.
   First test (no zoom yet): the turn's direction is right (in the video the
   applied turn cancelled the camera's roll, -0.81 vs -0.83 per degree), but
   tilts of up to 15 degrees ran past the ~5 degrees the margin allowed.
