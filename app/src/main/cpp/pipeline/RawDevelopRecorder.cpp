@@ -570,7 +570,23 @@ RawDevelopRecordResult RawDevelopRecorder::record(const RawDevelopRecordInput& i
         }
     }  // else: tonemap path
 
-    monitor_.recordOverlays(monitorFrame);
+    {
+        // 17U: scopes skip padded bottom/right raw edges (the 512 blank rows of
+        // the 60 fps modes). Top/left padding, if any, is still sampled.
+        MonitorFrame scopeFrame = monitorFrame;
+        const auto* context = in.metadata.cameraContext.get();
+        if (in.diagnosticMode == 0u && context && in.rawWidth && in.rawHeight) {
+            const auto kept = rawrcam::video::contextKeptArea(in.rawWidth, in.rawHeight, *context, in.videoHighFps);
+            if (kept.valid()) {
+                const uint64_t right = uint64_t(kept.x) + kept.width, bottom = uint64_t(kept.y) + kept.height;
+                if (right < in.rawWidth || bottom < in.rawHeight) {
+                    scopeFrame.scopeWidth = std::max<uint32_t>(1u, uint32_t(right * in.previewWidth / in.rawWidth));
+                    scopeFrame.scopeHeight = std::max<uint32_t>(1u, uint32_t(bottom * in.previewHeight / in.rawHeight));
+                }
+            }
+        }
+        monitor_.recordOverlays(scopeFrame);
+    }
 
     if (in.diagnosticMode == 2u) {
         rawrcam::vulkan::computeWriteToComputeWrite(slot.command, slot.tonemapped.image);

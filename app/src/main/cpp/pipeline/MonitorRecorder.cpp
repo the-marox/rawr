@@ -117,7 +117,7 @@ void MonitorRecorder::recordOverlays(const MonitorFrame& in) const {
         const uint32_t sourceQuarterTurns =
             rawrcam::geometry::presentationQuarterTurns(in.sensorOrientationDegrees, in.scopeDeviceRotationDegrees);
         imageScopes_.record(in.command, in.slotIndex, in.tonemappedView, in.tonemappedImage, sourceQuarterTurns,
-                            in.renderedExposureFeedbackEnabled);
+                            in.renderedExposureFeedbackEnabled, in.scopeWidth, in.scopeHeight);
         performance_.markScopesDone(in.command, in.slotIndex);
         monitoringOverlay_.record(in.command, in.slotIndex, in.linearView, in.linearImage, in.tonemappedView,
                                   in.tonemappedImage, in.shadowLiftEv, in.blackPointEv);

@@ -340,6 +340,15 @@ void SessionEngine::videoFrameLocked(uint32_t& width, uint32_t& height) const {
         const auto kept = lastCameraContext_ ? videoKeptAreaLocked(*lastCameraContext_) : rawrcam::video::VideoKeptArea{};
         width = (kept.valid() ? kept.width : rawW) & ~1u;
         height = (kept.valid() ? kept.height : rawH) & ~1u;
+        if (videoHighFps_ && (videoAspectNum_ == 0 || videoAspectDen_ == 0) && lastCameraContext_) {
+            // Above 30 fps keep the 30 fps Open Gate aspect (centred crop), as
+            // Kotlin's VideoResolutionMode.openGateSize does for the recording.
+            const auto& m = *lastCameraContext_;
+            const auto normal = rawrcam::video::videoKeptArea(rawW, rawH, m.cropLeft, m.cropTop, m.cropRight,
+                                                              m.cropBottom);
+            const uint32_t nw = normal.valid() ? normal.width : rawW, nh = normal.valid() ? normal.height : rawH;
+            rawrcam::video::videoAspectFit(width, height, nw, nh);
+        }
     }
     rawrcam::video::videoAspectFit(width, height, videoAspectNum_, videoAspectDen_);
     // Same as Kotlin's VideoCropRequest.resolve: halved, each side a multiple of 16.

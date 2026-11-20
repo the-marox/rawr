@@ -68,9 +68,6 @@ internal fun PhysicalCaptureLayout(
     // 16:9 viewfinders run past the photo frame and behind the shutter
     // cluster; Open Gate is exactly the photo box, so nothing bleeds.
     val videoBleed = isVideo && state.videoResolution != VideoResolutionMode.OPEN_GATE
-    // 17U: Open Gate above 30 fps records 4096x2560 (the 60 fps modes pad 512 rows).
-    val openGateHighFps = isVideo && state.videoResolution == VideoResolutionMode.OPEN_GATE &&
-        state.videoFps > 30 && state.videoAspect == com.rawr.camera.video.VideoAspect.Native
     // 17U: while recording, controls that cannot change mid-record (and the
     // exposure/look overlays) step aside so the frame is clear. A tap anywhere
     // on the viewfinder brings them back for 3 s; it still reaches tap-to-focus.
@@ -153,7 +150,7 @@ internal fun PhysicalCaptureLayout(
                     preview = preview,
                     renderProfiles = renderProfiles.copy(locked = isVideo && videoLocked),
                     onSelectRenderProfile = onSelectRenderProfile,
-                    modifier = Modifier.viewfinderFrame(videoBleed, viewfinderWidth, openGateHighFps)
+                    modifier = Modifier.viewfinderFrame(videoBleed, viewfinderWidth)
                         .align(Alignment.TopCenter),
                     slotFrame = photoFrame,
                     forceCompact = isVideo,
@@ -193,7 +190,7 @@ internal fun PhysicalCaptureLayout(
                         onSelectDcp = { file -> onQuickEvent(CaptureQuickEvent.SelectDcp(state.selectedLensId, file)) },
                         videoControls = videoControls,
                         onToggleVideoRecording = onToggleVideoRecording,
-                        overlay = videoBleed || openGateHighFps,
+                        overlay = videoBleed,
                         selectorsAlpha = cleanAlpha,
                         modifier = if (compactControls) {
                             Modifier.fillMaxWidth().weight(1f)
@@ -229,17 +226,10 @@ internal fun PhysicalCaptureLayout(
  * to the exact record rect, so the box fills with no bars and framing never
  * jumps at record start. No image work happens here — only box sizing.
  */
-private fun Modifier.viewfinderFrame(videoBleed: Boolean, photoWidth: Dp, openGateHighFps: Boolean = false): Modifier =
-    if (videoBleed) {
+private fun Modifier.viewfinderFrame(videoBleed: Boolean, photoWidth: Dp): Modifier = if (videoBleed) {
     this.fillMaxWidth()
         .wrapContentHeight(Alignment.Top, unbounded = true)
         .aspectRatio(9f / 16f)
-} else if (openGateHighFps) {
-    // 2560:4096 upright, full-bleed width like 16:9; the overflow draws
-    // behind the shutter cluster.
-    this.fillMaxWidth()
-        .wrapContentHeight(Alignment.Top, unbounded = true)
-        .aspectRatio(10f / 16f)
 } else {
     this.width(photoWidth).aspectRatio(3f / 4f)
 }

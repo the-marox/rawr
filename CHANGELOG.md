@@ -44,14 +44,12 @@ Goal of this round: 4K60 10-bit recording without dropped frames on the 17U.
   512 blank bottom rows on 0.6x, 1x, 3.2x and 4.3x. Viewfinder, metering
   and recording use the same area, so there's no blank strip and no
   reframe at record start.
-- **Open Gate above 30 fps records 4096x2560** (was 4096x3072, which the
-  encoder refused). Checked: HEVC Main 10, level 6, 60 fps.
-  - The 60 fps sensor mode sees about 17% less scene on the short side
-    than 30 fps; the long side is the same. This is the sensor mode, not
-    software.
-  - The viewfinder box is full width at 60 fps, so switching 30 to 60 fps
-    looks like a ~1.2x zoom. The recording matches what the viewfinder
-    shows.
+- **Open Gate above 30 fps records 3408x2560 (4:3)** (was 4096x3072,
+  which the encoder refused). The 60 fps sensor mode only has 2560 image
+  rows, so the frame keeps the 30 fps 4:3 aspect with a centred crop, like
+  MotionCam. The viewfinder keeps the same 4:3 box; switching 30 to
+  60 fps looks like a ~1.2x zoom, and the recording matches what the
+  viewfinder shows. At 30 fps Open Gate stays 4096x3072.
 
 ### Recording UI
 
@@ -74,6 +72,10 @@ Goal of this round: 4K60 10-bit recording without dropped frames on the 17U.
 - **Tap-to-focus in the bottom third of the viewfinder.** The exposure /
   look strip swallowed taps across its whole width; now only its buttons
   take taps and the empty space focuses.
+- **Scopes ignore the blank rows of the 60 fps modes.** The idle
+  waveform/vectorscope sampled the whole frame, padding included, so in
+  Open Gate at 60 fps the waveform showed an empty band. They now sample
+  only the image area (bottom/right padding).
 
 ### Known issues
 
