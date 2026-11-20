@@ -239,11 +239,16 @@ internal fun CaptureViewfinder(
             if (quick.lightMeterEnabled && !(quickPanelOpen && !popupOpen)) {
                 // While a video records, the REC/DROP readout takes the top line: sit below it.
                 val recording = state.captureMode == CaptureMode.Video && quick.locked
+                // Top centre as the user holds the phone: in landscape (turned 90° clockwise)
+                // that is the middle of the screen's right edge.
                 LightMeterOverlay(
                     exposureTimeNs = state.appliedExposureTimeNs,
                     orientation = state.orientation,
-                    modifier = Modifier.align(Alignment.TopStart)
-                        .padding(start = 8.dp, top = if (recording) 36.dp else 8.dp)
+                    modifier = if (state.orientation == Orientation.Landscape) {
+                        Modifier.align(Alignment.CenterEnd).padding(end = 8.dp)
+                    } else {
+                        Modifier.align(Alignment.TopCenter).padding(top = if (recording) 36.dp else 8.dp)
+                    }
                 )
             }
             if (state.capabilities.lensUnavailable) {

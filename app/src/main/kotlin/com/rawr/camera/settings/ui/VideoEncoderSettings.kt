@@ -102,7 +102,7 @@ internal fun VideoEncoderSettings(state: SettingsUiState, dispatch: SettingsDisp
             SettingsSwitchRow(
                 title = "Gyroflow gyro log",
                 checked = encoder.gyroflowLog,
-                supportingText = "Records the gyroscope and accelerometer at 200 Hz into a .gcsv file named like the " +
+                supportingText = "Records the gyroscope and accelerometer (about 200 Hz) into a .gcsv file named like the " +
                     "video. Videos in DCIM get it in Download/RAWR/Gyroflow; in a folder you picked it sits beside " +
                     "the video, where Gyroflow loads it by itself.",
                 testTag = SettingsTestTags.row("VideoEncoder", "gyroflow_log")

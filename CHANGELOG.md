@@ -82,6 +82,25 @@ viewfinder quality High, 10-bit unless noted.
   access (asked the first time).
 - Timing row hides SHORT/GPU/LAT/GOP while recording.
 
+### Auxiliary sensors (PR #1 by the-marox)
+
+- **Light meter** (Settings › Display › Light meter, off by default): lux,
+  incident EV, colour temperature, mains flicker and laser AF distance from
+  the sensors beside the rear cameras, with a warning when the shutter
+  speed will band. Values checked on the 17U against another app. Hidden
+  in the clean recording view, like the other viewfinder controls. Sits
+  at the top centre as the phone is held, in portrait and landscape (in
+  landscape it used to spill over the top bar).
+- **Antibanding** in Auto follows the phone's flicker sensor when it has
+  one.
+- **Gyroflow gyro log** (Settings › Video Encoder › Motion data, off by
+  default): gyroscope and accelerometer in a .gcsv named like the video
+  (the 17U delivers ~238 Hz). Videos in DCIM get it in
+  Download/RAWR/Gyroflow; in a picked folder it sits beside the video.
+  Not tested in Gyroflow yet: the file format, timing and units were
+  checked, the stabilisation itself was not.
+- Sensor readings also go into the photo/video metadata (EXIF/XMP).
+
 ### Removed for now
 
 - **120 fps** is out of the fps button until the video pipeline records it

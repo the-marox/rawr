@@ -160,7 +160,8 @@ internal fun PhysicalCaptureLayout(
                     quick = quick.copy(
                         locked = isVideo && videoLocked,
                         showLook = quick.showLook && !cleanRecording,
-                        showExposure = quick.showExposure && !cleanRecording
+                        showExposure = quick.showExposure && !cleanRecording,
+                        lightMeterEnabled = quick.lightMeterEnabled && !cleanRecording
                     ),
                     onQuickEvent = onQuickEvent
                 )

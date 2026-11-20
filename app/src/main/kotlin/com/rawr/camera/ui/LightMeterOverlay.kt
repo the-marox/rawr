@@ -77,7 +77,10 @@ internal fun LightMeterOverlay(exposureTimeNs: Long?, orientation: Orientation, 
     val text = lightMeterText(current, exposureTimeNs)
     Column(
         modifier
-            .uprightInLandscape(orientation)
+            // Layout-aware turn: the parent places the turned (tall) box, so in
+            // landscape the pill stays inside the viewfinder instead of
+            // spilling over the top bar.
+            .uprightPanelInLandscape(orientation)
             .background(Color.Black.copy(alpha = .45f), RoundedCornerShape(10.dp))
             .padding(horizontal = 10.dp, vertical = 5.dp)
             .testTag(CaptureTestTags.LIGHT_METER)
