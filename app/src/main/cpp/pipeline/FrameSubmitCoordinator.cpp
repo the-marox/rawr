@@ -32,6 +32,7 @@
 #include "presentation/SwapchainRenderer.h"
 #include "raw_preview/RawPreview.hpp"
 #include "tonemap/TonemapMath.h"
+#include "geometry/Stabilizer.h"
 #include "video/VideoSession.h"
 #include "video_pipeline/VideoCrop.h"
 #include "vulkan/RawAhbImporter.h"
@@ -62,6 +63,22 @@ int64_t encoderTimestampNs(const rawrcam::metadata::FrameMetadataSnapshot& metad
     const bool boottime = metadata.cameraContext && metadata.cameraContext->sensorTimestampRealtime;
     const int64_t offset = boottime ? clockNs(CLOCK_BOOTTIME) - clockNs(CLOCK_MONOTONIC) : 0;
     return static_cast<int64_t>(sensorNs) - offset;
+}
+
+// Gyro stabilisation looks up the shake at this frame's capture time: the middle of its exposure (and of a ~8 ms
+// readout), on CLOCK_BOOTTIME like the gyro; and the lens focal in RAW pixels to turn angles into a shift.
+void markStabilizerFrame(const rawrcam::metadata::FrameMetadataSnapshot& metadata, uint64_t sensorNs,
+                         uint32_t rawWidth) {
+    if (!rawrcam::geometry::stabilizerEnabled().load(std::memory_order_relaxed)) return;
+    const auto* c = metadata.cameraContext.get();
+    const bool boottime = c && c->sensorTimestampRealtime;
+    const int64_t toBoot = boottime ? 0 : clockNs(CLOCK_BOOTTIME) - clockNs(CLOCK_MONOTONIC);
+    rawrcam::geometry::stabilizerFrameTimeNs().store(
+        static_cast<int64_t>(sensorNs) + toBoot + metadata.exposureTimeNs / 2 + 4'000'000, std::memory_order_relaxed);
+    float focalPx = 0.0f;
+    if (c && !c->availableFocalLengthsMm.empty() && c->sensorPhysicalSizeMm[0] > 0.0f && rawWidth > 0)
+        focalPx = c->availableFocalLengthsMm.front() / c->sensorPhysicalSizeMm[0] * float(rawWidth);
+    rawrcam::geometry::stabilizerFocalPx().store(focalPx, std::memory_order_relaxed);
 }
 }  // namespace
 
@@ -600,6 +617,7 @@ void FrameSubmitCoordinator::submitSplitVideoAndMonitor(const SubmitParams& para
         videoOutput_->setLensMirror(metadata.cameraContext ? metadata.cameraContext->profileMirror : 0u);
         videoOutput_->setDcpProfile(metadata.cameraContext ? metadata.cameraContext->dcpProfile : nullptr,
                                     params.colorState->calibrationWeight1);
+        markStabilizerFrame(metadata, params.timestampNs, config_.rawWidth);
         videoOutput_->record(current, slotIndex, *acquired.videoIndex, config_.rawWidth, config_.rawHeight, frame,
                              cameraToAp1, tone, performanceTracker_, acquired.swapIndex.has_value(), splitSubmit,
                              [&](VkCommandBuffer cmd, VkImageView view, uint32_t width, uint32_t height) {
@@ -852,6 +870,7 @@ FrameSubmitCoordinator::RecordedSubmit FrameSubmitCoordinator::recordSubmitComma
             videoOutput_->setLensMirror(metadata.cameraContext ? metadata.cameraContext->profileMirror : 0u);
             videoOutput_->setDcpProfile(metadata.cameraContext ? metadata.cameraContext->dcpProfile : nullptr,
                                         params.colorState->calibrationWeight1);
+            markStabilizerFrame(metadata, params.timestampNs, config_.rawWidth);
             videoOutput_->record(slot->command, slotIndex, *acquired.videoIndex, config_.rawWidth, config_.rawHeight,
                                  videoFrame, cameraToAp1, frameTonemapParams, performanceTracker_);
         };

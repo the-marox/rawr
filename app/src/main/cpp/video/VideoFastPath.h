@@ -37,7 +37,8 @@ class VideoFastPath final {
     // buffer, input, output, monitor and slot are filled in here.
     void record(VkCommandBuffer command, uint32_t frameSlot, const VideoDemosaic::Frame& frame,
                 const VideoDemosaic& geometry, tonemap::TonemapEngine& bake, tonemap::TonemapRecordInfo tone,
-                const EncoderTarget& target, uint32_t queueFamily, VkImageView monitorView, bool monitorEnabled, VkQueryPool stagePool);
+                const EncoderTarget& target, uint32_t queueFamily, VkImageView monitorView, bool monitorEnabled, VkQueryPool stagePool,
+                int32_t shiftX = 0, int32_t shiftY = 0);
 
    private:
     struct HostBuffer {

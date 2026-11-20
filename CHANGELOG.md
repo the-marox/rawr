@@ -4,6 +4,18 @@ Fork of [Rawr](https://github.com/adityawarmanfw/rawr) for the Xiaomi 17 Ultra.
 Releases follow Ed's version: `0.5.1-17u.N`. Test work lands on `yuv-probe`
 first and moves to `xiaomi-17u` once verified.
 
+## Unreleased (`yuv-probe`, test builds)
+
+### Video
+
+- **Gyro stabilisation** (Settings › Video Encoder › Stabilisation: Off,
+  Standard, Strong; off by default). Ported from apos-fandango's Rawr X14U
+  fork (github.com/apos-fandango/rawr-xiaomi14u): its gyro integrator and
+  shake track. On the 17U the shake is taken out by moving the crop window
+  inside the sensor's spare area in the recording fast path, so it adds no
+  GPU pass. Pitch and yaw only (no roll), 4K and 1080p (Open Gate has no
+  spare area), fast path only. Not tested yet.
+
 ## 0.5.1-17u.3
 
 Goal of this round: 4K60 10-bit recording without dropped frames on the 17U.

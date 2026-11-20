@@ -5,6 +5,7 @@
 #include <vulkan/vulkan_android.h>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <stdexcept>
@@ -14,9 +15,42 @@
 #include "tonemap_video_linear.h"
 #include "tonemap_video_rgb10a2.h"
 #include "tonemap_video_rgba8.h"
+#include "geometry/Stabilizer.h"
 #include "video/VideoOutput.h"
 #include "vulkan/VulkanContext.h"
 namespace rawrcam::video {
+namespace {
+// Gyro stabilisation (geometry/Stabilizer.h): the crop shift that takes this frame's shake out, in RAW pixels, even
+// (the CFA phase), inside the margin the crop leaves in the image area minus an 8-pixel apron for the demosaic.
+// Publishes that margin as angles so the gyro integrator keeps its shake within it. {0, 0} when off.
+std::array<int32_t, 2> stabilizerShift(const VideoDemosaic& demosaic, const VideoKeptArea& keptArea) {
+    using namespace rawrcam::geometry;
+    const float focal = stabilizerFocalPx().load(std::memory_order_relaxed);
+    if (!stabilizerEnabled().load(std::memory_order_relaxed) || !(focal > 0.0f) || demosaic.sensorScale() != 1u) {
+        stabilizerRoomX().store(0.0f, std::memory_order_relaxed);
+        stabilizerRoomY().store(0.0f, std::memory_order_relaxed);
+        return {0, 0};
+    }
+    const VideoKeptArea kept = keptArea.valid() ? keptArea
+                                                : VideoKeptArea{0, 0, demosaic.rawWidth(), demosaic.rawHeight()};
+    constexpr int32_t kApron = 8;
+    const int32_t cx = int32_t(demosaic.cropX()), cy = int32_t(demosaic.cropY());
+    const int32_t w = int32_t(demosaic.outputWidth()), h = int32_t(demosaic.outputHeight());
+    const int32_t left = cx - int32_t(kept.x) - kApron, right = int32_t(kept.x + kept.width) - (cx + w) - kApron;
+    const int32_t top = cy - int32_t(kept.y) - kApron, bottom = int32_t(kept.y + kept.height) - (cy + h) - kApron;
+    const int32_t roomX = std::max(0, std::min(left, right)), roomY = std::max(0, std::min(top, bottom));
+    stabilizerRoomX().store(float(roomX) / focal, std::memory_order_relaxed);
+    stabilizerRoomY().store(float(roomY) / focal, std::memory_order_relaxed);
+    StabilizerSample shake;
+    if (!stabilizerTrack().at(stabilizerFrameTimeNs().load(std::memory_order_relaxed), shake)) return {0, 0};
+    // A camera turn about y moves the scene sideways in the image, about x up and down: the crop follows the scene.
+    const auto even = [](float v, int32_t room) {
+        const int32_t px = int32_t(std::lround(v * 0.5f)) * 2;
+        return std::clamp(px, -(room & ~1), room & ~1);
+    };
+    return {even(-shake.yaw * focal, roomX), even(shake.pitch * focal, roomY)};
+}
+}  // namespace
 rawr::post::StillDistortionCorrection VideoRecorder::distortionFor(const rawrcam::geometry::LensDistortionModel& lens,
                                                                   uint32_t rawWidth, uint32_t rawHeight) {
     const auto& demosaic = *resources_.demosaic_;
@@ -156,12 +190,13 @@ void VideoRecorder::record(VkCommandBuffer command, uint32_t frameSlot, uint32_t
         bakeTone.cameraToWorkingColumnMajor3x3 = cameraToAp1.data();
         bakeTone.params = params;
         const auto& buffer = *output_.yuvFrames_[imageIndex].buffer;
+        const auto shift = stabilizerShift(*resources_.demosaic_, resources_.processingKey_.kept);
         const VideoFastPath::EncoderTarget target{buffer.buffer,       buffer.yOffsetWords, buffer.yStrideWords,
                                                   buffer.cOffsetWords, buffer.cStrideWords, buffer.swapUV};
         resources_.fast_->record(command, frameSlot, developedFrame, *resources_.demosaic_, *resources_.fastBake_,
                                  bakeTone, target, output_.context_.queueFamily(),
                                  monitorEnabled ? resources_.monitor_[frameSlot].view : resources_.dummyMonitor_.view,
-                                 monitorEnabled, stagePool);
+                                 monitorEnabled, stagePool, shift[0], shift[1]);
         timing.markVideoDemosaicDone(command, frameSlot);
         timing.markVideoPostDone(command, frameSlot);
         resources_.stagePending_[frameSlot] = true;

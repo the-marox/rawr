@@ -94,6 +94,7 @@ internal fun VideoEncoderSettings(state: SettingsUiState, dispatch: SettingsDisp
             SettingsRow("GOP at 30 fps", value = VideoEncoderConfig.gopPattern(frames, encoder.maxBFrames))
         }
         RecordingDndGroup()
+        StabilisationGroup()
         SettingsGroup(
             title = "Motion data",
             description = "For stabilising in Gyroflow afterwards. With OIS on, the lens moves on its own and the result " +
@@ -197,6 +198,28 @@ private fun RecordingDndGroup() {
             com.rawr.camera.video.RecordingDnd.setEnabled(context, it)
             if (it && !com.rawr.camera.video.RecordingDnd.accessGranted(context))
                 com.rawr.camera.video.RecordingDnd.requestAccess(context)
+        }
+    }
+}
+
+/** Gyro stabilisation (ported from apos-fandango's Rawr X14U). */
+@Composable
+private fun StabilisationGroup() {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var mode by androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableIntStateOf(com.rawr.camera.video.StabilizerSensor.mode(context))
+    }
+    SettingsGroup(
+        title = "Stabilisation",
+        description = "Gyro stabilisation (from apos-fandango's Rawr X14U). Takes out hand shake (up/down, " +
+            "left/right) by moving the crop inside the sensor's spare area, so it needs a recording smaller " +
+            "than the sensor (4K or 1080p, not Open Gate) and works on the fast recording path only. Tilt (roll) " +
+            "isn't corrected. Don't stabilise the video again in Gyroflow."
+    ) {
+        SettingsRow("Stabilisation", value = listOf("Off", "Standard", "Strong")[mode])
+        CompactChoiceRow(listOf(0, 1, 2), mode, { listOf("Off", "Standard", "Strong")[it] }) {
+            mode = it
+            com.rawr.camera.video.StabilizerSensor.setMode(context, it)
         }
     }
 }

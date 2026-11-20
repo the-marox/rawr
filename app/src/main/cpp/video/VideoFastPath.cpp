@@ -233,7 +233,8 @@ void VideoFastPath::destroy() noexcept {
 void VideoFastPath::record(VkCommandBuffer command, uint32_t frameSlot, const VideoDemosaic::Frame& frame,
                            const VideoDemosaic& geometry, tonemap::TonemapEngine& bake,
                            tonemap::TonemapRecordInfo tone, const EncoderTarget& target, uint32_t queueFamily,
-                           VkImageView monitorView, bool monitorEnabled, VkQueryPool stagePool) {
+                           VkImageView monitorView, bool monitorEnabled, VkQueryPool stagePool, int32_t shiftX,
+                           int32_t shiftY) {
     if (frameSlot >= kSlots || !target.buffer || (!frame.rawBuffer && !frame.rawView) || frame.cfa > 3u ||
         frame.white <= 0.0f)
         throw std::invalid_argument("video fast path frame invalid");
@@ -360,8 +361,9 @@ void VideoFastPath::record(VkCommandBuffer command, uint32_t frameSlot, const Vi
     push.height = geometry.rawHeight();
     push.outWidth = width_;
     push.outHeight = height_;
-    push.cropX = geometry.cropX();
-    push.cropY = geometry.cropY();
+    // Gyro stabilisation moves the crop window (even steps keep the CFA phase); the caller keeps it in the margin.
+    push.cropX = uint32_t(int32_t(geometry.cropX()) + shiftX);
+    push.cropY = uint32_t(int32_t(geometry.cropY()) + shiftY);
     push.pattern = frame.cfa;
     push.stridePixels = frame.rawStridePixels;
     push.bufferEnabled = useBuffer ? 1u : 0u;

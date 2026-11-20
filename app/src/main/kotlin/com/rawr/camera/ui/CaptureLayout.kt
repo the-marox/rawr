@@ -82,6 +82,9 @@ internal fun PhysicalCaptureLayout(
         }
     }
     LaunchedEffect(recordingNow) { if (!recordingNow) revealed = false }
+    // Gyro stabilisation (Settings > Video Encoder > Stabilisation): the gyro runs in video mode so its smoothed path
+    // is settled when recording starts; the recorder only applies it while recording.
+    StabilizerEffect(isVideo)
     // 17U: optional Do Not Disturb for the length of a recording (Settings > Video).
     val dndContext = androidx.compose.ui.platform.LocalContext.current
     androidx.compose.runtime.DisposableEffect(recordingNow) {
@@ -233,4 +236,21 @@ private fun Modifier.viewfinderFrame(videoBleed: Boolean, photoWidth: Dp): Modif
         .aspectRatio(9f / 16f)
 } else {
     this.width(photoWidth).aspectRatio(3f / 4f)
+}
+
+@Composable
+private fun StabilizerEffect(isVideo: Boolean) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var mode by androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableIntStateOf(com.rawr.camera.video.StabilizerSensor.mode(context))
+    }
+    androidx.lifecycle.compose.LifecycleResumeEffect(Unit) {
+        mode = com.rawr.camera.video.StabilizerSensor.mode(context)
+        onPauseOrDispose { }
+    }
+    val sensor = androidx.compose.runtime.remember { com.rawr.camera.video.StabilizerSensor(context) }
+    androidx.compose.runtime.DisposableEffect(isVideo, mode) {
+        sensor.configure(isVideo && mode > 0, com.rawr.camera.video.StabilizerSensor.smoothingSeconds(mode))
+        onDispose { sensor.close() }
+    }
 }
