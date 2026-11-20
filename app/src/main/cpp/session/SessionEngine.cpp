@@ -355,7 +355,11 @@ void SessionEngine::applyVideoCropLocked() {
     if ((width != 0 && height != 0) || aspect) {
         videoFrameLocked(width, height);
     } else {
-        width = height = 0;
+        // Open Gate: crop the viewfinder to the image area when padded edges
+        // are dropped (60 fps modes pad the bottom rows); full frame otherwise.
+        videoFrameLocked(width, height);
+        const uint32_t rawW = realtime_.rawWidth() & ~1u, rawH = realtime_.rawHeight() & ~1u;
+        if (width >= rawW && height >= rawH) width = height = 0;
     }
     videoCropOutWidth_ = width;
     videoCropOutHeight_ = height;

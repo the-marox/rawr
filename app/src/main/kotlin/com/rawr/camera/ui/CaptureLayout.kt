@@ -82,6 +82,13 @@ internal fun PhysicalCaptureLayout(
         }
     }
     LaunchedEffect(recordingNow) { if (!recordingNow) revealed = false }
+    // 17U: optional Do Not Disturb for the length of a recording (Settings > Video).
+    val dndContext = androidx.compose.ui.platform.LocalContext.current
+    androidx.compose.runtime.DisposableEffect(recordingNow) {
+        if (recordingNow) com.rawr.camera.video.RecordingDnd.begin(dndContext)
+        else com.rawr.camera.video.RecordingDnd.end(dndContext)
+        onDispose { if (recordingNow) com.rawr.camera.video.RecordingDnd.end(dndContext) }
+    }
     val cleanRecording = recordingNow && !revealed
     val cleanAlpha by animateFloatAsState(if (cleanRecording) 0f else 1f, tween(150), label = "recordingClean")
     BoxWithConstraints(modifier) {
@@ -114,18 +121,22 @@ internal fun PhysicalCaptureLayout(
             Box(
                 Modifier.fillMaxWidth().weight(1f).pointerInput(recordingNow) {
                     if (!recordingNow) return@pointerInput
-                    // A swipe reveals the controls; a tap stays a focus tap.
+                    // A sideways swipe (screen X) reveals the controls. Screen-vertical
+                    // swipes stay with the quick panel and a tap stays a focus tap.
                     // Events are observed, never consumed.
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                        val slop = viewConfiguration.touchSlop
                         while (true) {
                             val event = awaitPointerEvent(PointerEventPass.Initial)
                             val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                            if ((change.position - down.position).getDistance() > viewConfiguration.touchSlop) {
+                            val dx = kotlin.math.abs(change.position.x - down.position.x)
+                            val dy = kotlin.math.abs(change.position.y - down.position.y)
+                            if (dx > slop && dx > dy * 1.5f) {
                                 revealTick++
                                 break
                             }
-                            if (!change.pressed) break
+                            if (dy > slop || !change.pressed) break
                         }
                     }
                 }

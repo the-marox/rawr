@@ -72,6 +72,15 @@ CameraControlState readInitialCameraControlState(const ACameraMetadata* characte
         const bool crop = (dropX || dropY) && dropX < route.stream.width && dropY < route.stream.height;
         state.capabilities.keptWidth = static_cast<int32_t>(crop ? route.stream.width - dropX : route.stream.width);
         state.capabilities.keptHeight = static_cast<int32_t>(crop ? route.stream.height - dropY : route.stream.height);
+        const uint64_t hiX = uint64_t(std::max(route.cropLeft, route.highFpsCropLeft)) +
+                             std::max(route.cropRight, route.highFpsCropRight);
+        const uint64_t hiY = uint64_t(std::max(route.cropTop, route.highFpsCropTop)) +
+                             std::max(route.cropBottom, route.highFpsCropBottom);
+        const bool hiCrop = (hiX || hiY) && hiX < route.stream.width && hiY < route.stream.height;
+        state.capabilities.keptWidthHighFps =
+            static_cast<int32_t>(hiCrop ? route.stream.width - hiX : route.stream.width);
+        state.capabilities.keptHeightHighFps =
+            static_cast<int32_t>(hiCrop ? route.stream.height - hiY : route.stream.height);
     }
 
     if (const auto e = entry(characteristics, ACAMERA_SENSOR_INFO_SENSITIVITY_RANGE);

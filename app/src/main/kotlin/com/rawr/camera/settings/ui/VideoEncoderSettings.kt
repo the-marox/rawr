@@ -1,7 +1,9 @@
 package com.rawr.camera.settings.ui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import com.rawr.camera.settings.architecture.SetVideoEncoder
 import com.rawr.camera.settings.architecture.SettingsDispatch
 import com.rawr.camera.settings.model.KeyframeInterval
@@ -91,6 +93,7 @@ internal fun VideoEncoderSettings(state: SettingsUiState, dispatch: SettingsDisp
             SettingDivider()
             SettingsRow("GOP at 30 fps", value = VideoEncoderConfig.gopPattern(frames, encoder.maxBFrames))
         }
+        RecordingDndGroup()
         SettingsGroup(
             title = "Audio",
             description = "48 kHz. PCM records uncompressed audio in a .mov; AAC records a smaller .mp4. " +
@@ -144,6 +147,42 @@ internal fun VideoEncoderSettings(state: SettingsUiState, dispatch: SettingsDisp
                     set(encoder.copy(audioBitrateKbps = it))
                 }
             }
+        }
+    }
+}
+
+/** 17U: Do Not Disturb for the length of a recording. */
+@Composable
+private fun RecordingDndGroup() {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var enabled by androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf(com.rawr.camera.video.RecordingDnd.enabled(context))
+    }
+    var granted by androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf(com.rawr.camera.video.RecordingDnd.accessGranted(context))
+    }
+    androidx.lifecycle.compose.LifecycleResumeEffect(Unit) {
+        granted = com.rawr.camera.video.RecordingDnd.accessGranted(context)
+        onPauseOrDispose { }
+    }
+    SettingsGroup(
+        title = "While recording",
+        description = "Notification banners drawn over the viewfinder can cost a frame or two."
+    ) {
+        SettingsSwitchRow(
+            title = "Do not disturb",
+            checked = enabled,
+            supportingText = if (enabled && !granted)
+                "Needs Do Not Disturb access: allow Rawr in the list that opened (switch off and on to open it again)."
+            else
+                "Turns on Do Not Disturb (your priority rules) when recording starts and restores it when it " +
+                    "stops. Left alone if Do Not Disturb is already on.",
+            testTag = SettingsTestTags.row("VideoEncoder", "dnd_while_recording")
+        ) {
+            enabled = it
+            com.rawr.camera.video.RecordingDnd.setEnabled(context, it)
+            if (it && !com.rawr.camera.video.RecordingDnd.accessGranted(context))
+                com.rawr.camera.video.RecordingDnd.requestAccess(context)
         }
     }
 }
