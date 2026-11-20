@@ -260,6 +260,7 @@ std::optional<LensRoute> CameraDeviceSession::select(const LensRoute& requested,
     parsed->highFpsCropRight = route.highFpsCropRight;
     parsed->highFpsCropBottom = route.highFpsCropBottom;
     parsed->photoReduced = route.photoReduced;
+    parsed->photoReduced25 = route.photoReduced25;
     parsed->photoPhaseFit = route.photoPhaseFit;
     parsed->cfaLiveQuality = route.liveRemosaic;
     parsed->cfaPhotoQuality = route.photoRemosaic;

@@ -31,6 +31,9 @@ viewfinder quality High, 10-bit unless noted.
   NV12 for 8-bit). The render look is baked each frame into a 65³ LUT.
   - Measured on the 17U at 4K60 10-bit: 0 dropped frames over 3 minutes with
     the GPU at ~342 MHz; phone power ~4-5 W (earlier builds: ~8-12 W).
+  - 4K60 8-bit (NV12) also measured: no encoder buffer drops over ~3 min.
+  - Rechecked after this round's changes: 4K60 10-bit, ~3.5 min, ~12,960
+    frames to the encoder, none missing.
   - Used only when the recording needs nothing the fast path doesn't do:
     YUV output, highlight recovery off, no denoise, no false-colour or
     defringe correction, no DCP profile, no distortion correction, no
@@ -81,6 +84,18 @@ viewfinder quality High, 10-bit unless noted.
   on the next launch if the app closed mid-recording. Needs Do Not Disturb
   access (asked the first time).
 - Timing row hides SHORT/GPU/LAT/GOP while recording.
+
+### From upstream Rawr (Ed): #129 to #133
+
+- #129 multiframe follows the lens photo remosaic (Detail on quad lenses,
+  High elsewhere); full-size quad remosaic runs on the GPU in strips.
+- #130 Rexturation; #131 and #132 Rexture fixes around moving subjects
+  (blotches, grain patches, moving water).
+- #133 Bayer reduced output.
+- Merged by hand into the 17U code: the 200 MP fast remosaic (single
+  stills and bursts on 4x4 blocks) and the 200 MP JPEG from the blocks
+  stay; the zero-copy reduced burst stays for 4x4 blocks, Bayer reduced
+  frames take the upload path.
 
 ### Auxiliary sensors (PR #1 by the-marox)
 

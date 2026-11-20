@@ -502,7 +502,9 @@ class RawPreviewCoordinator(application: Application) : AutoCloseable {
             else -> 0
         }
 
-    fun requestRawStillCapture(        dngOutputFd: Int,
+    fun requestRawStillCapture(
+        deviceRotationDegrees: Int = captureDeviceRotationDegrees,
+        dngOutputFd: Int,
         jpegOutputFd: Int,
         jpegQuality: Int,
         jpegChromaSubsamplingId: String,
@@ -562,7 +564,7 @@ class RawPreviewCoordinator(application: Application) : AutoCloseable {
             fccSteps.coerceIn(1, 8),
             lensShadingCorrectionEnabled,
             highlightReconstructionEnabled,
-            captureDeviceRotationDegrees,
+            deviceRotationDegrees,
             wallClockMillis,
             utcOffsetMinutes,
             deviceMake,
@@ -584,6 +586,7 @@ class RawPreviewCoordinator(application: Application) : AutoCloseable {
     }
 
     fun startPreparedMultiframeCapture(
+        deviceRotationDegrees: Int = captureDeviceRotationDegrees,
         baseDngOutputFd: Int,
         mergedDngOutputFd: Int,
         jpegOutputFd: Int,
@@ -611,6 +614,7 @@ class RawPreviewCoordinator(application: Application) : AutoCloseable {
         multiframeTuning: MultiframeTuning,
         multiframeBaseFrameMode: com.rawr.camera.settings.model.MultiframeBaseFrameMode,
         multiframeChromaDenoise: Boolean = false,
+        multiframeDetailRestore: Boolean = false,
         distortionCorrectionEnabled: Boolean,
         filmDescription: String?,
         defringeEnabled: Boolean,
@@ -651,7 +655,7 @@ class RawPreviewCoordinator(application: Application) : AutoCloseable {
             fccSteps.coerceIn(1, 8),
             lensShadingCorrectionEnabled,
             highlightReconstructionEnabled,
-            captureDeviceRotationDegrees,
+            deviceRotationDegrees,
             wallClockMillis,
             utcOffsetMinutes,
             deviceMake,
@@ -660,9 +664,10 @@ class RawPreviewCoordinator(application: Application) : AutoCloseable {
             mergedDngDisplayName,
             jpegDisplayName,
             dumpRzslRequested,
-            // Tuning contract + trailing chroma-denoise flag (JNI reads index 22).
+            // Tuning contract + chroma-denoise flag (JNI index 22) + merge values (23-28) + Rexture detail restoration (29).
             multiframeTuning.sanitized().let { tuning ->
-                tuning.nativeValues() + (if (multiframeChromaDenoise) 1f else 0f) + tuning.nativeMergeValues()
+                tuning.nativeValues() + (if (multiframeChromaDenoise) 1f else 0f) + tuning.nativeMergeValues() +
+                    (if (multiframeDetailRestore) 1f else 0f)
             },
             multiframeBaseFrameMode.nativeId,
             distortionCorrectionEnabled,
