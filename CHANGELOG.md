@@ -63,11 +63,11 @@ first and moves to `xiaomi-17u` once verified.
   First test (no zoom yet): the turn's direction is right (in the video the
   applied turn cancelled the camera's roll, -0.81 vs -0.83 per degree), but
   tilts of up to 15 degrees ran past the ~5 degrees the margin allowed.
-- Start of recording: the realtime RAW reader holds 8 images (was 6) and
-  the ingress queue keeps 3 waiting frames (was 1), so the one-time
-  45-80 ms stall ~0.2 s into a take no longer evicts a frame. Traced and
-  fixed on the X14U by apos-fandango (rawr-xiaomi14u, commits 39a49615 and
-  b2d85abe). ~38 MB more at 4K; full-size still readers unchanged.
+- Tried and reverted: a deeper realtime RAW reader (8 images) and ingress
+  queue (3 frames) against the start-of-take drop, from apos-fandango's
+  X14U fix (rawr-xiaomi14u, commits 39a49615 and b2d85abe). On the 17U a
+  3-minute 4K60 take still dropped 7 frames at the start (2-4 before) and
+  had 6 one-frame sensor gaps (2-3 before), at a higher GPU clock.
 
 ## 0.5.1-17u.3
 
