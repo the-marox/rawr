@@ -966,7 +966,7 @@ uint32_t SessionEngine::prepareFullSizeBurst(uint32_t maxFrames) {
                                          " error=" + e.what());
                     }
                 }
-                const bool onGpu = capture::remosaicBlockCfaBuffer(packed, width, height, *context,
+                [[maybe_unused]] const bool onGpu = capture::remosaicBlockCfaBuffer(packed, width, height, *context,
                                                                    frames.back().metadata.blackLevelPhysicalRggb,
                                                                    gpuRemosaic.get());
                 CAPTURE_DEBUG_LOG("FULLRES_REMOSAIC tag=%llu frame=%u block=%u quality=%s gpu=%d",
