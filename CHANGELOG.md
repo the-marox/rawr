@@ -82,6 +82,11 @@ viewfinder quality High, 10-bit unless noted.
   access (asked the first time).
 - Timing row hides SHORT/GPU/LAT/GOP while recording.
 
+### Removed for now
+
+- **120 fps** is out of the fps button until the video pipeline records it
+  without drops. A saved 120 falls back to 30.
+
 ### Fixes
 
 - **Tap-to-focus in the bottom third of the viewfinder.** The exposure /
