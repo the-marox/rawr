@@ -14,8 +14,6 @@
 
 #include "video_fast_turn_nv12.h"
 #include "video_fast_turn_p010.h"
-#include "video_fast_warp_nv12.h"
-#include "video_fast_warp_p010.h"
 #include "video_fast_yuv_nv12.h"
 #include "video_fast_yuv_p010.h"
 #include "vulkan/HostMemory.h"
@@ -188,14 +186,6 @@ VideoFastPath::VideoFastPath(VkPhysicalDevice physical, VkDevice device, uint32_
                      "fast path pipeline");
         // The stabilised variant is optional: without it the recording runs unstabilised.
         try {
-            makePipeline(tenBit ? video_fast_warp_p010_spv : video_fast_warp_nv12_spv,
-                         tenBit ? video_fast_warp_p010_spv_size : video_fast_warp_nv12_spv_size, warpPipeline_,
-                         "fast path warp pipeline");
-        } catch (const std::exception& e) {
-            warpPipeline_ = VK_NULL_HANDLE;
-            __android_log_print(ANDROID_LOG_WARN, "RawrNativeVideo", "VIDEO_FAST_WARP_UNAVAILABLE %s", e.what());
-        }
-        try {
             makePipeline(tenBit ? video_fast_turn_p010_spv : video_fast_turn_nv12_spv,
                          tenBit ? video_fast_turn_p010_spv_size : video_fast_turn_nv12_spv_size, turnPipeline_,
                          "fast path turn pipeline");
@@ -243,9 +233,7 @@ void VideoFastPath::destroy() noexcept {
     destroyHostBuffer(gridUpload_);
     if (pool_) vkDestroyDescriptorPool(device_, pool_, nullptr);
     if (pipeline_) vkDestroyPipeline(device_, pipeline_, nullptr);
-    if (warpPipeline_) vkDestroyPipeline(device_, warpPipeline_, nullptr);
     if (turnPipeline_) vkDestroyPipeline(device_, turnPipeline_, nullptr);
-    warpPipeline_ = VK_NULL_HANDLE;
     turnPipeline_ = VK_NULL_HANDLE;
     if (pipelineLayout_) vkDestroyPipelineLayout(device_, pipelineLayout_, nullptr);
     if (setLayout_) vkDestroyDescriptorSetLayout(device_, setLayout_, nullptr);
@@ -349,15 +337,15 @@ void VideoFastPath::record(VkCommandBuffer command, uint32_t frameSlot, const Vi
     params.yuv0[3] = target.cStrideWords;
     params.yuv1[0] = target.swapUV;
     params.yuv1[1] = monitorEnabled ? 1u : 0u;
-    // The turned variant only for a frame that turns or zooms (horizon levelling); a shift-only frame takes the
-    // cheaper shift variant.
+    // Horizon levelling (turn and zoom) runs the turned variant; plain stabilisation moves the crop of the regular
+    // pass in even steps (the CFA phase), which costs nothing.
     const bool turned = warp != nullptr && warp->turn && turnPipeline_ != VK_NULL_HANDLE;
-    const bool warped = warp != nullptr && (turned || warpPipeline_ != VK_NULL_HANDLE);
-    const bool shiftOnly = warped && !turned;
+    const int32_t cropShiftX = (warp != nullptr && !turned) ? int32_t(warp->shiftX) & ~1 : 0;
+    const int32_t cropShiftY = (warp != nullptr && !turned) ? int32_t(warp->shiftY) & ~1 : 0;
     params.warp[0] = turned ? warp->cosAngle : 1.0f;
     params.warp[1] = turned ? warp->sinAngle : 0.0f;
-    params.warp[2] = warped ? warp->shiftX : 0.0f;
-    params.warp[3] = warped ? warp->shiftY : 0.0f;
+    params.warp[2] = turned ? warp->shiftX : 0.0f;
+    params.warp[3] = turned ? warp->shiftY : 0.0f;
     std::memcpy(params_[frameSlot].mapped, &params, sizeof(params));
 
     VkDescriptorImageInfo raw{VK_NULL_HANDLE, useBuffer ? dummyRaw_.view : frame.rawView, VK_IMAGE_LAYOUT_GENERAL};
@@ -400,10 +388,9 @@ void VideoFastPath::record(VkCommandBuffer command, uint32_t frameSlot, const Vi
     push.height = geometry.rawHeight();
     push.outWidth = width_;
     push.outHeight = height_;
-    // Stabilisation (warp): the record crop stays put and the shader samples the warped position; the caller keeps
-    // the warped window inside the margin.
-    push.cropX = geometry.cropX();
-    push.cropY = geometry.cropY();
+    // The caller keeps the shifted crop, or the warped window, inside the margin.
+    push.cropX = uint32_t(int32_t(geometry.cropX()) + cropShiftX);
+    push.cropY = uint32_t(int32_t(geometry.cropY()) + cropShiftY);
     push.pattern = frame.cfa;
     push.stridePixels = frame.rawStridePixels;
     push.bufferEnabled = useBuffer ? 1u : 0u;
@@ -412,8 +399,7 @@ void VideoFastPath::record(VkCommandBuffer command, uint32_t frameSlot, const Vi
     push.lscWidth = frame.lensShadingWidth;
     push.lscHeight = frame.lensShadingHeight;
     push.monitorEnabled = monitorEnabled ? 1u : 0u;
-    vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_COMPUTE,
-                      turned ? turnPipeline_ : (shiftOnly ? warpPipeline_ : pipeline_));
+    vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_COMPUTE, turned ? turnPipeline_ : pipeline_);
     vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_COMPUTE, pipelineLayout_, 0, 1, &sets_[frameSlot], 0,
                             nullptr);
     vkCmdPushConstants(command, pipelineLayout_, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);

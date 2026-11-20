@@ -47,8 +47,8 @@ std::optional<VideoFastPath::Warp> stabilizerWarp(const VideoDemosaic& demosaic,
     // Horizon levelling zooms in a little (kLevelScale samples a smaller window) so the frame can turn about 10
     // degrees and still shift; without it the margin allows ~5 degrees with no shift left.
     constexpr float kLevelScale = 1.0f / 1.1f;
-    // Turning needs the turned shader variant (a wider tile ring, ~2.4x the GPU work on the 17U), so only horizon
-    // levelling turns; plain stabilisation shifts only.
+    // Turning needs the turned shader variant (sub-pixel resampling, about twice the GPU work of the regular pass on
+    // the 17U), so only horizon levelling turns; plain stabilisation moves the crop in even steps for free.
     const bool levelling = stabilizerLevelHorizon().load(std::memory_order_relaxed) && turnAvailable;
     const float scale = levelling ? kLevelScale : 1.0f;
     // Room for the window's corners: half the frame plus the margin, against the scaled, turned half frame.
@@ -91,8 +91,20 @@ std::optional<VideoFastPath::Warp> stabilizerWarp(const VideoDemosaic& demosaic,
         warp.shiftX = std::clamp(want[0], -leftX, leftX);
         warp.shiftY = std::clamp(want[1], -leftY, leftY);
     } else {
-        warp.shiftX = std::clamp(want[0], -roomX, roomX);
-        warp.shiftY = std::clamp(want[1], -roomY, roomY);
+        // Even crop steps (the CFA phase) in the regular pass. Hysteresis: the crop only moves when the wanted shift
+        // is more than 1.5 px from where it is, so a shift hovering at a step boundary doesn't toggle 0/2 px.
+        static float applied[2] = {0.0f, 0.0f};
+        static int64_t lastFrameNs = 0;
+        if (frameNs - lastFrameNs > 500'000'000 || frameNs < lastFrameNs) applied[0] = applied[1] = 0.0f;
+        lastFrameNs = frameNs;
+        const float room[2] = {float(int32_t(roomX) & ~1), float(int32_t(roomY) & ~1)};
+        for (int i = 0; i < 2; ++i) {
+            const float target = std::clamp(want[i], -room[i], room[i]);
+            if (std::fabs(target - applied[i]) > 1.5f)
+                applied[i] = std::clamp(float(std::lround(target * 0.5f) * 2), -room[i], room[i]);
+        }
+        warp.shiftX = applied[0];
+        warp.shiftY = applied[1];
         angle = 0.0f;
     }
     warp.cosAngle = scale * std::cos(angle);
@@ -247,10 +259,8 @@ void VideoRecorder::record(VkCommandBuffer command, uint32_t frameSlot, uint32_t
         bakeTone.cameraToWorkingColumnMajor3x3 = cameraToAp1.data();
         bakeTone.params = params;
         const auto& buffer = *output_.yuvFrames_[imageIndex].buffer;
-        const auto warp = resources_.fast_->warpAvailable()
-                              ? stabilizerWarp(*resources_.demosaic_, resources_.processingKey_.kept,
-                                               resources_.fast_->turnAvailable())
-                              : std::nullopt;
+        const auto warp = stabilizerWarp(*resources_.demosaic_, resources_.processingKey_.kept,
+                                         resources_.fast_->turnAvailable());
         const VideoFastPath::EncoderTarget target{buffer.buffer,       buffer.yOffsetWords, buffer.yStrideWords,
                                                   buffer.cOffsetWords, buffer.cStrideWords, buffer.swapUV};
         resources_.fast_->record(command, frameSlot, developedFrame, *resources_.demosaic_, *resources_.fastBake_,

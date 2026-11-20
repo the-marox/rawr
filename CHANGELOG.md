@@ -51,24 +51,18 @@ first and moves to `xiaomi-17u` once verified.
   10-bit recording with both changes vs the morning build: average GPU
   clock 348 -> 286 MHz at similar load (busy x clock -21%), no dropped
   frames.
-- Stabilisation now resamples the frame in the fast pass instead of moving
-  the crop in 2-pixel steps: sub-pixel shift, bilinear between demosaiced
-  pixels (stabilised shader variant only; the unstabilised path is
-  unchanged).
+- Tried and dropped: sub-pixel stabilisation (resampling the frame in the
+  fast pass instead of moving the crop in 2-pixel steps). On the 17U it cost
+  about twice the GPU work of the regular pass in 3-minute 4K60 takes
+  (busy x clock 401-440 vs 215, GPU 460-650 MHz vs 286) even after three
+  rounds of optimisation, for ~0.3 px less frame-to-frame jitter.
+  Standard/Strong keep the free 2-pixel crop steps of the regular pass.
 - Level horizon (Settings › Video Encoder › Stabilisation): turns the
   frame by the tilt from the gravity sensor, keeping the horizon level in
   landscape; it fades out past 45 degrees (portrait). It zooms in 1.1x so
   the frame can turn about 10 degrees, and levels before taking out shake.
-  The stabilised pass demosaics the tile once into shared memory and
-  interpolates from it (the first version re-demosaiced every bilinear tap:
-  13-14 ms of GPU per 4K frame against ~9.7 ms unstabilised). Even so,
-  turning needs a wide ring around each tile: 3-minute 4K60 takes measured
-  busy x clock 215 (Off) vs 525 (Strong with turns, GPU up to 902 MHz). So
-  Standard/Strong now only shift (sub-pixel, narrow ring) and roll shake is
-  no longer corrected there; only Level horizon turns. Shift-only measured
-  440 (500-646 MHz): the extra shared memory for the RGB tile cut occupancy
-  (AOC 18% vs 31%), so the RGB tile now reuses the memory of the plane and
-  the RAW cache once they are read.
+  It runs a turned, sub-pixel shader variant that costs about twice the
+  GPU work of the regular pass (opt-in, said in the setting).
   First test (no zoom yet): the turn's direction is right (in the video the
   applied turn cancelled the camera's roll, -0.81 vs -0.83 per degree), but
   tilts of up to 15 degrees ran past the ~5 degrees the margin allowed.
