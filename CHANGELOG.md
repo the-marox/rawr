@@ -72,7 +72,11 @@ first and moves to `xiaomi-17u` once verified.
   frames are out. Presentation only; recording is unaffected. AE still
   reports searching at 800 ms on every switch, so the rest of its
   convergence stays visible; starting the new lens from the previous lens's
-  exposure is the next step.
+  exposure is the next step. With Rawr AE on, the reveal also waits for
+  Rawr AE to take over plus 3 frames (at most 1.5 s): in video mode its
+  first manual requests made the HAL drop to the 2560-row sensor mode
+  (zero rows appear at the bottom of the RAW buffer: 19% -> 36% of samples
+  at black), which showed as the viewfinder jumping sideways.
 - Tried and reverted: a deeper realtime RAW reader (8 images) and ingress
   queue (3 frames) against the start-of-take drop, from apos-fandango's
   X14U fix (rawr-xiaomi14u, commits 39a49615 and b2d85abe). On the 17U a
