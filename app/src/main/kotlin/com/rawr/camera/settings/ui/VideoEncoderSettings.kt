@@ -209,17 +209,33 @@ private fun StabilisationGroup() {
     var mode by androidx.compose.runtime.remember {
         androidx.compose.runtime.mutableIntStateOf(com.rawr.camera.video.StabilizerSensor.mode(context))
     }
+    var levelHorizon by androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf(com.rawr.camera.video.StabilizerSensor.levelHorizon(context))
+    }
     SettingsGroup(
         title = "Stabilisation",
         description = "Gyro stabilisation (from apos-fandango's Rawr X14U). Takes out hand shake (up/down, " +
-            "left/right) by moving the crop inside the sensor's spare area, so it needs a recording smaller " +
-            "than the sensor (4K or 1080p, not Open Gate) and works on the fast recording path only. Tilt (roll) " +
-            "isn't corrected. Don't stabilise the video again in Gyroflow."
+            "left/right and tilt) by moving and turning the frame inside the sensor's spare area, so it needs a " +
+            "recording smaller than the sensor (4K or 1080p, not Open Gate) and works on the fast recording path " +
+            "only. The lens OIS is turned off while it runs. Don't stabilise the video again in Gyroflow."
     ) {
         SettingsRow("Stabilisation", value = listOf("Off", "Standard", "Strong")[mode])
         CompactChoiceRow(listOf(0, 1, 2), mode, { listOf("Off", "Standard", "Strong")[it] }) {
             mode = it
             com.rawr.camera.video.StabilizerSensor.setMode(context, it)
+        }
+        SettingDivider()
+        SettingsSwitchRow(
+            title = "Level horizon",
+            checked = levelHorizon,
+            enabled = mode > 0,
+            supportingText = "Keeps the horizon level from the gravity sensor, in landscape. The spare area allows " +
+                "a few degrees (about 5 at 4K, less while it also takes out a big shake); past that the frame " +
+                "only turns part of the way.",
+            testTag = SettingsTestTags.row("VideoEncoder", "level_horizon")
+        ) {
+            levelHorizon = it
+            com.rawr.camera.video.StabilizerSensor.setLevelHorizon(context, it)
         }
     }
 }

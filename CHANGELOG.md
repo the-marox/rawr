@@ -44,7 +44,19 @@ first and moves to `xiaomi-17u` once verified.
   still 25%.
 - Fast path: RAW tile cache in half precision (packed pairs), half the
   shared memory of the float cache (6.4 -> 3.2 KB per workgroup), to raise
-  occupancy. Test build: kept only if AOC and the image agree.
+  occupancy. AOC: occupancy 25% -> 31% (2453 instructions). 3-minute 4K60
+  10-bit recording with both changes vs the morning build: average GPU
+  clock 348 -> 286 MHz at similar load (busy x clock -21%), no dropped
+  frames.
+- Stabilisation now warps the frame in the fast pass instead of moving the
+  crop in 2-pixel steps: sub-pixel shift plus a turn about the frame centre
+  (roll), bilinear between demosaiced pixels (stabilised shader variant
+  only; the unstabilised path is unchanged). Roll shake is now corrected
+  too, within the margin the shift leaves (about 5 degrees at 4K).
+- Level horizon (Settings › Video Encoder › Stabilisation): the turn
+  follows the gravity sensor instead, keeping the horizon level in
+  landscape, as far as the margin allows; it fades out past 45 degrees
+  (portrait).
 
 ## 0.5.1-17u.3
 

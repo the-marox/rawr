@@ -48,9 +48,17 @@ const float kGuideEps = 0.03;
 
 // Raw cache: the tile plus a 4-pixel ring (the green estimator reaches 2 pixels
 // past the plane's 2-pixel ring). Planes: the tile plus a 2-pixel ring.
-const int kRawSide = 2 * VIDEO_QT + 8;
-const int kPlaneSide = 2 * VIDEO_QT + 4;
-const int kPlaneCells = VIDEO_QT + 2;
+// VIDEO_QUAD_CELL_RING (default 1) widens the plane by whole cells around the tile, for a caller that reads pixels
+// outside its own cell (the stabilised fast path resamples a rotated, sub-pixel shifted window).
+#ifndef VIDEO_QUAD_CELL_RING
+#define VIDEO_QUAD_CELL_RING 1
+#endif
+const int kCellRing = VIDEO_QUAD_CELL_RING;
+const int kPlaneRing = 2 * kCellRing;
+const int kRawRing = kPlaneRing + 2;
+const int kRawSide = 2 * VIDEO_QT + 2 * kRawRing;
+const int kPlaneSide = 2 * VIDEO_QT + 2 * kPlaneRing;
+const int kPlaneCells = VIDEO_QT + 2 * kCellRing;
 #ifdef VIDEO_QUAD_HALF_CACHE
 // Half-precision raw cache (packed pairs along a row; kRawSide is even): half the shared memory of the float cache.
 // Normalized samples in [0, 1]: a half keeps 11 significant bits, finer than a 10-bit code everywhere and within a
@@ -64,7 +72,7 @@ shared uint greenChroma[kPlaneSide * kPlaneSide];
 ivec2 gTileBase;  // absolute sensor position of the tile's first output pixel
 
 float videoCachedAt(ivec2 q) {
-    ivec2 local = q - gTileBase + ivec2(4);
+    ivec2 local = q - gTileBase + ivec2(kRawRing);
 #ifdef VIDEO_QUAD_HALF_CACHE
     int index = local.y * kRawSide + local.x;
     vec2 pair = unpackHalf2x16(cachedRawPairs[index >> 1]);
@@ -102,13 +110,21 @@ float videoRawAt(ivec2 q, uint code) {
     return clamp((float(code) - pc.black[c]) * pc.invRange[c], 0.0, 1.0);
 }
 
+#ifdef VIDEO_CUSTOM_TILE_BASE
+ivec2 videoTileBase();  // defined by the includer; must be even (CFA phase)
+#endif
+
 void videoLoadTile() {
+#ifdef VIDEO_CUSTOM_TILE_BASE
+    gTileBase = videoTileBase();
+#else
     gTileBase = ivec2(pc.cropX, pc.cropY) + ivec2(gl_WorkGroupID.xy) * (2 * VIDEO_QT);
+#endif
 #ifdef VIDEO_QUAD_HALF_CACHE
     for (uint pairIndex = gl_LocalInvocationIndex; pairIndex < uint(kRawSide * kRawSide / 2);
          pairIndex += uint(VIDEO_QT * VIDEO_QT)) {
         uint index = 2u * pairIndex;
-        ivec2 local = ivec2(int(index % uint(kRawSide)) - 4, int(index / uint(kRawSide)) - 4);
+        ivec2 local = ivec2(int(index % uint(kRawSide)) - kRawRing, int(index / uint(kRawSide)) - kRawRing);
         ivec2 q0 = videoMirrored(gTileBase + local);
         ivec2 q1 = videoMirrored(gTileBase + local + ivec2(1, 0));
         cachedRawPairs[pairIndex] = packHalf2x16(vec2(videoRawAt(q0, videoCodeAt(q0)), videoRawAt(q1, videoCodeAt(q1))));
@@ -116,8 +132,8 @@ void videoLoadTile() {
 #else
     for (uint index = gl_LocalInvocationIndex; index < uint(kRawSide * kRawSide);
          index += uint(VIDEO_QT * VIDEO_QT)) {
-        ivec2 q = videoMirrored(gTileBase + ivec2(int(index % uint(kRawSide)) - 4,
-                                                  int(index / uint(kRawSide)) - 4));
+        ivec2 q = videoMirrored(gTileBase + ivec2(int(index % uint(kRawSide)) - kRawRing,
+                                                  int(index / uint(kRawSide)) - kRawRing));
         cachedRaw[index] = videoRawAt(q, videoCodeAt(q));
     }
 #endif
@@ -161,7 +177,7 @@ void videoBuildPlane() {
     for (uint index = gl_LocalInvocationIndex; index < uint(kPlaneCells * kPlaneCells);
          index += uint(VIDEO_QT * VIDEO_QT)) {
         ivec2 cell = ivec2(int(index % uint(kPlaneCells)), int(index / uint(kPlaneCells)));
-        gCell = gTileBase + 2 * (cell - 1);
+        gCell = gTileBase + 2 * (cell - kCellRing);
         [[unroll]] for (int y = 0; y < 6; ++y)
             [[unroll]] for (int x = 0; x < 6; ++x) gRaw[y][x] = videoCachedAt(gCell + ivec2(x - 2, y - 2));
         [[unroll]] for (int dy = 0; dy < 2; ++dy) {
@@ -209,7 +225,8 @@ float videoSquare(float v) { v = max(v, 0.0); return v * v; }
 
 // Loads the cell's 4x4 neighbourhood of the plane into registers.
 void videoLoadCellPlane(ivec2 cellOrigin) {
-    ivec2 local = cellOrigin - gTileBase;  // inside the tile; the plane ring is 2, the cell ring 1
+    // Plane index of pixel p is p - gTileBase + kPlaneRing; the cell's 4x4 starts one pixel before its origin.
+    ivec2 local = cellOrigin - gTileBase + ivec2(kPlaneRing - 2);
     [[unroll]] for (int y = 0; y < 4; ++y) {
         [[unroll]] for (int x = 0; x < 4; ++x) {
             vec2 plane = unpackHalf2x16(greenChroma[(local.y + 1 + y) * kPlaneSide + local.x + 1 + x]);

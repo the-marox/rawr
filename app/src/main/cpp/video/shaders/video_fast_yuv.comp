@@ -22,14 +22,75 @@ layout(local_size_x = VIDEO_QT, local_size_y = VIDEO_QT, local_size_z = 1) in;
 #define VIDEO_RAW_BUFFER_BINDING 1
 #define VIDEO_LSC_BINDING 3
 #define VIDEO_QUAD_HALF_CACHE 1
-#include "video_quad_core.glsl"
+// VIDEO_FAST_WARP: the stabilised variant. Each output pixel samples the sensor at a rotated, sub-pixel shifted
+// position (gyro stabilisation and horizon levelling, geometry/Stabilizer.h), bilinear between demosaiced pixels.
+// The workgroup's RAW tile follows the warped position of its output tile, with a 3-cell ring for the rotation
+// inside the tile (up to ~2 px at 5 degrees), the rounding of the tile base, the bilinear tap and the chroma
+// neighbours.
+#ifdef VIDEO_FAST_WARP
+#define VIDEO_QUAD_CELL_RING 3
+#define VIDEO_CUSTOM_TILE_BASE 1
+#endif
 
 layout(std140, binding = 2) uniform FastParams {
     vec4 gains;   // rgb: WB gains; w: common channel ceiling (HL off clamp)
     vec4 shaper;  // x: toe offset c; y: log2(c); z: 1 / (log2(max + c) - log2(c)); w: LUT size n
     uvec4 yuv0;   // yOffsetWords, yStrideWords, cOffsetWords, cStrideWords
     uvec4 yuv1;   // swapUV, monitorEnabled
+    vec4 warp;    // VIDEO_FAST_WARP: cos, sin of the rotation; x, y shift in sensor pixels
 } fp;
+#include "video_quad_core.glsl"
+
+#ifdef VIDEO_FAST_WARP
+// Sensor position sampled for output position o (sensor pixels, centres at +0.5): rotation about the record crop's
+// centre, then the shift. Image axes: x right, y down; a positive angle turns x towards y.
+vec2 warpSource(vec2 o) {
+    vec2 c = vec2(pc.cropX, pc.cropY) + 0.5 * vec2(pc.outWidth, pc.outHeight);
+    vec2 d = o - c;
+    return c + vec2(fp.warp.x * d.x - fp.warp.y * d.y, fp.warp.y * d.x + fp.warp.x * d.y) + fp.warp.zw;
+}
+
+ivec2 videoTileBase() {
+    vec2 tileCentre = vec2(pc.cropX, pc.cropY) + vec2(gl_WorkGroupID.xy) * float(2 * VIDEO_QT) + float(VIDEO_QT);
+    vec2 sourceCentre = warpSource(tileCentre);
+    return ivec2(floor(sourceCentre * 0.5)) * 2 - ivec2(VIDEO_QT);
+}
+
+vec2 planeAt(ivec2 q) {
+    ivec2 local = q - gTileBase + ivec2(kPlaneRing);
+    return unpackHalf2x16(greenChroma[local.y * kPlaneSide + local.x]);
+}
+
+// Demosaiced camera RGB of sensor pixel q (any CFA site): the arithmetic of videoPixelRgb, read straight from the
+// shared plane around q.
+vec3 warpRgbAt(ivec2 q) {
+    float sg[3][3];
+    float df[3][3];
+    [[unroll]] for (int y = 0; y < 3; ++y) {
+        [[unroll]] for (int x = 0; x < 3; ++x) {
+            vec2 v = planeAt(q + ivec2(x - 1, y - 1));
+            sg[y][x] = v.x;
+            df[y][x] = v.y;
+        }
+    }
+    float value = videoCachedAt(q);
+    int c = videoChannelAbs(q);
+    float g = sg[1][1];
+    if (c == 0 || c == 3) {
+        float w0 = videoGuide(g, sg[0][0]), w1 = videoGuide(g, sg[0][2]);
+        float w2 = videoGuide(g, sg[2][0]), w3 = videoGuide(g, sg[2][2]);
+        float other = videoSquare(g + (w0 * df[0][0] + w1 * df[0][2] + w2 * df[2][0] + w3 * df[2][2]) /
+                                          (w0 + w1 + w2 + w3));
+        return c == 0 ? vec3(value, videoSquare(g), other) : vec3(other, videoSquare(g), value);
+    }
+    float wl = videoGuide(g, sg[1][0]), wr = videoGuide(g, sg[1][2]);
+    float wu = videoGuide(g, sg[0][1]), wd = videoGuide(g, sg[2][1]);
+    float horizontal = videoSquare(g + (wl * df[1][0] + wr * df[1][2]) / (wl + wr));
+    float vertical = videoSquare(g + (wu * df[0][1] + wd * df[2][1]) / (wu + wd));
+    // Green in the red row (1): red left/right, blue above/below; in the blue row (2) the reverse.
+    return c == 1 ? vec3(horizontal, value, vertical) : vec3(vertical, value, horizontal);
+}
+#endif
 layout(binding = 4) uniform sampler2D toneLut;  // n x (n * n), RGBA16F, linear filtering
 #if YUV_10BIT
 layout(std430, binding = 5) writeonly buffer EncoderBuffer { uint words[]; } dst;
@@ -82,18 +143,35 @@ void main() {
     ivec2 outPixel = cell * 2;
     if (outPixel.x >= int(pc.outWidth) || outPixel.y >= int(pc.outHeight)) return;
     ivec2 base = ivec2(pc.cropX, pc.cropY) + outPixel;
+#ifdef VIDEO_FAST_WARP
+    // Lens shading once per cell at its warped centre; green averages the two rows' map channels.
+    vec4 shadingWarp = lensShadingGainsAt(warpSource(vec2(base) + 1.0));
+    vec3 warpGain = vec3(shadingWarp.x, 0.5 * (shadingWarp.y + shadingWarp.z), shadingWarp.w);
+#else
     videoLoadCellPlane(base);
+#endif
     // Lens shading once per cell: all four map channels at the cell centre (lensShadingGainsAt) instead of three
     // bilinear lookups per pixel (12 per cell). The cell's pixels are within a pixel of the centre and a grid step
     // spans hundreds, so the gain differs by far less than a code; green takes the map channel of its row.
+#ifndef VIDEO_FAST_WARP
     vec4 shading = lensShadingGainsAt(vec2(base) + 0.5);
+#endif
     float luma[4];
     vec3 sum = vec3(0.0);
     [[unroll]] for (int dy = 0; dy < 2; ++dy) {
         [[unroll]] for (int dx = 0; dx < 2; ++dx) {
             ivec2 q = base + ivec2(dx, dy);
+#ifdef VIDEO_FAST_WARP
+            vec2 source = warpSource(vec2(q) + 0.5) - 0.5;
+            ivec2 i0 = ivec2(floor(source));
+            vec2 f = source - vec2(i0);
+            vec3 top = mix(warpRgbAt(i0), warpRgbAt(i0 + ivec2(1, 0)), f.x);
+            vec3 bottom = mix(warpRgbAt(i0 + ivec2(0, 1)), warpRgbAt(i0 + ivec2(1, 1)), f.x);
+            vec3 camera = mix(top, bottom, f.y) * warpGain;
+#else
             vec3 gain = vec3(shading.x, ((q.y & 1) == 0) ? shading.y : shading.z, shading.w);
             vec3 camera = videoPixelRgb(dx, dy, videoCachedAt(q)) * gain;
+#endif
             vec3 encoded = fastTone(fastWhiteBalance(camera));
             luma[dy * 2 + dx] = dot(kLuma, encoded);
             sum += encoded;

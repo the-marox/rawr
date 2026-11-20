@@ -12,6 +12,8 @@
 #include <string>
 #include <vector>
 
+#include "video_fast_warp_nv12.h"
+#include "video_fast_warp_p010.h"
 #include "video_fast_yuv_nv12.h"
 #include "video_fast_yuv_p010.h"
 #include "vulkan/HostMemory.h"
@@ -36,8 +38,9 @@ struct Params {
     float shaper[4];
     uint32_t yuv0[4];
     uint32_t yuv1[4];
+    float warp[4];  // VIDEO_FAST_WARP: cos, sin, shift x, shift y
 };
-static_assert(sizeof(Params) == 64);
+static_assert(sizeof(Params) == 80);
 constexpr VkDeviceSize kMaxLscBytes = 256 * 1024;
 // Shaper domain: white-balanced camera RGB in [0, kShaperMax], log2 with a
 // linear toe below kShaperToe. HL off clamps every channel to the lowest WB
@@ -160,22 +163,36 @@ VideoFastPath::VideoFastPath(VkPhysicalDevice physical, VkDevice device, uint32_
         pipelineLayout.pPushConstantRanges = &range;
         check(vkCreatePipelineLayout(device, &pipelineLayout, nullptr, &pipelineLayout_), "fast path layout");
 
-        VkShaderModuleCreateInfo module{};
-        module.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-        module.codeSize = tenBit ? video_fast_yuv_p010_spv_size : video_fast_yuv_nv12_spv_size;
-        module.pCode = reinterpret_cast<const uint32_t*>(tenBit ? video_fast_yuv_p010_spv : video_fast_yuv_nv12_spv);
-        VkShaderModule shader = VK_NULL_HANDLE;
-        check(vkCreateShaderModule(device, &module, nullptr, &shader), "fast path shader");
-        VkComputePipelineCreateInfo pipeline{};
-        pipeline.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
-        pipeline.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-        pipeline.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-        pipeline.stage.module = shader;
-        pipeline.stage.pName = "main";
-        pipeline.layout = pipelineLayout_;
-        const VkResult created = vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &pipeline, nullptr, &pipeline_);
-        vkDestroyShaderModule(device, shader, nullptr);
-        check(created, "fast path pipeline");
+        const auto makePipeline = [&](const unsigned char* code, size_t size, VkPipeline& out, const char* what) {
+            VkShaderModuleCreateInfo module{};
+            module.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+            module.codeSize = size;
+            module.pCode = reinterpret_cast<const uint32_t*>(code);
+            VkShaderModule shader = VK_NULL_HANDLE;
+            check(vkCreateShaderModule(device, &module, nullptr, &shader), what);
+            VkComputePipelineCreateInfo pipeline{};
+            pipeline.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+            pipeline.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+            pipeline.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+            pipeline.stage.module = shader;
+            pipeline.stage.pName = "main";
+            pipeline.layout = pipelineLayout_;
+            const VkResult created = vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &pipeline, nullptr, &out);
+            vkDestroyShaderModule(device, shader, nullptr);
+            check(created, what);
+        };
+        makePipeline(tenBit ? video_fast_yuv_p010_spv : video_fast_yuv_nv12_spv,
+                     tenBit ? video_fast_yuv_p010_spv_size : video_fast_yuv_nv12_spv_size, pipeline_,
+                     "fast path pipeline");
+        // The stabilised variant is optional: without it the recording runs unstabilised.
+        try {
+            makePipeline(tenBit ? video_fast_warp_p010_spv : video_fast_warp_nv12_spv,
+                         tenBit ? video_fast_warp_p010_spv_size : video_fast_warp_nv12_spv_size, warpPipeline_,
+                         "fast path warp pipeline");
+        } catch (const std::exception& e) {
+            warpPipeline_ = VK_NULL_HANDLE;
+            __android_log_print(ANDROID_LOG_WARN, "RawrNativeVideo", "VIDEO_FAST_WARP_UNAVAILABLE %s", e.what());
+        }
 
         VkDescriptorPoolSize sizes[4] = {{VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 2 * kSlots},
                                          {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3 * kSlots},
@@ -216,6 +233,8 @@ void VideoFastPath::destroy() noexcept {
     destroyHostBuffer(gridUpload_);
     if (pool_) vkDestroyDescriptorPool(device_, pool_, nullptr);
     if (pipeline_) vkDestroyPipeline(device_, pipeline_, nullptr);
+    if (warpPipeline_) vkDestroyPipeline(device_, warpPipeline_, nullptr);
+    warpPipeline_ = VK_NULL_HANDLE;
     if (pipelineLayout_) vkDestroyPipelineLayout(device_, pipelineLayout_, nullptr);
     if (setLayout_) vkDestroyDescriptorSetLayout(device_, setLayout_, nullptr);
     if (sampler_) vkDestroySampler(device_, sampler_, nullptr);
@@ -233,8 +252,7 @@ void VideoFastPath::destroy() noexcept {
 void VideoFastPath::record(VkCommandBuffer command, uint32_t frameSlot, const VideoDemosaic::Frame& frame,
                            const VideoDemosaic& geometry, tonemap::TonemapEngine& bake,
                            tonemap::TonemapRecordInfo tone, const EncoderTarget& target, uint32_t queueFamily,
-                           VkImageView monitorView, bool monitorEnabled, VkQueryPool stagePool, int32_t shiftX,
-                           int32_t shiftY) {
+                           VkImageView monitorView, bool monitorEnabled, VkQueryPool stagePool, const Warp* warp) {
     if (frameSlot >= kSlots || !target.buffer || (!frame.rawBuffer && !frame.rawView) || frame.cfa > 3u ||
         frame.white <= 0.0f)
         throw std::invalid_argument("video fast path frame invalid");
@@ -319,6 +337,11 @@ void VideoFastPath::record(VkCommandBuffer command, uint32_t frameSlot, const Vi
     params.yuv0[3] = target.cStrideWords;
     params.yuv1[0] = target.swapUV;
     params.yuv1[1] = monitorEnabled ? 1u : 0u;
+    const bool warped = warp != nullptr && warpPipeline_ != VK_NULL_HANDLE;
+    params.warp[0] = warped ? warp->cosAngle : 1.0f;
+    params.warp[1] = warped ? warp->sinAngle : 0.0f;
+    params.warp[2] = warped ? warp->shiftX : 0.0f;
+    params.warp[3] = warped ? warp->shiftY : 0.0f;
     std::memcpy(params_[frameSlot].mapped, &params, sizeof(params));
 
     VkDescriptorImageInfo raw{VK_NULL_HANDLE, useBuffer ? dummyRaw_.view : frame.rawView, VK_IMAGE_LAYOUT_GENERAL};
@@ -361,9 +384,10 @@ void VideoFastPath::record(VkCommandBuffer command, uint32_t frameSlot, const Vi
     push.height = geometry.rawHeight();
     push.outWidth = width_;
     push.outHeight = height_;
-    // Gyro stabilisation moves the crop window (even steps keep the CFA phase); the caller keeps it in the margin.
-    push.cropX = uint32_t(int32_t(geometry.cropX()) + shiftX);
-    push.cropY = uint32_t(int32_t(geometry.cropY()) + shiftY);
+    // Stabilisation (warp): the record crop stays put and the shader samples the warped position; the caller keeps
+    // the warped window inside the margin.
+    push.cropX = geometry.cropX();
+    push.cropY = geometry.cropY();
     push.pattern = frame.cfa;
     push.stridePixels = frame.rawStridePixels;
     push.bufferEnabled = useBuffer ? 1u : 0u;
@@ -372,7 +396,7 @@ void VideoFastPath::record(VkCommandBuffer command, uint32_t frameSlot, const Vi
     push.lscWidth = frame.lensShadingWidth;
     push.lscHeight = frame.lensShadingHeight;
     push.monitorEnabled = monitorEnabled ? 1u : 0u;
-    vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline_);
+    vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_COMPUTE, warped ? warpPipeline_ : pipeline_);
     vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_COMPUTE, pipelineLayout_, 0, 1, &sets_[frameSlot], 0,
                             nullptr);
     vkCmdPushConstants(command, pipelineLayout_, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);

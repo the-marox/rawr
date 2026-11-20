@@ -29,6 +29,12 @@ class VideoFastPath final {
     VideoFastPath(const VideoFastPath&) = delete;
     VideoFastPath& operator=(const VideoFastPath&) = delete;
 
+    // Stabilisation for one frame: rotation about the record crop's centre, then a shift in sensor pixels.
+    struct Warp {
+        float cosAngle = 1.0f, sinAngle = 0.0f, shiftX = 0.0f, shiftY = 0.0f;
+    };
+    bool warpAvailable() const noexcept { return warpPipeline_ != VK_NULL_HANDLE; }
+
     struct EncoderTarget {
         VkBuffer buffer = VK_NULL_HANDLE;
         uint32_t yOffsetWords = 0, yStrideWords = 0, cOffsetWords = 0, cStrideWords = 0, swapUV = 0;
@@ -38,7 +44,7 @@ class VideoFastPath final {
     void record(VkCommandBuffer command, uint32_t frameSlot, const VideoDemosaic::Frame& frame,
                 const VideoDemosaic& geometry, tonemap::TonemapEngine& bake, tonemap::TonemapRecordInfo tone,
                 const EncoderTarget& target, uint32_t queueFamily, VkImageView monitorView, bool monitorEnabled, VkQueryPool stagePool,
-                int32_t shiftX = 0, int32_t shiftY = 0);
+                const Warp* warp = nullptr);
 
    private:
     struct HostBuffer {
@@ -66,6 +72,7 @@ class VideoFastPath final {
     VkDescriptorSetLayout setLayout_ = VK_NULL_HANDLE;
     VkPipelineLayout pipelineLayout_ = VK_NULL_HANDLE;
     VkPipeline pipeline_ = VK_NULL_HANDLE;
+    VkPipeline warpPipeline_ = VK_NULL_HANDLE;
     VkDescriptorPool pool_ = VK_NULL_HANDLE;
     std::array<VkDescriptorSet, kSlots> sets_{};
     std::array<HostBuffer, kSlots> params_{};

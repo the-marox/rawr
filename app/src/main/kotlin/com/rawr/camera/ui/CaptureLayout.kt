@@ -244,13 +244,17 @@ private fun StabilizerEffect(isVideo: Boolean) {
     var mode by androidx.compose.runtime.remember {
         androidx.compose.runtime.mutableIntStateOf(com.rawr.camera.video.StabilizerSensor.mode(context))
     }
+    var levelHorizon by androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf(com.rawr.camera.video.StabilizerSensor.levelHorizon(context))
+    }
     androidx.lifecycle.compose.LifecycleResumeEffect(Unit) {
         mode = com.rawr.camera.video.StabilizerSensor.mode(context)
+        levelHorizon = com.rawr.camera.video.StabilizerSensor.levelHorizon(context)
         onPauseOrDispose { }
     }
     val sensor = androidx.compose.runtime.remember { com.rawr.camera.video.StabilizerSensor(context) }
-    androidx.compose.runtime.DisposableEffect(isVideo, mode) {
-        sensor.configure(isVideo && mode > 0, com.rawr.camera.video.StabilizerSensor.smoothingSeconds(mode))
+    androidx.compose.runtime.DisposableEffect(isVideo, mode, levelHorizon) {
+        sensor.configure(isVideo && mode > 0, com.rawr.camera.video.StabilizerSensor.smoothingSeconds(mode), levelHorizon)
         onDispose { sensor.close() }
     }
 }

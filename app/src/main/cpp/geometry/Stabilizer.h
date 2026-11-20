@@ -8,8 +8,9 @@
 // Gyro video stabilisation. The shake track (StabilizerTrack) and the Kotlin
 // gyro integrator (video/StabilizerSensor.kt) come from apos-fandango's Rawr
 // X14U fork (github.com/apos-fandango/rawr-xiaomi14u, commit 9bd6bac, GPL-3.0).
-// The 17U applies it in the recording fast path as a per-frame shift of the
-// crop window inside the sensor margin (no extra GPU pass, no resampling).
+// The 17U applies it in the recording fast path as a per-frame warp (shift and
+// turn, sub-pixel) of the sampling window inside the sensor margin, in the
+// fast pass itself (video_fast_yuv.comp, VIDEO_FAST_WARP).
 namespace rawrcam::geometry {
 
 // Small camera rotations (radians, image axes: x right, y down, z forward) of
@@ -18,7 +19,7 @@ struct StabilizerSample {
     int64_t timeNs = 0;  // CLOCK_BOOTTIME (SensorEvent.timestamp)
     float pitch = 0.0f;  // about x
     float yaw = 0.0f;    // about y
-    float roll = 0.0f;   // about z (not corrected by the crop shift)
+    float roll = 0.0f;   // about z (the lens axis); with horizon levelling, the tilt from level instead
     // The camera's integrated turn (before smoothing), only for the RawrStab trace.
     float rawPitch = 0.0f, rawYaw = 0.0f, rawRoll = 0.0f;
 };
@@ -110,6 +111,11 @@ inline std::atomic<float>& stabilizerRoomX() noexcept {
     return value;
 }
 inline std::atomic<float>& stabilizerRoomY() noexcept {
+    static std::atomic<float> value{0.0f};
+    return value;
+}
+// Turn (roll) room of the current recording in radians, with no shift: the corners' margin over half the frame.
+inline std::atomic<float>& stabilizerRoomRoll() noexcept {
     static std::atomic<float> value{0.0f};
     return value;
 }

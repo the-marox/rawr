@@ -23,11 +23,12 @@ extern "C" JNIEXPORT void JNICALL Java_com_rawr_camera_video_NativeStabilizer_pu
                                                float(rawYaw), float(rawRoll)});
 }
 
-// Shift room of the current recording as angles {x, y} (radians); zeros when there is none.
+// Room of the current recording as angles {x, y, roll} (radians); zeros when there is none.
 extern "C" JNIEXPORT jfloatArray JNICALL Java_com_rawr_camera_video_NativeStabilizer_room(JNIEnv* env, jobject) {
-    const jfloat values[2] = {rawrcam::geometry::stabilizerRoomX().load(std::memory_order_relaxed),
-                              rawrcam::geometry::stabilizerRoomY().load(std::memory_order_relaxed)};
-    jfloatArray out = env->NewFloatArray(2);
-    if (out) env->SetFloatArrayRegion(out, 0, 2, values);
+    const jfloat values[3] = {rawrcam::geometry::stabilizerRoomX().load(std::memory_order_relaxed),
+                              rawrcam::geometry::stabilizerRoomY().load(std::memory_order_relaxed),
+                              rawrcam::geometry::stabilizerRoomRoll().load(std::memory_order_relaxed)};
+    jfloatArray out = env->NewFloatArray(3);
+    if (out) env->SetFloatArrayRegion(out, 0, 3, values);
     return out;
 }

@@ -8,6 +8,7 @@
 #include <array>
 #include <chrono>
 #include <cmath>
+#include <optional>
 #include <stdexcept>
 #include <string>
 
@@ -20,16 +21,18 @@
 #include "vulkan/VulkanContext.h"
 namespace rawrcam::video {
 namespace {
-// Gyro stabilisation (geometry/Stabilizer.h): the crop shift that takes this frame's shake out, in RAW pixels, even
-// (the CFA phase), inside the margin the crop leaves in the image area minus an 8-pixel apron for the demosaic.
-// Publishes that margin as angles so the gyro integrator keeps its shake within it. {0, 0} when off.
-std::array<int32_t, 2> stabilizerShift(const VideoDemosaic& demosaic, const VideoKeptArea& keptArea) {
+// Gyro stabilisation (geometry/Stabilizer.h): the warp that takes this frame's shake (and, with horizon levelling,
+// its tilt) out: a shift in RAW pixels and a rotation about the record crop's centre, kept inside the margin the crop
+// leaves in the image area minus an 8-pixel apron for the demosaic. Publishes that margin as angles so the gyro
+// integrator keeps its shake within it. nullopt when off.
+std::optional<VideoFastPath::Warp> stabilizerWarp(const VideoDemosaic& demosaic, const VideoKeptArea& keptArea) {
     using namespace rawrcam::geometry;
     const float focal = stabilizerFocalPx().load(std::memory_order_relaxed);
     if (!stabilizerEnabled().load(std::memory_order_relaxed) || !(focal > 0.0f) || demosaic.sensorScale() != 1u) {
         stabilizerRoomX().store(0.0f, std::memory_order_relaxed);
         stabilizerRoomY().store(0.0f, std::memory_order_relaxed);
-        return {0, 0};
+        stabilizerRoomRoll().store(0.0f, std::memory_order_relaxed);
+        return std::nullopt;
     }
     const VideoKeptArea kept = keptArea.valid() ? keptArea
                                                 : VideoKeptArea{0, 0, demosaic.rawWidth(), demosaic.rawHeight()};
@@ -38,33 +41,38 @@ std::array<int32_t, 2> stabilizerShift(const VideoDemosaic& demosaic, const Vide
     const int32_t w = int32_t(demosaic.outputWidth()), h = int32_t(demosaic.outputHeight());
     const int32_t left = cx - int32_t(kept.x) - kApron, right = int32_t(kept.x + kept.width) - (cx + w) - kApron;
     const int32_t top = cy - int32_t(kept.y) - kApron, bottom = int32_t(kept.y + kept.height) - (cy + h) - kApron;
-    const int32_t roomX = std::max(0, std::min(left, right)), roomY = std::max(0, std::min(top, bottom));
-    stabilizerRoomX().store(float(roomX) / focal, std::memory_order_relaxed);
-    stabilizerRoomY().store(float(roomY) / focal, std::memory_order_relaxed);
-    // The crop moves in 2-pixel steps (the CFA phase). Hysteresis: it only moves when the wanted shift is more than
-    // 1.5 px from where it is, so a shift hovering at a step boundary doesn't toggle 0/2 px from frame to frame.
-    static std::array<int32_t, 2> applied{0, 0};
-    static int64_t lastFrameNs = 0;
+    const float roomX = float(std::max(0, std::min(left, right))), roomY = float(std::max(0, std::min(top, bottom)));
+    const float halfW = 0.5f * float(w), halfH = 0.5f * float(h);
+    stabilizerRoomX().store(roomX / focal, std::memory_order_relaxed);
+    stabilizerRoomY().store(roomY / focal, std::memory_order_relaxed);
+    // A small turn moves the corners by about halfH * angle sideways and halfW * angle up/down.
+    stabilizerRoomRoll().store(std::min(roomX / halfH, roomY / halfW), std::memory_order_relaxed);
     const int64_t frameNs = stabilizerFrameTimeNs().load(std::memory_order_relaxed);
-    if (frameNs - lastFrameNs > 500'000'000 || frameNs < lastFrameNs) applied = {0, 0};  // new recording
-    lastFrameNs = frameNs;
     StabilizerSample shake;
-    if (!stabilizerTrack().at(frameNs, shake)) return applied;
-    // A camera turn about y moves the scene sideways in the image, about x up and down: the crop follows the scene.
+    if (!stabilizerTrack().at(frameNs, shake)) return VideoFastPath::Warp{};
+    // A camera turn about y moves the scene sideways in the image, about x up and down: the window follows the
+    // scene. A turn about the lens axis turns the scene the other way, so the window turns back by the same angle.
     const float want[2] = {-shake.yaw * focal, shake.pitch * focal};
-    const int32_t room[2] = {roomX & ~1, roomY & ~1};
-    for (int i = 0; i < 2; ++i) {
-        const float target = std::clamp(want[i], -float(room[i]), float(room[i]));
-        if (std::fabs(target - float(applied[i])) > 1.5f)
-            applied[i] = std::clamp(int32_t(std::lround(target * 0.5f)) * 2, -room[i], room[i]);
-    }
+    VideoFastPath::Warp warp{};
+    warp.shiftX = std::clamp(want[0], -roomX, roomX);
+    warp.shiftY = std::clamp(want[1], -roomY, roomY);
+    // The turn gets the margin the shift leaves (corner displacement, with the 1 - cos term).
+    float angle = -shake.roll;
+    const float leftX = roomX - std::fabs(warp.shiftX), leftY = roomY - std::fabs(warp.shiftY);
+    const float maxSin = std::max(0.0f, std::min(leftX / halfH, leftY / halfW) * 0.97f);
+    const float maxAngle = std::asin(std::min(maxSin, 1.0f));
+    angle = std::clamp(angle, -maxAngle, maxAngle);
+    warp.cosAngle = std::cos(angle);
+    warp.sinAngle = std::sin(angle);
     // Per-frame trace for checking the gyro/frame timing offline (`adb logcat -s RawrStab`).
     // raw = the camera's integrated turn as pixels (x, y) and roll in degrees, before smoothing.
     __android_log_print(ANDROID_LOG_INFO, "RawrStab",
-                        "STAB t=%lld want=%.2f,%.2f applied=%d,%d room=%d,%d raw=%.2f,%.2f,%.3f focal=%.1f",
-                        static_cast<long long>(frameNs), want[0], want[1], applied[0], applied[1], room[0], room[1],
-                        -shake.rawYaw * focal, shake.rawPitch * focal, shake.rawRoll * 57.29578f, focal);
-    return applied;
+                        "STAB t=%lld want=%.2f,%.2f applied=%.2f,%.2f room=%.0f,%.0f raw=%.2f,%.2f,%.3f focal=%.1f "
+                        "roll=%.3f,%.3f",
+                        static_cast<long long>(frameNs), want[0], want[1], warp.shiftX, warp.shiftY, roomX, roomY,
+                        -shake.rawYaw * focal, shake.rawPitch * focal, shake.rawRoll * 57.29578f, focal,
+                        -shake.roll * 57.29578f, angle * 57.29578f);
+    return warp;
 }
 }  // namespace
 rawr::post::StillDistortionCorrection VideoRecorder::distortionFor(const rawrcam::geometry::LensDistortionModel& lens,
@@ -206,13 +214,15 @@ void VideoRecorder::record(VkCommandBuffer command, uint32_t frameSlot, uint32_t
         bakeTone.cameraToWorkingColumnMajor3x3 = cameraToAp1.data();
         bakeTone.params = params;
         const auto& buffer = *output_.yuvFrames_[imageIndex].buffer;
-        const auto shift = stabilizerShift(*resources_.demosaic_, resources_.processingKey_.kept);
+        const auto warp = resources_.fast_->warpAvailable()
+                              ? stabilizerWarp(*resources_.demosaic_, resources_.processingKey_.kept)
+                              : std::nullopt;
         const VideoFastPath::EncoderTarget target{buffer.buffer,       buffer.yOffsetWords, buffer.yStrideWords,
                                                   buffer.cOffsetWords, buffer.cStrideWords, buffer.swapUV};
         resources_.fast_->record(command, frameSlot, developedFrame, *resources_.demosaic_, *resources_.fastBake_,
                                  bakeTone, target, output_.context_.queueFamily(),
                                  monitorEnabled ? resources_.monitor_[frameSlot].view : resources_.dummyMonitor_.view,
-                                 monitorEnabled, stagePool, shift[0], shift[1]);
+                                 monitorEnabled, stagePool, warp ? &*warp : nullptr);
         timing.markVideoDemosaicDone(command, frameSlot);
         timing.markVideoPostDone(command, frameSlot);
         resources_.stagePending_[frameSlot] = true;
