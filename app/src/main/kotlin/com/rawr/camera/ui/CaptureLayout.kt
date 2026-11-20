@@ -68,6 +68,9 @@ internal fun PhysicalCaptureLayout(
     // 16:9 viewfinders run past the photo frame and behind the shutter
     // cluster; Open Gate is exactly the photo box, so nothing bleeds.
     val videoBleed = isVideo && state.videoResolution != VideoResolutionMode.OPEN_GATE
+    // 17U: Open Gate above 30 fps records 4096x2560 (the 60 fps modes pad 512 rows).
+    val openGateHighFps = isVideo && state.videoResolution == VideoResolutionMode.OPEN_GATE &&
+        state.videoFps > 30 && state.videoAspect == com.rawr.camera.video.VideoAspect.Native
     // 17U: while recording, controls that cannot change mid-record (and the
     // exposure/look overlays) step aside so the frame is clear. A tap anywhere
     // on the viewfinder brings them back for 3 s; it still reaches tap-to-focus.
@@ -90,6 +93,7 @@ internal fun PhysicalCaptureLayout(
         onDispose { if (recordingNow) com.rawr.camera.video.RecordingDnd.end(dndContext) }
     }
     val cleanRecording = recordingNow && !revealed
+    val cleanNow = androidx.compose.runtime.rememberUpdatedState(cleanRecording)
     val cleanAlpha by animateFloatAsState(if (cleanRecording) 0f else 1f, tween(150), label = "recordingClean")
     BoxWithConstraints(modifier) {
         // Reserve the shutter/record area and both monitors before sizing the
@@ -121,22 +125,24 @@ internal fun PhysicalCaptureLayout(
             Box(
                 Modifier.fillMaxWidth().weight(1f).pointerInput(recordingNow) {
                     if (!recordingNow) return@pointerInput
-                    // A sideways swipe (screen X) reveals the controls. Screen-vertical
-                    // swipes stay with the quick panel and a tap stays a focus tap.
-                    // Events are observed, never consumed.
+                    // While the controls are hidden, any swipe only reveals them: the
+                    // gesture is consumed past touch slop so the viewfinder's
+                    // quick-panel swipe never starts. A tap stays a focus tap.
+                    // With the controls shown, gestures pass through untouched.
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                        if (!cleanNow.value) return@awaitEachGesture
                         val slop = viewConfiguration.touchSlop
+                        var swiping = false
                         while (true) {
                             val event = awaitPointerEvent(PointerEventPass.Initial)
                             val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                            val dx = kotlin.math.abs(change.position.x - down.position.x)
-                            val dy = kotlin.math.abs(change.position.y - down.position.y)
-                            if (dx > slop && dx > dy * 1.5f) {
+                            if (!swiping && (change.position - down.position).getDistance() > slop) {
+                                swiping = true
                                 revealTick++
-                                break
                             }
-                            if (dy > slop || !change.pressed) break
+                            if (swiping) event.changes.forEach { it.consume() }
+                            if (!change.pressed) break
                         }
                     }
                 }
@@ -147,7 +153,7 @@ internal fun PhysicalCaptureLayout(
                     preview = preview,
                     renderProfiles = renderProfiles.copy(locked = isVideo && videoLocked),
                     onSelectRenderProfile = onSelectRenderProfile,
-                    modifier = Modifier.viewfinderFrame(videoBleed, viewfinderWidth)
+                    modifier = Modifier.viewfinderFrame(videoBleed, viewfinderWidth, openGateHighFps)
                         .align(Alignment.TopCenter),
                     slotFrame = photoFrame,
                     forceCompact = isVideo,
@@ -223,10 +229,14 @@ internal fun PhysicalCaptureLayout(
  * to the exact record rect, so the box fills with no bars and framing never
  * jumps at record start. No image work happens here — only box sizing.
  */
-private fun Modifier.viewfinderFrame(videoBleed: Boolean, photoWidth: Dp): Modifier = if (videoBleed) {
+private fun Modifier.viewfinderFrame(videoBleed: Boolean, photoWidth: Dp, openGateHighFps: Boolean = false): Modifier =
+    if (videoBleed) {
     this.fillMaxWidth()
         .wrapContentHeight(Alignment.Top, unbounded = true)
         .aspectRatio(9f / 16f)
+} else if (openGateHighFps) {
+    // Same height as the photo box, narrower: 2560:4096 upright.
+    this.height(photoWidth * 4f / 3f).aspectRatio(10f / 16f, matchHeightConstraintsFirst = true)
 } else {
     this.width(photoWidth).aspectRatio(3f / 4f)
 }
