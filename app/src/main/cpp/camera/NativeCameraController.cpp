@@ -253,9 +253,6 @@ struct NativeCameraController::Impl final : CameraEventSink {
         teardownCameraResourcesLocked(lock);
         lensId = value;
         active = true;
-        lensSwitchHolding = true;
-        lensSwitchHoldFrames = 0;
-        lensSwitchHoldStart = std::chrono::steady_clock::now();
         diag("CAMERA_LENS_SWITCH_RESTART lensId=" + lensId +
              " generation=" + std::to_string(deviceSession.generation()));
         startLocked(lock);
@@ -646,11 +643,6 @@ struct NativeCameraController::Impl final : CameraEventSink {
 
     // Calibration is part of lens startup, before any preview is published.
     SensitivityProbeStartup sensitivityStartup;
-    // Lens switch: the viewfinder keeps the old lens's last image until the new lens's first frames have settled
-    // (the HAL's defaults, a black frame and AE/AWB still converging showed as a flash and colour jumps).
-    bool lensSwitchHolding = false;
-    unsigned lensSwitchHoldFrames = 0;
-    std::chrono::steady_clock::time_point lensSwitchHoldStart{};
     // Reported/requested ISO ratios already measured, per camera, lens,
     // profile and the exact session keys applied: the ratio belongs to the
     // sensor mode those keys select, so editing a key value re-probes. A
@@ -1440,27 +1432,6 @@ struct NativeCameraController::Impl final : CameraEventSink {
         const auto decision = sensitivityStartup.observe(frame, sensitivityProbeEligibleLocked(),
             results.sensitivityReportedPerRequest().has_value(), autoSettled, SensitivityProbeStartup::Clock::now());
         actions.frame->suppressPreview = decision.suppressPreview;
-        if (lensSwitchHolding && !actions.frame->optimizedStillRequestId.value_or(0)) {
-            // Reveal once a few frames are in and AE and AWB report settled (or run manual); past 450 ms after the
-            // switch, as soon as the first 4 frames (the HAL's defaults) are out. Until then the viewfinder keeps the
-            // last image (hidePreview, presentation only). 17U: AE still reported searching at 800 ms on every switch,
-            // so waiting for it only made the switch feel slower.
-            ++lensSwitchHoldFrames;
-            const bool awbSettled = frame.awbState < 0 || frame.awbState == ACAMERA_CONTROL_AWB_STATE_CONVERGED ||
-                                    frame.awbState == ACAMERA_CONTROL_AWB_STATE_LOCKED;
-            const bool aeSettled = autoSettled || frame.aeMode == ACAMERA_CONTROL_AE_MODE_OFF;
-            const auto heldMs = std::chrono::duration_cast<std::chrono::milliseconds>(
-                                    std::chrono::steady_clock::now() - lensSwitchHoldStart).count();
-            if ((lensSwitchHoldFrames > 2 && aeSettled && awbSettled) || (lensSwitchHoldFrames > 4 && heldMs > 450) ||
-                heldMs > 800) {
-                lensSwitchHolding = false;
-                diag("CAMERA_LENS_SWITCH_REVEAL frames=" + std::to_string(lensSwitchHoldFrames) +
-                     " ms=" + std::to_string(heldMs) + " ae=" + std::to_string(frame.aeState) +
-                     " awb=" + std::to_string(frame.awbState));
-            } else {
-                actions.frame->hidePreview = true;
-            }
-        }
         if (decision.requestProbe && !probeSensitivityCoordinateLocked()) sensitivityStartup.submissionFailed();
         if (frame.optimizedStillRequestId == metadata::kSensitivityProbeRequestId)
             diag("CAMERA_SENSITIVITY_PROBE_RESULT requested=" + std::to_string(frame.requestedSensitivity.value_or(0)) +
