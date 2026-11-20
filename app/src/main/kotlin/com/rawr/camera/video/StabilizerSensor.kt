@@ -65,6 +65,7 @@ internal class StabilizerSensor(context: Context) : SensorEventListener {
             listeningGravity = false
         }
         horizon = wantHorizon
+        runCatching { NativeStabilizer.setLevelHorizon(wantHorizon) }
         enabled = want
         runCatching { NativeStabilizer.setEnabled(want) }
         StabilizerState.setActive(want)

@@ -114,6 +114,12 @@ inline std::atomic<float>& stabilizerRoomY() noexcept {
     static std::atomic<float> value{0.0f};
     return value;
 }
+// Horizon levelling on (Settings > Video Encoder > Stabilisation > Level horizon): the warp zooms 1.1x and turns by
+// the tilt from level first.
+inline std::atomic<bool>& stabilizerLevelHorizon() noexcept {
+    static std::atomic<bool> value{false};
+    return value;
+}
 // Turn (roll) room of the current recording in radians, with no shift: the corners' margin over half the frame.
 inline std::atomic<float>& stabilizerRoomRoll() noexcept {
     static std::atomic<float> value{0.0f};

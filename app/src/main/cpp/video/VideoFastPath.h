@@ -29,7 +29,8 @@ class VideoFastPath final {
     VideoFastPath(const VideoFastPath&) = delete;
     VideoFastPath& operator=(const VideoFastPath&) = delete;
 
-    // Stabilisation for one frame: rotation about the record crop's centre, then a shift in sensor pixels.
+    // Stabilisation for one frame: rotation (cos and sin times a zoom scale <= 1) about the record crop's centre, then
+    // a shift in sensor pixels.
     struct Warp {
         float cosAngle = 1.0f, sinAngle = 0.0f, shiftX = 0.0f, shiftY = 0.0f;
     };

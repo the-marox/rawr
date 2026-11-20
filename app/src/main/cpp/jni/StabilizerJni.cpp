@@ -12,6 +12,11 @@ extern "C" JNIEXPORT void JNICALL Java_com_rawr_camera_video_NativeStabilizer_se
         rawrcam::geometry::stabilizerTrack().clear();
 }
 
+extern "C" JNIEXPORT void JNICALL Java_com_rawr_camera_video_NativeStabilizer_setLevelHorizon(JNIEnv*, jobject,
+                                                                                            jboolean enabled) {
+    rawrcam::geometry::stabilizerLevelHorizon().store(enabled == JNI_TRUE, std::memory_order_relaxed);
+}
+
 extern "C" JNIEXPORT void JNICALL Java_com_rawr_camera_video_NativeStabilizer_push(JNIEnv*, jobject, jlong timeNs,
                                                                                  jfloat pitch, jfloat yaw,
                                                                                  jfloat roll, jfloat rawPitch,

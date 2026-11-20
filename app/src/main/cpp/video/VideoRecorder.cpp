@@ -41,35 +41,66 @@ std::optional<VideoFastPath::Warp> stabilizerWarp(const VideoDemosaic& demosaic,
     const int32_t w = int32_t(demosaic.outputWidth()), h = int32_t(demosaic.outputHeight());
     const int32_t left = cx - int32_t(kept.x) - kApron, right = int32_t(kept.x + kept.width) - (cx + w) - kApron;
     const int32_t top = cy - int32_t(kept.y) - kApron, bottom = int32_t(kept.y + kept.height) - (cy + h) - kApron;
-    const float roomX = float(std::max(0, std::min(left, right))), roomY = float(std::max(0, std::min(top, bottom)));
+    const float marginX = float(std::max(0, std::min(left, right))), marginY = float(std::max(0, std::min(top, bottom)));
     const float halfW = 0.5f * float(w), halfH = 0.5f * float(h);
+    // Horizon levelling zooms in a little (kLevelScale samples a smaller window) so the frame can turn about 10
+    // degrees and still shift; without it the margin allows ~5 degrees with no shift left.
+    constexpr float kLevelScale = 1.0f / 1.1f;
+    const bool levelling = stabilizerLevelHorizon().load(std::memory_order_relaxed);
+    const float scale = levelling ? kLevelScale : 1.0f;
+    // Room for the window's corners: half the frame plus the margin, against the scaled, turned half frame.
+    const auto fits = [&](float angle, float sx, float sy) {
+        const float c = std::cos(angle), sn = std::fabs(std::sin(angle));
+        return scale * (halfW * c + halfH * sn) + std::fabs(sx) <= halfW + marginX &&
+               scale * (halfW * sn + halfH * c) + std::fabs(sy) <= halfH + marginY;
+    };
+    const auto maxTurn = [&](float sx, float sy) {
+        if (!fits(0.0f, sx, sy)) return 0.0f;
+        float lo = 0.0f, hi = 0.2f;  // the fast pass's tile ring is sized for ~11 degrees with the levelling zoom
+        for (int i = 0; i < 16; ++i) {
+            const float mid = 0.5f * (lo + hi);
+            (fits(mid, sx, sy) ? lo : hi) = mid;
+        }
+        return lo;
+    };
+    const float roomX = halfW + marginX - scale * halfW, roomY = halfH + marginY - scale * halfH;
     stabilizerRoomX().store(roomX / focal, std::memory_order_relaxed);
     stabilizerRoomY().store(roomY / focal, std::memory_order_relaxed);
-    // A small turn moves the corners by about halfH * angle sideways and halfW * angle up/down.
-    stabilizerRoomRoll().store(std::min(roomX / halfH, roomY / halfW), std::memory_order_relaxed);
+    stabilizerRoomRoll().store(maxTurn(0.0f, 0.0f), std::memory_order_relaxed);
     const int64_t frameNs = stabilizerFrameTimeNs().load(std::memory_order_relaxed);
     StabilizerSample shake;
-    if (!stabilizerTrack().at(frameNs, shake)) return VideoFastPath::Warp{};
-    // A camera turn about y moves the scene sideways in the image, about x up and down: the window follows the
-    // scene. A turn about the lens axis turns the scene the other way, so the window turns back by the same angle.
-    const float want[2] = {-shake.yaw * focal, shake.pitch * focal};
     VideoFastPath::Warp warp{};
-    warp.shiftX = std::clamp(want[0], -roomX, roomX);
-    warp.shiftY = std::clamp(want[1], -roomY, roomY);
-    // The turn gets the margin the shift leaves (corner displacement, with the 1 - cos term).
+    warp.cosAngle = scale;
+    if (!stabilizerTrack().at(frameNs, shake)) return warp;
+    // A camera turn about y moves the scene sideways in the image, about x up and down: the window follows the
+    // scene. A turn about the lens axis turns the scene the other way, so the window turns back by the same angle
+    // (checked on the 17U: the applied turn cancels the camera's roll in the recorded video).
+    const float want[2] = {-shake.yaw * focal, shake.pitch * focal};
     float angle = -shake.roll;
-    const float leftX = roomX - std::fabs(warp.shiftX), leftY = roomY - std::fabs(warp.shiftY);
-    const float maxSin = std::max(0.0f, std::min(leftX / halfH, leftY / halfW) * 0.97f);
-    const float maxAngle = std::asin(std::min(maxSin, 1.0f));
-    angle = std::clamp(angle, -maxAngle, maxAngle);
-    warp.cosAngle = std::cos(angle);
-    warp.sinAngle = std::sin(angle);
+    if (levelling) {
+        // Level first, then shift with what is left.
+        const float turn = maxTurn(0.0f, 0.0f);
+        angle = std::clamp(angle, -turn, turn);
+        const float c = std::cos(angle), sn = std::fabs(std::sin(angle));
+        const float leftX = std::max(0.0f, halfW + marginX - scale * (halfW * c + halfH * sn));
+        const float leftY = std::max(0.0f, halfH + marginY - scale * (halfW * sn + halfH * c));
+        warp.shiftX = std::clamp(want[0], -leftX, leftX);
+        warp.shiftY = std::clamp(want[1], -leftY, leftY);
+    } else {
+        // Shift first; the turn gets the margin the shift leaves.
+        warp.shiftX = std::clamp(want[0], -roomX, roomX);
+        warp.shiftY = std::clamp(want[1], -roomY, roomY);
+        const float turn = maxTurn(warp.shiftX, warp.shiftY);
+        angle = std::clamp(angle, -turn, turn);
+    }
+    warp.cosAngle = scale * std::cos(angle);
+    warp.sinAngle = scale * std::sin(angle);
     // Per-frame trace for checking the gyro/frame timing offline (`adb logcat -s RawrStab`).
     // raw = the camera's integrated turn as pixels (x, y) and roll in degrees, before smoothing.
     __android_log_print(ANDROID_LOG_INFO, "RawrStab",
                         "STAB t=%lld want=%.2f,%.2f applied=%.2f,%.2f room=%.0f,%.0f raw=%.2f,%.2f,%.3f focal=%.1f "
                         "roll=%.3f,%.3f",
-                        static_cast<long long>(frameNs), want[0], want[1], warp.shiftX, warp.shiftY, roomX, roomY,
+                        static_cast<long long>(frameNs), want[0], want[1], warp.shiftX, warp.shiftY, marginX, marginY,
                         -shake.rawYaw * focal, shake.rawPitch * focal, shake.rawRoll * 57.29578f, focal,
                         -shake.roll * 57.29578f, angle * 57.29578f);
     return warp;

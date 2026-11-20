@@ -55,8 +55,11 @@ first and moves to `xiaomi-17u` once verified.
   too, within the margin the shift leaves (about 5 degrees at 4K).
 - Level horizon (Settings › Video Encoder › Stabilisation): the turn
   follows the gravity sensor instead, keeping the horizon level in
-  landscape, as far as the margin allows; it fades out past 45 degrees
-  (portrait).
+  landscape; it fades out past 45 degrees (portrait). It zooms in 1.1x so
+  the frame can turn about 10 degrees, and levels before taking out shake.
+  First test (no zoom yet): the turn's direction is right (in the video the
+  applied turn cancelled the camera's roll, -0.81 vs -0.83 per degree), but
+  tilts of up to 15 degrees ran past the ~5 degrees the margin allowed.
 - Start of recording: the realtime RAW reader holds 8 images (was 6) and
   the ingress queue keeps 3 waiting frames (was 1), so the one-time
   45-80 ms stall ~0.2 s into a take no longer evicts a frame. Traced and

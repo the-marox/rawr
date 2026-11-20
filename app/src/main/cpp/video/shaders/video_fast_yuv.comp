@@ -24,11 +24,11 @@ layout(local_size_x = VIDEO_QT, local_size_y = VIDEO_QT, local_size_z = 1) in;
 #define VIDEO_QUAD_HALF_CACHE 1
 // VIDEO_FAST_WARP: the stabilised variant. Each output pixel samples the sensor at a rotated, sub-pixel shifted
 // position (gyro stabilisation and horizon levelling, geometry/Stabilizer.h), bilinear between demosaiced pixels.
-// The workgroup's RAW tile follows the warped position of its output tile, with a 3-cell ring for the rotation
-// inside the tile (up to ~2 px at 5 degrees), the rounding of the tile base, the bilinear tap and the chroma
-// neighbours.
+// The workgroup's RAW tile follows the warped position of its output tile, with a 5-cell ring for the turn and the
+// levelling zoom inside the tile (up to ~4.5 px at 11 degrees and 1.1x), the rounding of the tile base, the
+// bilinear tap and the chroma neighbours.
 #ifdef VIDEO_FAST_WARP
-#define VIDEO_QUAD_CELL_RING 3
+#define VIDEO_QUAD_CELL_RING 5
 #define VIDEO_CUSTOM_TILE_BASE 1
 #endif
 
@@ -37,13 +37,13 @@ layout(std140, binding = 2) uniform FastParams {
     vec4 shaper;  // x: toe offset c; y: log2(c); z: 1 / (log2(max + c) - log2(c)); w: LUT size n
     uvec4 yuv0;   // yOffsetWords, yStrideWords, cOffsetWords, cStrideWords
     uvec4 yuv1;   // swapUV, monitorEnabled
-    vec4 warp;    // VIDEO_FAST_WARP: cos, sin of the rotation; x, y shift in sensor pixels
+    vec4 warp;    // VIDEO_FAST_WARP: scale * cos, scale * sin of the rotation; x, y shift in sensor pixels
 } fp;
 #include "video_quad_core.glsl"
 
 #ifdef VIDEO_FAST_WARP
-// Sensor position sampled for output position o (sensor pixels, centres at +0.5): rotation about the record crop's
-// centre, then the shift. Image axes: x right, y down; a positive angle turns x towards y.
+// Sensor position sampled for output position o (sensor pixels, centres at +0.5): rotation (and the levelling zoom,
+// scale < 1) about the record crop's centre, then the shift. Image axes: x right, y down; a positive angle turns x towards y.
 vec2 warpSource(vec2 o) {
     vec2 c = vec2(pc.cropX, pc.cropY) + 0.5 * vec2(pc.outWidth, pc.outHeight);
     vec2 d = o - c;

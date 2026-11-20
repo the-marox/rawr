@@ -229,9 +229,9 @@ private fun StabilisationGroup() {
             title = "Level horizon",
             checked = levelHorizon,
             enabled = mode > 0,
-            supportingText = "Keeps the horizon level from the gravity sensor, in landscape. The spare area allows " +
-                "a few degrees (about 5 at 4K, less while it also takes out a big shake); past that the frame " +
-                "only turns part of the way.",
+            supportingText = "Keeps the horizon level from the gravity sensor, in landscape. Zooms in 1.1x so the " +
+                "frame can turn about 10 degrees; past that it only turns part of the way. Levelling comes before " +
+                "shake: a big tilt leaves less room for the shake.",
             testTag = SettingsTestTags.row("VideoEncoder", "level_horizon")
         ) {
             levelHorizon = it
