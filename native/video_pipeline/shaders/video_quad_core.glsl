@@ -51,14 +51,27 @@ const float kGuideEps = 0.03;
 const int kRawSide = 2 * VIDEO_QT + 8;
 const int kPlaneSide = 2 * VIDEO_QT + 4;
 const int kPlaneCells = VIDEO_QT + 2;
+#ifdef VIDEO_QUAD_HALF_CACHE
+// Half-precision raw cache (packed pairs along a row; kRawSide is even): half the shared memory of the float cache.
+// Normalized samples in [0, 1]: a half keeps 11 significant bits, finer than a 10-bit code everywhere and within a
+// 12-bit code's step only near clip.
+shared uint cachedRawPairs[kRawSide * kRawSide / 2];
+#else
 shared float cachedRaw[kRawSide * kRawSide];
+#endif
 // One packed half pair per plane position: (sqrt(green), R/B difference).
 shared uint greenChroma[kPlaneSide * kPlaneSide];
 ivec2 gTileBase;  // absolute sensor position of the tile's first output pixel
 
 float videoCachedAt(ivec2 q) {
     ivec2 local = q - gTileBase + ivec2(4);
+#ifdef VIDEO_QUAD_HALF_CACHE
+    int index = local.y * kRawSide + local.x;
+    vec2 pair = unpackHalf2x16(cachedRawPairs[index >> 1]);
+    return (index & 1) == 0 ? pair.x : pair.y;
+#else
     return cachedRaw[local.y * kRawSide + local.x];
+#endif
 }
 
 int videoChannelAbs(ivec2 q) { return rawrCfaChannelAt(pc.pattern, q); }
@@ -91,12 +104,23 @@ float videoRawAt(ivec2 q, uint code) {
 
 void videoLoadTile() {
     gTileBase = ivec2(pc.cropX, pc.cropY) + ivec2(gl_WorkGroupID.xy) * (2 * VIDEO_QT);
+#ifdef VIDEO_QUAD_HALF_CACHE
+    for (uint pairIndex = gl_LocalInvocationIndex; pairIndex < uint(kRawSide * kRawSide / 2);
+         pairIndex += uint(VIDEO_QT * VIDEO_QT)) {
+        uint index = 2u * pairIndex;
+        ivec2 local = ivec2(int(index % uint(kRawSide)) - 4, int(index / uint(kRawSide)) - 4);
+        ivec2 q0 = videoMirrored(gTileBase + local);
+        ivec2 q1 = videoMirrored(gTileBase + local + ivec2(1, 0));
+        cachedRawPairs[pairIndex] = packHalf2x16(vec2(videoRawAt(q0, videoCodeAt(q0)), videoRawAt(q1, videoCodeAt(q1))));
+    }
+#else
     for (uint index = gl_LocalInvocationIndex; index < uint(kRawSide * kRawSide);
          index += uint(VIDEO_QT * VIDEO_QT)) {
         ivec2 q = videoMirrored(gTileBase + ivec2(int(index % uint(kRawSide)) - 4,
                                                   int(index / uint(kRawSide)) - 4));
         cachedRaw[index] = videoRawAt(q, videoCodeAt(q));
     }
+#endif
     // Every invocation reaches this barrier, including output-edge threads.
     barrier();
 }

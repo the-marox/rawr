@@ -39,7 +39,12 @@ first and moves to `xiaomi-17u` once verified.
   sub-pixel moves need resampling, the same work as horizon levelling.
 - Fast path: lens shading looked up once per 2x2 cell (all four map
   channels at the cell centre) instead of three bilinear lookups per pixel.
-  AOC before (A840, P010): 2870 instructions, 1188 ALU, 25% occupancy.
+  AOC (A840, P010): 2870 -> 2189 instructions, ALU 1188 -> 882, texture
+  reads 57 -> 13, exposed memory latency 29% -> 7.6% of cycles; occupancy
+  still 25%.
+- Fast path: RAW tile cache in half precision (packed pairs), half the
+  shared memory of the float cache (6.4 -> 3.2 KB per workgroup), to raise
+  occupancy. Test build: kept only if AOC and the image agree.
 
 ## 0.5.1-17u.3
 

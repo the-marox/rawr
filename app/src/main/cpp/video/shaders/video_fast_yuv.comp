@@ -21,6 +21,7 @@ layout(local_size_x = VIDEO_QT, local_size_y = VIDEO_QT, local_size_z = 1) in;
 #define VIDEO_RAW_IMAGE_BINDING 0
 #define VIDEO_RAW_BUFFER_BINDING 1
 #define VIDEO_LSC_BINDING 3
+#define VIDEO_QUAD_HALF_CACHE 1
 #include "video_quad_core.glsl"
 
 layout(std140, binding = 2) uniform FastParams {
