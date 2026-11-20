@@ -37,6 +37,9 @@ first and moves to `xiaomi-17u` once verified.
   frames). Known limit: the crop moves in 2-pixel steps, which leaves small
   frame-to-frame jumps (~0.4-0.5 px median vs ~0.1 px with OIS alone);
   sub-pixel moves need resampling, the same work as horizon levelling.
+- Fast path: lens shading looked up once per 2x2 cell (all four map
+  channels at the cell centre) instead of three bilinear lookups per pixel.
+  AOC before (A840, P010): 2870 instructions, 1188 ALU, 25% occupancy.
 
 ## 0.5.1-17u.3
 

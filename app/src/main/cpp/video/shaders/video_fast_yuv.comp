@@ -82,12 +82,17 @@ void main() {
     if (outPixel.x >= int(pc.outWidth) || outPixel.y >= int(pc.outHeight)) return;
     ivec2 base = ivec2(pc.cropX, pc.cropY) + outPixel;
     videoLoadCellPlane(base);
+    // Lens shading once per cell: all four map channels at the cell centre (lensShadingGainsAt) instead of three
+    // bilinear lookups per pixel (12 per cell). The cell's pixels are within a pixel of the centre and a grid step
+    // spans hundreds, so the gain differs by far less than a code; green takes the map channel of its row.
+    vec4 shading = lensShadingGainsAt(vec2(base) + 0.5);
     float luma[4];
     vec3 sum = vec3(0.0);
     [[unroll]] for (int dy = 0; dy < 2; ++dy) {
         [[unroll]] for (int dx = 0; dx < 2; ++dx) {
             ivec2 q = base + ivec2(dx, dy);
-            vec3 camera = videoPixelRgb(dx, dy, videoCachedAt(q)) * videoGainAt(q);
+            vec3 gain = vec3(shading.x, ((q.y & 1) == 0) ? shading.y : shading.z, shading.w);
+            vec3 camera = videoPixelRgb(dx, dy, videoCachedAt(q)) * gain;
             vec3 encoded = fastTone(fastWhiteBalance(camera));
             luma[dy * 2 + dx] = dot(kLuma, encoded);
             sum += encoded;
