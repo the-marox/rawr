@@ -41,14 +41,27 @@ std::array<int32_t, 2> stabilizerShift(const VideoDemosaic& demosaic, const Vide
     const int32_t roomX = std::max(0, std::min(left, right)), roomY = std::max(0, std::min(top, bottom));
     stabilizerRoomX().store(float(roomX) / focal, std::memory_order_relaxed);
     stabilizerRoomY().store(float(roomY) / focal, std::memory_order_relaxed);
+    // The crop moves in 2-pixel steps (the CFA phase). Hysteresis: it only moves when the wanted shift is more than
+    // 1.5 px from where it is, so a shift hovering at a step boundary doesn't toggle 0/2 px from frame to frame.
+    static std::array<int32_t, 2> applied{0, 0};
+    static int64_t lastFrameNs = 0;
+    const int64_t frameNs = stabilizerFrameTimeNs().load(std::memory_order_relaxed);
+    if (frameNs - lastFrameNs > 500'000'000 || frameNs < lastFrameNs) applied = {0, 0};  // new recording
+    lastFrameNs = frameNs;
     StabilizerSample shake;
-    if (!stabilizerTrack().at(stabilizerFrameTimeNs().load(std::memory_order_relaxed), shake)) return {0, 0};
+    if (!stabilizerTrack().at(frameNs, shake)) return applied;
     // A camera turn about y moves the scene sideways in the image, about x up and down: the crop follows the scene.
-    const auto even = [](float v, int32_t room) {
-        const int32_t px = int32_t(std::lround(v * 0.5f)) * 2;
-        return std::clamp(px, -(room & ~1), room & ~1);
-    };
-    return {even(-shake.yaw * focal, roomX), even(shake.pitch * focal, roomY)};
+    const float want[2] = {-shake.yaw * focal, shake.pitch * focal};
+    const int32_t room[2] = {roomX & ~1, roomY & ~1};
+    for (int i = 0; i < 2; ++i) {
+        const float target = std::clamp(want[i], -float(room[i]), float(room[i]));
+        if (std::fabs(target - float(applied[i])) > 1.5f)
+            applied[i] = std::clamp(int32_t(std::lround(target * 0.5f)) * 2, -room[i], room[i]);
+    }
+    // Per-frame trace for checking the gyro/frame timing offline (`adb logcat -s RawrStab`).
+    __android_log_print(ANDROID_LOG_INFO, "RawrStab", "STAB t=%lld want=%.2f,%.2f applied=%d,%d room=%d,%d",
+                        static_cast<long long>(frameNs), want[0], want[1], applied[0], applied[1], room[0], room[1]);
+    return applied;
 }
 }  // namespace
 rawr::post::StillDistortionCorrection VideoRecorder::distortionFor(const rawrcam::geometry::LensDistortionModel& lens,

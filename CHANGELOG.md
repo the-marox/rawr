@@ -14,7 +14,10 @@ first and moves to `xiaomi-17u` once verified.
   shake track. On the 17U the shake is taken out by moving the crop window
   inside the sensor's spare area in the recording fast path, so it adds no
   GPU pass. Pitch and yaw only (no roll), 4K and 1080p (Open Gate has no
-  spare area), fast path only. Not tested yet.
+  spare area), fast path only. The crop moves in 2-pixel steps with
+  hysteresis, so it doesn't flicker between steps on a steady hand.
+  First test: the slow wander of a handheld shot went from ~70/50 px to
+  ~6-16 px over 10 s, no dropped frames.
 
 ## 0.5.1-17u.3
 
