@@ -86,10 +86,27 @@ internal class StabilizerSensor(context: Context) : SensorEventListener {
             shake[i] = angle[i] - level[i]
         }
         // Pitch (about x) moves the image vertically, yaw (about y) horizontally; roll isn't corrected here.
+        softEdge(0, shake, room[1] * .9f, dt)
+        softEdge(1, shake, room[0] * .9f, dt)
         clampAxis(0, shake, room[1] * .9f)
         clampAxis(1, shake, room[0] * .9f)
         clampAxis(2, shake, 0f)
         runCatching { NativeStabilizer.push(t, shake[0], shake[1], shake[2], angle[0], angle[1], angle[2]) }
+    }
+
+    /**
+     * Past 60% of [limit], pulls the smoothed path towards the camera, harder the closer the shake gets to the edge
+     * (time constant ~0.15 s at the edge). A turn then eases into the margin instead of hitting it: on a 17U walk
+     * with turns the hard clamp alone was reached in 15-18% of frames and showed as jerks.
+     */
+    private fun softEdge(axis: Int, shake: FloatArray, limit: Float, dt: Float) {
+        if (limit <= 0f) return
+        val excess = ((abs(shake[axis]) / limit - .6f) / .4f).coerceIn(0f, 1f)
+        if (excess <= 0f) return
+        val pull = 1f - exp(-dt * excess * excess / .15f)
+        level[axis] += pull * shake[axis]
+        velocity[axis] *= 1f - pull
+        shake[axis] = angle[axis] - level[axis]
     }
 
     /** Keeps the shake on [axis] within [limit], pulling the smoothed path along when it would go past. */

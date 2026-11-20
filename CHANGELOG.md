@@ -31,6 +31,12 @@ first and moves to `xiaomi-17u` once verified.
   alone 4.2 / 2.8, Strong 1.4 / 1.8. The old Standard (0.45 s) was no
   better than OIS. Standing still, OIS alone still has less fine jitter
   (it also corrects within the frame). Motion blur without OIS not measured.
+- Soft edge: past 60% of the crop margin the smoothed path is pulled
+  towards the camera progressively, so a turn eases into the margin instead
+  of hitting it (a walk with turns reached the hard limit in 15-18% of
+  frames). Known limit: the crop moves in 2-pixel steps, which leaves small
+  frame-to-frame jumps (~0.4-0.5 px median vs ~0.1 px with OIS alone);
+  sub-pixel moves need resampling, the same work as horizon levelling.
 
 ## 0.5.1-17u.3
 
