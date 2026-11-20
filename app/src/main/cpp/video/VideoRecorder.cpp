@@ -56,7 +56,7 @@ std::optional<VideoFastPath::Warp> stabilizerWarp(const VideoDemosaic& demosaic,
     };
     const auto maxTurn = [&](float sx, float sy) {
         if (!fits(0.0f, sx, sy)) return 0.0f;
-        float lo = 0.0f, hi = 0.2f;  // the fast pass's tile ring is sized for ~11 degrees with the levelling zoom
+        float lo = 0.0f, hi = 0.17f;  // the fast pass's RGB tile ring is sized for ~10 degrees with the levelling zoom
         for (int i = 0; i < 16; ++i) {
             const float mid = 0.5f * (lo + hi);
             (fits(mid, sx, sy) ? lo : hi) = mid;

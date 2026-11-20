@@ -24,11 +24,12 @@ layout(local_size_x = VIDEO_QT, local_size_y = VIDEO_QT, local_size_z = 1) in;
 #define VIDEO_QUAD_HALF_CACHE 1
 // VIDEO_FAST_WARP: the stabilised variant. Each output pixel samples the sensor at a rotated, sub-pixel shifted
 // position (gyro stabilisation and horizon levelling, geometry/Stabilizer.h), bilinear between demosaiced pixels.
-// The workgroup's RAW tile follows the warped position of its output tile, with a 5-cell ring for the turn and the
-// levelling zoom inside the tile (up to ~4.5 px at 11 degrees and 1.1x), the rounding of the tile base, the
-// bilinear tap and the chroma neighbours.
+// The workgroup's RAW tile follows the warped position of its output tile. The tile's cells are demosaiced once into
+// a shared RGB tile (3-cell ring: the turn and the levelling zoom move a pixel up to ~4 px inside the tile at 10
+// degrees and 1.1x, plus the rounding of the tile base and the bilinear tap), and every output pixel interpolates
+// from it: each demosaiced pixel then serves the ~4 output pixels around it instead of being recomputed per tap.
 #ifdef VIDEO_FAST_WARP
-#define VIDEO_QUAD_CELL_RING 5
+#define VIDEO_QUAD_CELL_RING 4
 #define VIDEO_CUSTOM_TILE_BASE 1
 #endif
 
@@ -53,42 +54,42 @@ vec2 warpSource(vec2 o) {
 ivec2 videoTileBase() {
     vec2 tileCentre = vec2(pc.cropX, pc.cropY) + vec2(gl_WorkGroupID.xy) * float(2 * VIDEO_QT) + float(VIDEO_QT);
     vec2 sourceCentre = warpSource(tileCentre);
-    return ivec2(floor(sourceCentre * 0.5)) * 2 - ivec2(VIDEO_QT);
+    // Nearest even position (CFA phase) keeps the tile centred on its source within a pixel.
+    return ivec2(round(sourceCentre * 0.5)) * 2 - ivec2(VIDEO_QT);
 }
 
-vec2 planeAt(ivec2 q) {
-    ivec2 local = q - gTileBase + ivec2(kPlaneRing);
-    return unpackHalf2x16(greenChroma[local.y * kPlaneSide + local.x]);
-}
+const int kRgbCellRing = 3;
+const int kRgbRing = 2 * kRgbCellRing;
+const int kRgbSide = 2 * VIDEO_QT + 2 * kRgbRing;
+const int kRgbCells = VIDEO_QT + 2 * kRgbCellRing;
+// Demosaiced camera RGB of the tile plus its ring: R and G as a half pair, B as half pairs along a row.
+shared uint rgbRG[kRgbSide * kRgbSide];
+shared uint rgbB[kRgbSide * kRgbSide / 2];
 
-// Demosaiced camera RGB of sensor pixel q (any CFA site): the arithmetic of videoPixelRgb, read straight from the
-// shared plane around q.
-vec3 warpRgbAt(ivec2 q) {
-    float sg[3][3];
-    float df[3][3];
-    [[unroll]] for (int y = 0; y < 3; ++y) {
-        [[unroll]] for (int x = 0; x < 3; ++x) {
-            vec2 v = planeAt(q + ivec2(x - 1, y - 1));
-            sg[y][x] = v.x;
-            df[y][x] = v.y;
+void warpBuildRgb() {
+    for (uint index = gl_LocalInvocationIndex; index < uint(kRgbCells * kRgbCells);
+         index += uint(VIDEO_QT * VIDEO_QT)) {
+        ivec2 cell = ivec2(int(index % uint(kRgbCells)), int(index / uint(kRgbCells)));
+        ivec2 origin = gTileBase + 2 * (cell - kRgbCellRing);
+        videoLoadCellPlane(origin);
+        [[unroll]] for (int dy = 0; dy < 2; ++dy) {
+            vec3 left = videoPixelRgb(0, dy, videoCachedAt(origin + ivec2(0, dy)));
+            vec3 right = videoPixelRgb(1, dy, videoCachedAt(origin + ivec2(1, dy)));
+            int at = (2 * cell.y + dy) * kRgbSide + 2 * cell.x;
+            rgbRG[at] = packHalf2x16(left.rg);
+            rgbRG[at + 1] = packHalf2x16(right.rg);
+            rgbB[at >> 1] = packHalf2x16(vec2(left.b, right.b));
         }
     }
-    float value = videoCachedAt(q);
-    int c = videoChannelAbs(q);
-    float g = sg[1][1];
-    if (c == 0 || c == 3) {
-        float w0 = videoGuide(g, sg[0][0]), w1 = videoGuide(g, sg[0][2]);
-        float w2 = videoGuide(g, sg[2][0]), w3 = videoGuide(g, sg[2][2]);
-        float other = videoSquare(g + (w0 * df[0][0] + w1 * df[0][2] + w2 * df[2][0] + w3 * df[2][2]) /
-                                          (w0 + w1 + w2 + w3));
-        return c == 0 ? vec3(value, videoSquare(g), other) : vec3(other, videoSquare(g), value);
-    }
-    float wl = videoGuide(g, sg[1][0]), wr = videoGuide(g, sg[1][2]);
-    float wu = videoGuide(g, sg[0][1]), wd = videoGuide(g, sg[2][1]);
-    float horizontal = videoSquare(g + (wl * df[1][0] + wr * df[1][2]) / (wl + wr));
-    float vertical = videoSquare(g + (wu * df[0][1] + wd * df[2][1]) / (wu + wd));
-    // Green in the red row (1): red left/right, blue above/below; in the blue row (2) the reverse.
-    return c == 1 ? vec3(horizontal, value, vertical) : vec3(vertical, value, horizontal);
+    barrier();
+}
+
+vec3 warpRgbAt(ivec2 q) {
+    ivec2 local = q - gTileBase + ivec2(kRgbRing);
+    int at = local.y * kRgbSide + local.x;
+    vec2 rg = unpackHalf2x16(rgbRG[at]);
+    vec2 b = unpackHalf2x16(rgbB[at >> 1]);
+    return vec3(rg, (at & 1) == 0 ? b.x : b.y);
 }
 #endif
 layout(binding = 4) uniform sampler2D toneLut;  // n x (n * n), RGBA16F, linear filtering
@@ -139,6 +140,9 @@ uint u8(float v, float offset, float range) { return uint(clamp(round(offset + r
 void main() {
     videoLoadTile();
     videoBuildPlane();
+#ifdef VIDEO_FAST_WARP
+    warpBuildRgb();
+#endif
     ivec2 cell = ivec2(gl_GlobalInvocationID.xy);
     ivec2 outPixel = cell * 2;
     if (outPixel.x >= int(pc.outWidth) || outPixel.y >= int(pc.outHeight)) return;

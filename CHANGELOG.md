@@ -60,6 +60,9 @@ first and moves to `xiaomi-17u` once verified.
   follows the gravity sensor instead, keeping the horizon level in
   landscape; it fades out past 45 degrees (portrait). It zooms in 1.1x so
   the frame can turn about 10 degrees, and levels before taking out shake.
+  The stabilised pass demosaics the tile once into shared memory and
+  interpolates from it (the first version re-demosaiced every bilinear tap:
+  13-14 ms of GPU per 4K frame against ~9.7 ms unstabilised).
   First test (no zoom yet): the turn's direction is right (in the video the
   applied turn cancelled the camera's roll, -0.81 vs -0.83 per degree), but
   tilts of up to 15 degrees ran past the ~5 degrees the margin allowed.
