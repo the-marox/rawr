@@ -8,6 +8,21 @@ first and moves to `xiaomi-17u` once verified.
 
 Goal of this round: 4K60 10-bit recording without dropped frames on the 17U.
 
+Test conditions for the figures below: Xiaomi 17 Ultra, HEVC at 120 Mbps,
+viewfinder quality High, 10-bit unless noted.
+
+### How the GPU work was found
+
+- The video shaders were compiled to SPIR-V by CI (artifact
+  `shaders-spv-<sha>`) and analysed with Qualcomm's Adreno Offline
+  Compiler (`aoc -arch=a840 -api=Vulkan -dump=stats_perf`). It showed the
+  tonemap uber-shader at ~12k instructions with almost no fp16, and the
+  quad demosaic at 25% occupancy.
+- That is why the fast path replaces the per-pixel tonemap with a 65³ LUT
+  baked once per frame and fuses demosaic, colour and YUV output into one
+  dispatch. The demosaic occupancy is not addressed yet. AOC is an
+  analysis tool only: nothing from Qualcomm ships in the app.
+
 ### Video pipeline
 
 - **17U fast path (RAW to YUV in one GPU pass).** Demosaic, lens shading,
