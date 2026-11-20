@@ -34,6 +34,8 @@ data class ViewfinderQuickState(
     val highlight: HighlightQuickState = HighlightQuickState(),
     val dcps: List<DcpQuickState> = emptyList(),
     val levelMeterEnabled: Boolean = false,
+    /** Rear light sensor readout (shown only on phones that have the sensors). */
+    val lightMeterEnabled: Boolean = false,
     /** Recording locks the rail like it locks the render profile. */
     val locked: Boolean = false,
     // Quick panel, second row (photo only): frames of the lens in use and its per-lens switches.
@@ -80,6 +82,7 @@ internal fun SettingsValues.toViewfinderQuickState(
     return ViewfinderQuickState(
         dcps = if (!showDcpQuickSelect) emptyList() else (lensProfiles ?: deviceDefaults).map { DcpQuickState(it.name, it.image.availableDcps, it.image.dcp?.file) },
         levelMeterEnabled = levelMeterEnabled,
+        lightMeterEnabled = lightMeterEnabled,
         rawrAeEnabled = rawrAe.enabled,
         metering = rawrAe.metering,
         highlight = HighlightQuickState(

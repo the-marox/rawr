@@ -502,7 +502,9 @@ class RawPreviewCoordinator(application: Application) : AutoCloseable {
             else -> 0
         }
 
-    fun requestRawStillCapture(        dngOutputFd: Int,
+    fun requestRawStillCapture(
+        deviceRotationDegrees: Int = captureDeviceRotationDegrees,
+        dngOutputFd: Int,
         jpegOutputFd: Int,
         jpegQuality: Int,
         jpegChromaSubsamplingId: String,
@@ -541,7 +543,8 @@ class RawPreviewCoordinator(application: Application) : AutoCloseable {
         ultraHdrEnabled: Boolean = false,
         ultraHdrGainmapQuality: Int = 95,
         gps: CaptureGps? = null,
-        level: CaptureLevel? = null
+        level: CaptureLevel? = null,
+        ambient: AuxSensorReading? = null
     ): Long {
         val subsampling = subsamplingCode(jpegChromaSubsamplingId)
         val demosaic = demosaicCode(demosaicAlgorithm)
@@ -561,7 +564,7 @@ class RawPreviewCoordinator(application: Application) : AutoCloseable {
             fccSteps.coerceIn(1, 8),
             lensShadingCorrectionEnabled,
             highlightReconstructionEnabled,
-            captureDeviceRotationDegrees,
+            deviceRotationDegrees,
             wallClockMillis,
             utcOffsetMinutes,
             deviceMake,
@@ -578,11 +581,12 @@ class RawPreviewCoordinator(application: Application) : AutoCloseable {
             denoiseStrengths,
             captureRecipe, captureTone, captureFilmValues, captureFilmEnums, captureFilmEnabled,
             ultraHdrEnabled, ultraHdrGainmapQuality.coerceIn(1, 100),
-            dngCompressionCode(dngCompressionId), gps, level?.toNative()
+            dngCompressionCode(dngCompressionId), gps, level?.toNative(), ambient?.toNative()
         )
     }
 
     fun startPreparedMultiframeCapture(
+        deviceRotationDegrees: Int = captureDeviceRotationDegrees,
         baseDngOutputFd: Int,
         mergedDngOutputFd: Int,
         jpegOutputFd: Int,
@@ -610,6 +614,7 @@ class RawPreviewCoordinator(application: Application) : AutoCloseable {
         multiframeTuning: MultiframeTuning,
         multiframeBaseFrameMode: com.rawr.camera.settings.model.MultiframeBaseFrameMode,
         multiframeChromaDenoise: Boolean = false,
+        multiframeDetailRestore: Boolean = false,
         distortionCorrectionEnabled: Boolean,
         filmDescription: String?,
         defringeEnabled: Boolean,
@@ -628,7 +633,8 @@ class RawPreviewCoordinator(application: Application) : AutoCloseable {
         ultraHdrEnabled: Boolean = false,
         ultraHdrGainmapQuality: Int = 95,
         gps: CaptureGps? = null,
-        level: CaptureLevel? = null
+        level: CaptureLevel? = null,
+        ambient: AuxSensorReading? = null
     ): Long {
         val subsampling = subsamplingCode(jpegChromaSubsamplingId)
         val demosaic = demosaicCode(demosaicAlgorithm)
@@ -649,7 +655,7 @@ class RawPreviewCoordinator(application: Application) : AutoCloseable {
             fccSteps.coerceIn(1, 8),
             lensShadingCorrectionEnabled,
             highlightReconstructionEnabled,
-            captureDeviceRotationDegrees,
+            deviceRotationDegrees,
             wallClockMillis,
             utcOffsetMinutes,
             deviceMake,
@@ -658,9 +664,10 @@ class RawPreviewCoordinator(application: Application) : AutoCloseable {
             mergedDngDisplayName,
             jpegDisplayName,
             dumpRzslRequested,
-            // Tuning contract + trailing chroma-denoise flag (JNI reads index 22).
+            // Tuning contract + chroma-denoise flag (JNI index 22) + merge values (23-28) + Rexture detail restoration (29).
             multiframeTuning.sanitized().let { tuning ->
-                tuning.nativeValues() + (if (multiframeChromaDenoise) 1f else 0f) + tuning.nativeMergeValues()
+                tuning.nativeValues() + (if (multiframeChromaDenoise) 1f else 0f) + tuning.nativeMergeValues() +
+                    (if (multiframeDetailRestore) 1f else 0f)
             },
             multiframeBaseFrameMode.nativeId,
             distortionCorrectionEnabled,
@@ -673,7 +680,7 @@ class RawPreviewCoordinator(application: Application) : AutoCloseable {
             denoiseStrengths,
             captureRecipe, captureTone, captureFilmValues, captureFilmEnums, captureFilmEnabled,
             ultraHdrEnabled, ultraHdrGainmapQuality.coerceIn(1, 100),
-            dngCompressionCode(dngCompressionId), gps, level?.toNative()
+            dngCompressionCode(dngCompressionId), gps, level?.toNative(), ambient?.toNative()
         )
     }
 

@@ -47,7 +47,8 @@ internal class CaptureRecordingBackend(
                             requireNotNull(options.iso))
                 }
                 val frameSize = selectedMode.resolve(
-                    JSONObject(preview.cameraControlSnapshot()), captureSnapshot.videoAspect)
+                    JSONObject(preview.cameraControlSnapshot()), captureSnapshot.videoAspect,
+                    highFps = selectedFps > 30)
                 // Settings → Video Encoder; debug builds let scripted runs override via extras.
                 fun extra(name: String, value: Int) =
                     options.encoderOverrides[name] ?: value
@@ -75,7 +76,8 @@ internal class CaptureRecordingBackend(
                     bitDepth = bitDepth,
                     renderProfile = imageSettings.activeProfileLabel(),
                     logProfile = imageSettings.videoLogProfile.takeIf { log },
-                    renderProfileId = imageSettings.effectiveRenderProfileId()))
+                    renderProfileId = imageSettings.effectiveRenderProfileId(),
+                    gyroflowLog = encoder.gyroflowLog))
                 recorder
             } catch (e: Exception) {
                 runCatching { recorder.close() }

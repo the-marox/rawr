@@ -1,5 +1,7 @@
 #include "pipeline/RawDevelopRecorder.h"
 
+#include "video/ContextKeptArea.h"
+
 #include <vulkan/vulkan.h>
 
 #include <algorithm>
@@ -568,7 +570,23 @@ RawDevelopRecordResult RawDevelopRecorder::record(const RawDevelopRecordInput& i
         }
     }  // else: tonemap path
 
-    monitor_.recordOverlays(monitorFrame);
+    {
+        // 17U: scopes skip padded bottom/right raw edges (the 512 blank rows of
+        // the 60 fps modes). Top/left padding, if any, is still sampled.
+        MonitorFrame scopeFrame = monitorFrame;
+        const auto* context = in.metadata.cameraContext.get();
+        if (in.diagnosticMode == 0u && context && in.rawWidth && in.rawHeight) {
+            const auto kept = rawrcam::video::contextKeptArea(in.rawWidth, in.rawHeight, *context, in.videoHighFps);
+            if (kept.valid()) {
+                const uint64_t right = uint64_t(kept.x) + kept.width, bottom = uint64_t(kept.y) + kept.height;
+                if (right < in.rawWidth || bottom < in.rawHeight) {
+                    scopeFrame.scopeWidth = std::max<uint32_t>(1u, uint32_t(right * in.previewWidth / in.rawWidth));
+                    scopeFrame.scopeHeight = std::max<uint32_t>(1u, uint32_t(bottom * in.previewHeight / in.rawHeight));
+                }
+            }
+        }
+        monitor_.recordOverlays(scopeFrame);
+    }
 
     if (in.diagnosticMode == 2u) {
         rawrcam::vulkan::computeWriteToComputeWrite(slot.command, slot.tonemapped.image);
@@ -633,9 +651,7 @@ RawDevelopRecordResult RawDevelopRecorder::record(const RawDevelopRecordInput& i
     if (in.diagnosticMode == 0u && in.videoCropOutWidth != 0 && in.videoCropOutHeight != 0) {
         // Centred on the image area, like the recorder: padded raw edges stay out.
         const auto* context = in.metadata.cameraContext.get();
-        const auto kept = context ? rawrcam::video::videoKeptArea(in.rawWidth, in.rawHeight, context->cropLeft,
-                                                                  context->cropTop, context->cropRight,
-                                                                  context->cropBottom)
+        const auto kept = context ? rawrcam::video::contextKeptArea(in.rawWidth, in.rawHeight, *context, in.videoHighFps)
                                   : rawrcam::video::VideoKeptArea{};
         const auto full = rawrcam::video::videoSourceRect(in.rawWidth, in.rawHeight, in.videoCropOutWidth,
                                                           in.videoCropOutHeight, kept);
@@ -710,8 +726,9 @@ void RawDevelopRecorder::recordSceneExposure(VkCommandBuffer command, uint32_t f
 }
 
 void RawDevelopRecorder::recordVideoScopes(VkCommandBuffer command, uint32_t slot, VkImageView view, VkImage image,
-                                           uint32_t width, uint32_t height, int sensor, int rotation) const {
-    monitor_.recordVideoScopes(command, slot, view, image, width, height, sensor, rotation);
+                                           uint32_t width, uint32_t height, int sensor, int rotation,
+                                           bool compute) const {
+    monitor_.recordVideoScopes(command, slot, view, image, width, height, sensor, rotation, compute);
 }
 void RawDevelopRecorder::restoreVideoScopes(VkCommandBuffer command, uint32_t slot) const {
     monitor_.restoreVideoScopes(command, slot);

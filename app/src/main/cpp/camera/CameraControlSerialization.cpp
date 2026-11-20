@@ -50,6 +50,7 @@ std::string serializeCameraControlState(const CameraControlState& st) {
     s << '{' << "\"generation\":" << c.generation << ",\"cameraId\":" << quoted(c.cameraId)
       << ",\"lensId\":" << quoted(c.lensId) << ",\"rawWidth\":" << c.rawWidth << ",\"rawHeight\":" << c.rawHeight
       << ",\"keptWidth\":" << c.keptWidth << ",\"keptHeight\":" << c.keptHeight
+      << ",\"keptWidthHighFps\":" << c.keptWidthHighFps << ",\"keptHeightHighFps\":" << c.keptHeightHighFps
       << ",\"cameraProfile\":" << quoted(c.cameraProfileId)
       << ",\"profileLenses\":[";
     for (size_t i = 0; i < c.profileLenses.size(); ++i)

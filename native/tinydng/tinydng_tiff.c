@@ -749,6 +749,7 @@ static void td_parse_gps_ifd(const td_reader *reader, uint64_t offset, tinydng_g
       case 7: ratios = candidate.timestamp; ratio_count = 3; break;
       case 13: ratios = &candidate.speed; ratio_count = 1; break;
       case 15: ratios = &candidate.track; ratio_count = 1; break;
+      case 17: ratios = &candidate.img_direction; ratio_count = 1; break;
       case 31: ratios = &candidate.horizontal_error; ratio_count = 1; break;
       default: break;
       }
@@ -766,6 +767,7 @@ static void td_parse_gps_ifd(const td_reader *reader, uint64_t offset, tinydng_g
         case 3: candidate.longitude_ref = (char)data[0]; break;
         case 12: candidate.speed_ref = (char)data[0]; break;
         case 14: candidate.track_ref = (char)data[0]; break;
+        case 16: candidate.img_direction_ref = (char)data[0]; break;
         default: break;
         }
       }
@@ -794,6 +796,8 @@ static void td_parse_gps_ifd(const td_reader *reader, uint64_t offset, tinydng_g
   candidate.has_speed = (present & (1u << 13)) &&
       (candidate.speed_ref == 'K' || candidate.speed_ref == 'M' || candidate.speed_ref == 'N');
   candidate.has_track = (present & (1u << 15)) && (candidate.track_ref == 'T' || candidate.track_ref == 'M');
+  candidate.has_img_direction = (present & (1u << 17)) &&
+      (candidate.img_direction_ref == 'T' || candidate.img_direction_ref == 'M');
   if (!tinydng_gps_method_valid(&candidate)) candidate.processing_method_size = 0;
   *gps = candidate;
 }

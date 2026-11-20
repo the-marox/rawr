@@ -98,6 +98,7 @@ internal object NativeExposurePresentation {
         )
         return current.copy(
             exposureApplied = applied,
+            appliedExposureTimeNs = shownExposureNs,
             spotAe = if (snapshot.semanticExposureMode != 0) current.spotAe.copy(active = false) else current.spotAe,
             sensitivityBoost = snapshot.appliedPostRawSensitivityBoost,
             longExposure = longExposure,

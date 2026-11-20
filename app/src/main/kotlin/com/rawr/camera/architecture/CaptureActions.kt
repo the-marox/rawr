@@ -55,8 +55,10 @@ data object CycleVideoResolution : PresentationCaptureAction
  * Video frame rates the fps button cycles through. The native side takes any positive value
  * (CameraCadencePolicy derives the frame period from it), and the camera session opens at the
  * lens profile's own frame rate, so a rate the lens can't sustain simply records slower than asked.
+ * 17U: 120 fps is left out until the video pipeline holds it without drops; a saved 120 falls
+ * back to 30.
  */
-val VIDEO_FPS_CHOICES = listOf(24, 30, 60, 120)
+val VIDEO_FPS_CHOICES = listOf(24, 30, 60)
 
 data object CycleVideoFps : PresentationCaptureAction
 

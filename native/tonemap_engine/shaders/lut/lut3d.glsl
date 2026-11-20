@@ -21,12 +21,31 @@ vec3 rawrUserLutFetch(uint stage, ivec3 p) {
     return UL.texel[rawrUserLutIndex(stage, p)].rgb;
 #endif
 }
+#ifndef RAWR_TONEMAP_USER_LINEAR
+#define RAWR_TONEMAP_USER_LINEAR 0
+#endif
+#if RAWR_TONEMAP_USER_TEXTURE && RAWR_TONEMAP_USER_LINEAR
+// One hardware trilinear fetch per stage, texel centres at (i + 0.5) / n.
+vec3 rawrUserLutLinear(uint stage, vec3 uvw) {
+    if (stage == 0u) return textureLod(userLutTextures[0], uvw, 0.0).rgb;
+    if (stage == 1u) return textureLod(userLutTextures[1], uvw, 0.0).rgb;
+    if (stage == 2u) return textureLod(userLutTextures[2], uvw, 0.0).rgb;
+    if (stage == 3u) return textureLod(userLutTextures[3], uvw, 0.0).rgb;
+    if (stage == 4u) return textureLod(userLutTextures[4], uvw, 0.0).rgb;
+    if (stage == 5u) return textureLod(userLutTextures[5], uvw, 0.0).rgb;
+    if (stage == 6u) return textureLod(userLutTextures[6], uvw, 0.0).rgb;
+    return textureLod(userLutTextures[7], uvw, 0.0).rgb;
+}
+#endif
 vec3 rawrSampleUserLutStage(uint stage, vec3 inputValue) {
     uvec4 meta = P.lutStageIndexSize[stage];
     int n = int(meta.y);
     vec3 mn = P.lutDomainMin[stage].rgb;
     vec3 mx = P.lutDomainMax[stage].rgb;
     vec3 z = clamp((inputValue - mn) / (mx - mn), 0.0, 1.0) * float(n - 1);
+#if RAWR_TONEMAP_USER_TEXTURE && RAWR_TONEMAP_USER_LINEAR
+    return rawrUserLutLinear(stage, (z + 0.5) / float(n));
+#endif
     ivec3 i0 = ivec3(floor(z));
     ivec3 i1 = min(i0 + ivec3(1), ivec3(n - 1));
     vec3 f = z - vec3(i0);

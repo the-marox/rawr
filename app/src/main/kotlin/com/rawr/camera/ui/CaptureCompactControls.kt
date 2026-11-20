@@ -1,7 +1,6 @@
 package com.rawr.camera.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -24,7 +23,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -107,12 +105,11 @@ private fun CompactStripStack(
 ) {
     // No scrim: legibility on bright and dark scenes comes from drop shadows
     // on every glyph instead of a background wash.
+    // No tap swallow on the whole stack: it spanned the full width and made
+    // the bottom third of the viewfinder dead to tap-to-focus. Each button is
+    // a pointer target of its own, so taps on a button still never reach the
+    // viewfinder; only the empty space between them now focuses.
     Column(
-        Modifier.pointerInput(Unit) {
-            // Swallow plain taps so they never fall through to tap-to-focus;
-            // the buttons handle their own scrub/long-press/double-tap.
-            detectTapGestures(onTap = {})
-        },
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         // Exactly one render owner is surfaced: Film Sim's preset/look strip

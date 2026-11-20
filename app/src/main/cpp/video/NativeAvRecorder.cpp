@@ -671,6 +671,9 @@ std::string NativeAvRecorder::statsJson() const {
            ",\"encoderLatencyMaxMs\":" + std::to_string(encoderLatencyPeak_.max()) +
            ",\"firstVideoPtsUs\":" + std::to_string(firstVideoPtsUs_) +
            ",\"lastVideoPtsUs\":" + std::to_string(lastVideoPtsUs_) +
+           // The last frame's time as written to the file (on the fps grid); with lastVideoPtsUs it gives the
+           // ratio between the file's clock and real time (Gyroflow log retiming).
+           ",\"lastFileVideoPtsUs\":" + std::to_string(lastSnappedVideoPtsUs_) +
            ",\"firstAudioPtsUs\":" + std::to_string(firstAudioPtsUs_) +
            ",\"lastAudioPtsUs\":" + std::to_string(lastAudioPtsUs_) +
            ",\"audioRmsDbfs\":" + std::to_string(audioRmsDbfs) + ",\"audioPeak\":" + std::to_string(audioPeak_) +

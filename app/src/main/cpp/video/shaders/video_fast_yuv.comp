@@ -1,0 +1,119 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#extension GL_EXT_control_flow_attributes : require
+
+// 17U fast recording path: RAW -> P010 in one dispatch.
+//
+// One thread per 2x2 Bayer cell (the quad demosaic of video_quad_core.glsl),
+// then lens shading, white balance and the HL-off ceiling clamp per pixel. The
+// whole render (camera->AP1, exposure, look, LUT chain, trims) is a per-pixel
+// function of that white-balanced camera RGB, so the host bakes it every frame
+// with the regular video tonemap into a small LUT (log shaper, slices of B
+// stacked vertically) and this shader only samples it. A 2x2 cell is exactly
+// one 4:2:0 chroma sample, so luma and chroma go straight into the encoder
+// buffer, and the cell average is the half-resolution monitor pixel. No
+// full-resolution intermediate image is written or read.
+#ifndef YUV_10BIT
+#define YUV_10BIT 1
+#endif
+#define VIDEO_QT 16
+layout(local_size_x = VIDEO_QT, local_size_y = VIDEO_QT, local_size_z = 1) in;
+#define VIDEO_RAW_IMAGE_BINDING 0
+#define VIDEO_RAW_BUFFER_BINDING 1
+#define VIDEO_LSC_BINDING 3
+#include "video_quad_core.glsl"
+
+layout(std140, binding = 2) uniform FastParams {
+    vec4 gains;   // rgb: WB gains; w: common channel ceiling (HL off clamp)
+    vec4 shaper;  // x: toe offset c; y: log2(c); z: 1 / (log2(max + c) - log2(c)); w: LUT size n
+    uvec4 yuv0;   // yOffsetWords, yStrideWords, cOffsetWords, cStrideWords
+    uvec4 yuv1;   // swapUV, monitorEnabled
+} fp;
+layout(binding = 4) uniform sampler2D toneLut;  // n x (n * n), RGBA16F, linear filtering
+#if YUV_10BIT
+layout(std430, binding = 5) writeonly buffer EncoderBuffer { uint words[]; } dst;
+#else
+// NV12: a cell owns 16 bits of a 32-bit word (two luma bytes per row, one CbCr
+// pair); the neighbouring cell owns the other half, so the halves are written
+// with atomics that only touch the cell's own bits.
+layout(std430, binding = 5) buffer EncoderBuffer { uint words[]; } dst;
+void putHalf(uint word, uint shift, uint value) {
+    atomicAnd(dst.words[word], ~(0xFFFFu << shift));
+    atomicOr(dst.words[word], (value & 0xFFFFu) << shift);
+}
+#endif
+layout(binding = 6, rgba8) uniform writeonly image2D monitorImage;
+
+const vec3 kLuma = vec3(0.2126, 0.7152, 0.0722);
+
+// The regular WB pass with HL off: sanitize, then clamp every channel to the
+// lowest post-WB channel ceiling.
+vec3 fastWhiteBalance(vec3 camera) {
+    vec3 wb = camera * fp.gains.rgb;
+    bool valid = !any(isnan(wb)) && !any(isinf(wb));
+    wb = valid ? clamp(wb, vec3(0.0), vec3(60000.0)) : vec3(0.0);
+    return min(wb, vec3(fp.gains.w));
+}
+
+vec3 fastTone(vec3 wb) {
+    float n = fp.shaper.w;
+    vec3 s = clamp((log2(wb + fp.shaper.x) - fp.shaper.y) * fp.shaper.z, 0.0, 1.0);
+    vec3 g = s * (n - 1.0);
+    float k0 = floor(g.b);
+    float k1 = min(k0 + 1.0, n - 1.0);
+    float t = g.b - k0;
+    // Within one slice the hardware filters R and G; texel centres keep the
+    // footprint inside the slice. B is interpolated between two slices here.
+    vec2 inv = vec2(1.0 / n, 1.0 / (n * n));
+    vec2 uv = g.rg + 0.5;
+    vec3 a = textureLod(toneLut, vec2(uv.x, uv.y + k0 * n) * inv, 0.0).rgb;
+    vec3 b = textureLod(toneLut, vec2(uv.x, uv.y + k1 * n) * inv, 0.0).rgb;
+    return clamp(mix(a, b, t), 0.0, 1.0);
+}
+
+uint p010(float v, float offset, float range) { return uint(clamp(round(offset + range * v), 0.0, 1023.0)) << 6u; }
+uint u8(float v, float offset, float range) { return uint(clamp(round(offset + range * v), 0.0, 255.0)); }
+
+void main() {
+    videoLoadTile();
+    videoBuildPlane();
+    ivec2 cell = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 outPixel = cell * 2;
+    if (outPixel.x >= int(pc.outWidth) || outPixel.y >= int(pc.outHeight)) return;
+    ivec2 base = ivec2(pc.cropX, pc.cropY) + outPixel;
+    videoLoadCellPlane(base);
+    float luma[4];
+    vec3 sum = vec3(0.0);
+    [[unroll]] for (int dy = 0; dy < 2; ++dy) {
+        [[unroll]] for (int dx = 0; dx < 2; ++dx) {
+            ivec2 q = base + ivec2(dx, dy);
+            vec3 camera = videoPixelRgb(dx, dy, videoCachedAt(q)) * videoGainAt(q);
+            vec3 encoded = fastTone(fastWhiteBalance(camera));
+            luma[dy * 2 + dx] = dot(kLuma, encoded);
+            sum += encoded;
+        }
+    }
+    vec3 average = sum * 0.25;
+    float averageLuma = dot(kLuma, average);
+    vec2 chroma = vec2((average.b - averageLuma) / 1.8556, (average.r - averageLuma) / 1.5748);
+    if (fp.yuv1.x != 0u) chroma = chroma.yx;
+#if YUV_10BIT
+    // P010: 10 significant bits at the top of each 16-bit sample, BT.709 limited range.
+    [[unroll]] for (int r = 0; r < 2; ++r) {
+        uint word = fp.yuv0.x + uint(outPixel.y + r) * fp.yuv0.y + uint(outPixel.x >> 1);
+        dst.words[word] = p010(luma[r * 2], 64.0, 876.0) | (p010(luma[r * 2 + 1], 64.0, 876.0) << 16u);
+    }
+    uint chromaWord = fp.yuv0.z + uint(outPixel.y >> 1) * fp.yuv0.w + uint(outPixel.x >> 1);
+    dst.words[chromaWord] = p010(chroma.x, 512.0, 896.0) | (p010(chroma.y, 512.0, 896.0) << 16u);
+#else
+    // NV12: 8-bit samples, BT.709 limited range; strides and offsets in 32-bit words.
+    uint shift = uint(outPixel.x & 2) * 8u;
+    [[unroll]] for (int r = 0; r < 2; ++r) {
+        uint word = fp.yuv0.x + uint(outPixel.y + r) * fp.yuv0.y + uint(outPixel.x >> 2);
+        putHalf(word, shift, u8(luma[r * 2], 16.0, 219.0) | (u8(luma[r * 2 + 1], 16.0, 219.0) << 8u));
+    }
+    uint chromaWord = fp.yuv0.z + uint(outPixel.y >> 1) * fp.yuv0.w + uint(outPixel.x >> 2);
+    putHalf(chromaWord, shift, u8(chroma.x, 128.0, 224.0) | (u8(chroma.y, 128.0, 224.0) << 8u));
+#endif
+    if (fp.yuv1.y != 0u) imageStore(monitorImage, cell, vec4(average, 1.0));
+}

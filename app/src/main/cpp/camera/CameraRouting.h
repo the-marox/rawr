@@ -202,10 +202,13 @@ struct LensRoute {
     // Separate photo-stream CFA; absent streams and existing profiles keep Bayer.
     uint32_t photoSensorLayoutBlock = 1;
     std::optional<uint32_t> colourOrder;
-    // Photo stream only, 4x4 photoSensorLayoutBlock: reduce each photo frame to a quarter of the pixels
-    // (Hexadeca 200 MP -> 50 MP Bayer, exact 2x2 sums in quarter-DN units) instead of remosaicing it at full
-    // size. photoPhaseFit also fits and removes the sensor's per-position response first.
+    // Photo stream only: reduce each photo frame at ingress instead of keeping it at full size, so
+    // singles and merges run at the reduced size. 4x4 photoSensorLayoutBlock: Hexadeca 200 MP -> 50 MP
+    // Bayer (exact 2x2 sums in quarter-DN units, then the quad remosaic); photoPhaseFit also fits and removes
+    // the sensor's per-position response first. Bayer (block 1): the linear 2x Bayer bin, 200 MP -> 50 MP,
+    // codes x4. photoReduced25 resamples the 50 MP result to half its pixels (25 MP).
     bool photoReduced = false;
+    bool photoReduced25 = false;
     bool photoPhaseFit = false;
     // Remosaic quality (imaging::CfaRemosaicQuality): live = viewfinder, video
     // and merge frames (GPU: Fast 0 / Standard 1); photo = single stills
@@ -220,6 +223,13 @@ struct LensRoute {
     uint32_t cropTop = 0;
     uint32_t cropRight = 0;
     uint32_t cropBottom = 0;
+    // Extra padded edges of the mode the sensor switches to above 30 fps
+    // (image.cropEdgesHighFps; Xiaomi 17 Ultra 1x at 60 fps: 512 blank rows at
+    // the bottom). Applied, on top of crop*, to video framing above 30 fps.
+    uint32_t highFpsCropLeft = 0;
+    uint32_t highFpsCropTop = 0;
+    uint32_t highFpsCropRight = 0;
+    uint32_t highFpsCropBottom = 0;
     // Lens distortion calibration when the camera reports none (vendor
     // calibration): undistorts photo renders and goes into the DNG as a
     // WarpRectilinear opcode. Defined on its own frame size, scaled to others.
@@ -235,12 +245,12 @@ struct LensRoute {
     std::string dcpError;
 };
 
-// High-resolution photo streams expose JPEG only when configured for the
-// supported Hexadeca-to-quarter-resolution output. Ordinary routes are unchanged.
+// High-resolution photo streams expose JPEG only when configured for a reduced
+// output (Hexadeca or Bayer, 50 or 25 MP). Ordinary routes are unchanged.
 [[nodiscard]] inline bool photoOutputDngOnly(const LensRoute& lens) noexcept {
     // 200 MP stills also save a JPEG (developed from a 50 MP binned copy, xiaomi fork): only larger ones stay DNG only.
     constexpr uint64_t kDngOnlyPixels = 300'000'000;
-    const bool reduced = lens.photoReduced && lens.photoSensorLayoutBlock == 4u;
+    const bool reduced = lens.photoReduced && (lens.photoSensorLayoutBlock == 4u || lens.photoSensorLayoutBlock == 1u);
     return lens.photoStream && uint64_t(lens.photoStream->width) * lens.photoStream->height > kDngOnlyPixels && !reduced;
 }
 

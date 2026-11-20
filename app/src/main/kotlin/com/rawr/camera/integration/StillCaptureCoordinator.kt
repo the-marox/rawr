@@ -31,7 +31,8 @@ class StillCaptureCoordinator(
     private val onJpegPublished: (Uri) -> Unit = {},
     private val onDngPublished: () -> Unit = {},
     private val gpsSnapshot: () -> com.rawr.camera.location.CaptureGps?,
-    private val levelSnapshot: () -> CaptureLevel? = { null }
+    private val levelSnapshot: () -> CaptureLevel? = { null },
+    private val ambientSnapshot: () -> AuxSensorReading? = { null }
 ) {
     data class CompletionEvent(val requestId: Long, val artifact: Artifact, val success: Boolean, val jpegRequested: Boolean = false,
                                 val filmFallbackMemory: Boolean = false, val dngFailed: Boolean = false) {
@@ -71,7 +72,11 @@ class StillCaptureCoordinator(
                                     var frozenAssetId: String? = null,
                                     val gps: com.rawr.camera.location.CaptureGps? = null,
                                     val level: CaptureLevel? = null,
-                                    val requestedAtNs: Long = android.os.SystemClock.elapsedRealtimeNanos())
+                                    val ambient: AuxSensorReading? = null,
+                                    val requestedAtNs: Long = android.os.SystemClock.elapsedRealtimeNanos(),
+                                    // Device posture at the press: a full-size burst can take seconds to
+                                    // acquire, and the phone is often lowered or turned meanwhile.
+                                    val deviceRotationDegrees: Int = 0)
     private val queuedInputs = java.util.concurrent.ConcurrentLinkedQueue<CaptureInput>()
     private val activeCaptures = java.util.concurrent.atomic.AtomicInteger(0)
     // Camera-session leases (native still leases), apart from process ownership (activeCaptures,
@@ -93,9 +98,12 @@ class StillCaptureCoordinator(
         val snapshot = settings().copy(dngEnabled = format.dng, jpegEnabled = format.jpeg)
         val releaseAssets = com.rawr.camera.settings.preferences.CaptureLutPins.acquire(
             snapshot.userLutProfiles.firstOrNull { it.id == snapshot.selectedUserLutProfileId })
+        val ambient = ambientSnapshot()
+        // The lens heading is a location fact (EXIF GPSImgDirection): it is recorded only with a location.
+        val gps = if (snapshot.locationTagging) gpsSnapshot()?.withLensHeading(ambient?.headingMagneticDeg) else null
         queuedInputs.add(CaptureInput(snapshot, CaptureTime.snapshot(), releaseAssets,
-            gps = if (snapshot.locationTagging) gpsSnapshot() else null, level = levelSnapshot(),
-            requestedAtNs = requestedAtNs))
+            gps = gps, level = levelSnapshot(), ambient = ambient,
+            requestedAtNs = requestedAtNs, deviceRotationDegrees = preview.captureDeviceRotationDegrees))
         activeCaptures.incrementAndGet()
         pressCameraLeases += 1
         preview.beginStillCapture()
@@ -250,6 +258,7 @@ class StillCaptureCoordinator(
                 val mfDenoise = current.photoDenoise.resolve(StillPath.MULTIFRAME)
                 mfDenoise.skipped.forEach { Log.i(TAG, "Denoise resolve path=multiframe skip=$it") }
                 preview.startPreparedMultiframeCapture(
+                    deviceRotationDegrees = input.deviceRotationDegrees,
                     baseDngOutputFd = (if (output.conditionalDng) -1 else output.dng?.fd ?: -1),
                     mergedDngOutputFd = (if (output.conditionalDng) -1 else output.mergedDng?.fd ?: -1),
                     jpegOutputFd = jpegFd,
@@ -287,6 +296,7 @@ class StillCaptureCoordinator(
                     wallClockMillis = now,
                     gps = input.gps,
                     level = input.level,
+                    ambient = input.ambient,
                     utcOffsetMinutes = offsetMinutes,
                     deviceMake = Build.MANUFACTURER,
                     deviceModel = DeviceNames.marketingModel(),
@@ -296,10 +306,12 @@ class StillCaptureCoordinator(
                     dumpRzslRequested = zslPersistRequested,
                     multiframeTuning = current.activeMultiframeTuning,
                     multiframeBaseFrameMode = current.multiframeBaseFrameMode,
-                    multiframeChromaDenoise = current.multiframeChromaDenoise
+                    multiframeChromaDenoise = current.multiframeChromaDenoise,
+                    multiframeDetailRestore = current.multiframeRextureDetailRestore
                 )
             } else {
                 preview.requestRawStillCapture(
+                    deviceRotationDegrees = input.deviceRotationDegrees,
                     dngOutputFd = (if (output.conditionalDng) -1 else output.dng?.fd ?: -1),
                     jpegOutputFd = jpegFd,
                     jpegQuality = jpegQuality,
@@ -332,6 +344,7 @@ class StillCaptureCoordinator(
                     wallClockMillis = now,
                     gps = input.gps,
                     level = input.level,
+                    ambient = input.ambient,
                     utcOffsetMinutes = offsetMinutes,
                     deviceMake = Build.MANUFACTURER,
                     deviceModel = DeviceNames.marketingModel(),

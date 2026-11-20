@@ -1,8 +1,9 @@
+#include <cstdlib>
+#include <rawr/raw_gpu_pipeline/RextureFit.h>
 #include <rawr/raw_gpu_pipeline/RextureRecorder.h>
 
 #include <algorithm>
 #include <atomic>
-#include <cstdlib>
 #include <stdexcept>
 #include <string>
 
@@ -54,6 +55,7 @@ struct AccPc {
     float frameWeight;
     std::int32_t frames;
     float gain0, gain1;  // reference exposure / frame exposure of the pass's frames
+    std::int32_t fit;    // 1: add the companions' green samples to the detail fit sums
 };
 struct FinalPc {
     float black[4];
@@ -64,14 +66,15 @@ struct FinalPc {
 struct FlagsPc {
     std::int32_t w, h;
 };
-// rx_lowcov_eaw: op 0 / 1 / 2 / 3, image size, strip core rows [r0, r1), rows computed by this dispatch (first row y0),
-// first image row held by the two strip scratch images, the merge's single-frame noise model and the burst's frame count.
-struct LowCoveragePc {
-    std::int32_t op, w, h, r0, r1, y0, rows, a1, a2;
-    float alpha, beta, frames;
+// rx_even: op, pyramid level, image size, single-frame noise model
+struct EvenPc {
+    std::int32_t op, level, w, h;
+    float alpha, beta;
+    std::int32_t rrow;
+    std::int32_t ox[7];   // atlas column of pyramid level 1 .. 6
 };
 // Rows of one strip of the grain pass (only tests change it: every height must give the same output).
-constexpr std::int32_t kStripRows = 256, kStripHalo = 14, kStripRowsX1 = kStripRows + 24, kStripRowsX2 = kStripRows + 16;
+constexpr std::int32_t kStripRows = 256;
 // The fallback RCD of a strip also needs the rows around it: its five passes depend on each other over 7 rows.
 constexpr std::int32_t kRcdHalo = 8, kRcdRows = kStripRows + 2 * kRcdHalo;
 std::atomic<std::int32_t> gStripRows{kStripRows};
@@ -94,7 +97,7 @@ struct AxisPc {
 static_assert(sizeof(PreparePc) <= 128);
 }  // namespace
 
-ScratchLayout makeRextureScratchLayout(const MultiframeGeometry& g, bool debug) {
+ScratchLayout makeRextureScratchLayout(const MultiframeGeometry& g, bool debug, bool detail) {
     ScratchLayout r{};
     r.geometry = g;
     auto img = [&](std::string n, Extent2D e, PixelStorage s, Lifetime l, std::string pool = {}, std::string placeAt = {}) {
@@ -138,6 +141,9 @@ ScratchLayout makeRextureScratchLayout(const MultiframeGeometry& g, bool debug) 
     img("rx_er", g.guide, PixelStorage::R16Float, Lifetime::Companion);
     img("rx_er_b", g.guide, PixelStorage::R16Float, Lifetime::Companion);
     img("rx_support", g.guide, PixelStorage::R16Float, Lifetime::Burst);
+    img("rx_mot", g.guide, PixelStorage::RG16Float, Lifetime::Burst);   // moving-texture restore: (rejected share, covering) sums
+    img("rx_mov_ga", Extent2D{(g.output.width + 7u) / 8u, (g.output.height + 7u) / 8u}, PixelStorage::R16Float, Lifetime::Output);
+    img("rx_mov_gb", Extent2D{(g.output.width + 7u) / 8u, (g.output.height + 7u) / 8u}, PixelStorage::R16Float, Lifetime::Output);
     if (debug) {
         img("rx_dbg_pre", g.guide, PixelStorage::R32Float, Lifetime::Companion);
         img("rx_dbg_scale", Extent2D{g.coarseToFine[3].tilesX, g.coarseToFine[3].tilesY}, PixelStorage::R32Float,
@@ -156,19 +162,14 @@ ScratchLayout makeRextureScratchLayout(const MultiframeGeometry& g, bool debug) 
         }
     }
     img("linear_output", g.output, PixelStorage::RGBA16Float, Lifetime::Output, "companion", "start:rx_alt_l3");
-    // Grain pass (rx_lowcov_eaw): the noise-level grid and the strip scratch, behind linear_output in the companion pool
-    // (everything else in it is dead once the last companion is accumulated). Memory does not grow with the image height.
+    // Grain evening (rx_even): the noise-level grid behind linear_output in the companion pool (everything else in it is dead
+    // once the last companion is accumulated); its pyramid scratch reuses the accumulators (rx_acc_a / rx_acc_c), free after the
+    // final pass.
     img("rx_lc_m", Extent2D{(g.output.width + 3u) / 4u, (g.output.height + 3u) / 4u}, PixelStorage::R32Float, Lifetime::Output,
         "companion", "end:linear_output");
-    img("rx_lc_halo", Extent2D{g.output.width, std::uint32_t(kStripHalo)}, PixelStorage::RGBA16Float, Lifetime::Output,
-        "companion", "end:rx_lc_m");
-    img("rx_lc_x1", Extent2D{g.output.width, std::uint32_t(kStripRowsX1)}, PixelStorage::RGBA16Float, Lifetime::Output,
-        "companion", "end:rx_lc_halo");
-    img("rx_lc_x2", Extent2D{g.output.width, std::uint32_t(kStripRowsX2)}, PixelStorage::RGBA16Float, Lifetime::Output,
-        "companion", "end:rx_lc_x1");
     // Fallback demosaic (RCD of the base): computed per strip while finalizing, only near the 16 x 16 tiles flagged by
-    // rx_fb_flags, so nothing of image size is kept for it. The fp32 work planes (RGB + direction field) alias the grain
-    // pass's strip scratch (that pass runs after the last strip). The verification build runs RCD once on the whole frame.
+    // rx_fb_flags, so nothing of image size is kept for it: fp32 work planes (RGB + direction field) of one strip, behind the
+    // noise grid. The verification build runs RCD once on the whole frame.
     img("rx_fb_tiles", Extent2D{(g.output.width + 15u) / 16u, (g.output.height + 15u) / 16u}, PixelStorage::R32Float,
         Lifetime::Output);
     if (debug) {
@@ -176,10 +177,21 @@ ScratchLayout makeRextureScratchLayout(const MultiframeGeometry& g, bool debug) 
         img("rx_rcd_dir", g.output, PixelStorage::RG32Float, Lifetime::Burst);
     } else {
         img("rx_rcd_work", Extent2D{g.output.width, std::uint32_t(std::min<std::uint32_t>(kRcdRows, g.output.height))},
-            PixelStorage::RGBA32Float, Lifetime::Output, "companion", "start:rx_lc_halo");
+            PixelStorage::RGBA32Float, Lifetime::Output, "companion", "end:rx_lc_m");
         img("rx_rcd_dir", Extent2D{g.output.width, std::uint32_t(std::min<std::uint32_t>(kRcdRows, g.output.height))},
             PixelStorage::RG32Float, Lifetime::Output, "companion", "end:rx_rcd_work");
     }
+    // Detail fit (rx_fit.comp): the base green plane (read by each companion's motion test; the fitted green after the final
+    // pass) and the fit sums (rx_fit_acc + rx_fit_acc2: the centred sample sum and 5 coefficients of the fit's 3 x 3 stencil),
+    // full resolution,
+    // and the companion's motion weight (half resolution, one per pair slot); 1 x 1 placeholders when the fit is off
+    // (rx_accumulate binds them either way).
+    const Extent2D fitExtent = detail ? g.output : Extent2D{1u, 1u}, fitCells = detail ? g.guide : Extent2D{1u, 1u};
+    img("rx_fit_bg", fitExtent, PixelStorage::RG16Float, Lifetime::Burst);
+    img("rx_fit_acc", fitExtent, PixelStorage::RGBA16Float, Lifetime::Burst);
+    img("rx_fit_acc2", fitExtent, PixelStorage::RG16Float, Lifetime::Burst);
+    img("rx_fit_w", fitCells, PixelStorage::R16Float, Lifetime::Companion);
+    img("rx_fit_w_b", fitCells, PixelStorage::R16Float, Lifetime::Companion);
     auto bytes = [](const ImageSpec& s) {
         return static_cast<std::uint64_t>(s.extent.width) * s.extent.height * bytesPerPixel(s.storage);
     };
@@ -226,6 +238,10 @@ void RextureRecorder::recordPrepare(VkCommandBuffer c, bool base, VkImageView ra
     computeWriteBarrier(c);
     if (mark_) mark_("prep");
     recordPyramid(c, base);
+    if (base && config_.detailRestore) {
+        recordFit(c, 0, rawU16, f);
+        if (mark_) mark_("fit_base");
+    }
 }
 
 void RextureRecorder::recordPyramid(VkCommandBuffer c, bool base) const {
@@ -379,8 +395,9 @@ namespace rawr::raw_gpu_pipeline {
 void RextureRecorder::recordBurstClear(VkCommandBuffer c) const {
     VkImageSubresourceRange range{VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
     VkClearColorValue zero{};
+    vkCmdClearColorImage(c, arena_.image("rx_mot").image, VK_IMAGE_LAYOUT_GENERAL, &zero, 1, &range);
     vkCmdClearColorImage(c, arena_.image("rx_support").image, VK_IMAGE_LAYOUT_GENERAL, &zero, 1, &range);
-    for (const char* n : {"rx_acc_a", "rx_acc_b", "rx_acc_c", "rx_dbg_ss2"}) {
+    for (const char* n : {"rx_acc_a", "rx_acc_b", "rx_acc_c", "rx_dbg_ss2", "rx_fit_acc", "rx_fit_acc2"}) {
         try {
             vkCmdClearColorImage(c, arena_.image(n).image, VK_IMAGE_LAYOUT_GENERAL, &zero, 1, &range);
         } catch (const std::out_of_range&) {  // debug-only image
@@ -403,7 +420,7 @@ void RextureRecorder::recordRobustness(VkCommandBuffer c, bool debug, std::uint3
                      {{ib(0, arena_.image(slot == 1 ? "rx_flow_l3_b" : "rx_flow_l3")), ib(1, arena_.image("rx_base_mean")),
                        ib(2, arena_.image("rx_base_var")), ib(3, arena_.image("rx_alt_mean")),
                        ib(4, arena_.image("rx_alt_var")), ib(5, er), ib(6, arena_.image("rx_support")),
-                       ib(7, dbgPre), ib(8, dbgScale)},
+                       ib(7, dbgPre), ib(8, dbgScale), ib(9, arena_.image("rx_mot"))},
                       {}},
                      &p, sizeof(p), divUp(er.extent.width, 16), divUp(er.extent.height, 16));
     computeWriteBarrier(c);
@@ -429,12 +446,15 @@ void RextureRecorder::recordAccumulate(VkCommandBuffer c, VkImageView rawU16, co
     p.frameWeight = 1.0f;
     p.frames = 1;
     p.gain0 = p.gain1 = gain;
+    p.fit = config_.detailRestore ? 1 : 0;
     ImageBinding raw{0, rawU16, VK_IMAGE_LAYOUT_GENERAL};
     const ArenaImage& ss2 = debug ? arena_.image("rx_dbg_ss2") : a;   // never touched without debug
     executor_.record(c, ShaderId::RxAccumulate,
                      {{raw, ib(1, arena_.image("rx_flow_l3")), ib(2, arena_.image("rx_er")), ib(3, arena_.image("rx_base_cov")),
                        ib(4, a), ib(5, arena_.image("rx_acc_b")), ib(6, arena_.image("rx_acc_c")), ib(7, ss2),
-                       raw8(rawU16), ib(9, arena_.image("rx_flow_l3")), ib(10, arena_.image("rx_er"))},
+                       raw8(rawU16), ib(9, arena_.image("rx_flow_l3")), ib(10, arena_.image("rx_er")),
+                       ib(11, arena_.image("rx_fit_w")), ib(12, arena_.image("rx_fit_acc")), ib(13, arena_.image("rx_fit_w")),
+                       ib(14, arena_.image("rx_fit_acc2")), ib(15, arena_.image("rx_fit_bg"))},
                       {}},
                      &p, sizeof(p), divUp(a.extent.width, 16), divUp(a.extent.height, 16));
     computeWriteBarrier(c);
@@ -510,47 +530,121 @@ void RextureRecorder::recordFinalize(VkCommandBuffer c, VkImageView rawU16, cons
         computeWriteBarrier(c);
         if (mark_) mark_("final");
     }
+    // The detail fit's step starts from the grain pass's output, so the evening of few-frame areas stays where the fit has
+    // nothing to add (no companion support, no texture: see rx_fit.comp).
     recordGrainPass(c);
+    if (config_.detailRestore) {
+        recordFit(c, 1, rawU16, f);
+        if (mark_) mark_("fit");
+        recordFit(c, 2, rawU16, f);
+        if (mark_) mark_("fit_add");
+    }
+    if (rawU16) recordMovingRestore(c, rawU16, f);
 }
 
-std::uint32_t RextureRecorder::finalizeMarks(std::uint32_t height, bool debug) noexcept {
+// Moving-texture restore (rx_moving.comp): the base frame's fine detail back where most covering companions were rejected for
+// motion over a broad area (config.movingRestore).
+void RextureRecorder::recordMovingRestore(VkCommandBuffer c, VkImageView rawU16, const MultiframeFrameParameters& f) const {
+    if (!config_.movingRestore) return;
+    struct { float black[4]; float white; std::int32_t w, h, cfa, op; float iwb[3]; float alpha, beta; } p{};
+    const auto& out = arena_.image("linear_output");
+    const auto& ga = arena_.image("rx_mov_ga");
+    std::copy(f.normalization.blackByPhase.begin(), f.normalization.blackByPhase.end(), p.black);
+    p.white = f.normalization.whiteLevel;
+    p.w = std::int32_t(out.extent.width);
+    p.h = std::int32_t(out.extent.height);
+    p.cfa = std::int32_t(config_.cfa);
+    for (int i = 0; i < 3; ++i) p.iwb[i] = 1.0f / f.whiteBalance[i];
+    p.alpha = config_.noiseAlpha;
+    p.beta = config_.noiseBeta;
+    ImageBinding raw{0, rawU16, VK_IMAGE_LAYOUT_GENERAL};
+    const DispatchBindings b{{raw, ib(1, out), ib(2, arena_.image("rx_mot")), ib(3, arena_.image("rx_lc_m")), ib(4, ga),
+                              ib(5, arena_.image("rx_mov_gb")), ib(6, arena_.image("rx_acc_a"))},
+                             {}};
+    for (std::int32_t op = 0; op < 5; ++op) {
+        p.op = op;
+        const Extent2D grid = op < 3 ? ga.extent : out.extent;
+        executor_.record(c, ShaderId::RxMoving, b, &p, sizeof(p), divUp(grid.width, 16), divUp(grid.height, 16));
+        computeWriteBarrier(c);
+    }
+}
+
+void RextureRecorder::recordFitMotion(VkCommandBuffer c, VkImageView rawU16, const MultiframeFrameParameters& f, float gain,
+                                      std::uint32_t slot) const {
+    if (!config_.detailRestore) return;
+    recordFit(c, 3, rawU16, f, gain, slot);
+    if (mark_) mark_("fit_motion");
+}
+
+void RextureRecorder::recordFit(VkCommandBuffer c, std::int32_t op, VkImageView rawU16, const MultiframeFrameParameters& f,
+                                float gain, std::uint32_t slot) const {
+    const auto& out = arena_.image("linear_output");
+    rexture_fit::PushConstants p{};
+    std::copy(f.normalization.blackByPhase.begin(), f.normalization.blackByPhase.end(), p.black);
+    p.white = f.normalization.whiteLevel;
+    p.w = std::int32_t(out.extent.width);
+    p.h = std::int32_t(out.extent.height);
+    p.cfa = std::int32_t(config_.cfa);
+    p.op = op;
+    p.omega = rexture_fit::kOmega;
+    p.delta = rexture_fit::kDelta;
+    for (int i = 0; i < 3; ++i) p.iwb[i] = 1.0f / f.whiteBalance[i];
+    p.alpha = config_.noiseAlpha;
+    p.beta = config_.noiseBeta;
+    p.gain = gain;
+    const auto& weight = arena_.image(slot == 1 ? "rx_fit_w_b" : "rx_fit_w");
+    const Extent2D grid = op == 3 ? weight.extent : out.extent;
+    ImageBinding raw{0, rawU16, VK_IMAGE_LAYOUT_GENERAL};
+    executor_.record(c, ShaderId::RxFit,
+                     {{raw, ib(1, arena_.image("rx_fit_bg")), ib(2, arena_.image("rx_fit_acc")), ib(3, out),
+                       ib(4, arena_.image(slot == 1 ? "rx_flow_l3_b" : "rx_flow_l3")), ib(5, weight), ib(6, arena_.image("rx_fit_acc2"))},
+                      {}},
+                     &p, sizeof(p), divUp(grid.width, 16), divUp(grid.height, 16));
+    computeWriteBarrier(c);
+}
+
+std::uint32_t RextureRecorder::finalizeMarks(std::uint32_t height, bool debug, bool detail) noexcept {
     const std::uint32_t strip = debug ? height : std::uint32_t(std::max(16, gStripRows / 16 * 16));
     const std::uint32_t strips = (height + strip - 1u) / strip;
-    return (debug ? 0u : 1u) + strips * (debug ? 1u : 2u) + 1u;  // flags, per strip (rcd, final), grain
+    // flags, per strip (rcd, final), grain; the detail fit before and after the grain pass
+    return (debug ? 0u : 1u) + strips * (debug ? 1u : 2u) + 1u + (detail ? 2u : 0u);
 }
 
 void RextureRecorder::setStripRowsForTesting(std::uint32_t rows) noexcept {
     gStripRows = rows == 0 ? kStripRows : std::clamp(std::int32_t(rows), 16, kStripRows);
 }
 
-// Evens out the grain where the merge kept few frames, strip by strip, in place on linear_output (see rx_lowcov_eaw.comp).
-// A strip core [r0, r1) needs x0 rows +-14, x1 rows +-12 and x2 rows +-8, clamped to the image like the filter itself.
+// Evens out the grain where the merge kept fewer frames than its surroundings, in place on linear_output (see rx_even.comp):
+// the clean neighbours' level (1/8 resolution), the pyramid G_1 .. G_6, the rebuilt levels R_5 .. R_1, the level 0 gains,
+// then the output.
 void RextureRecorder::recordGrainPass(VkCommandBuffer c) const {
     const auto& out = arena_.image("linear_output");
+    const auto& atlas = arena_.image("rx_acc_a");
+    const auto& gain = arena_.image("rx_acc_c");
+    const auto& refA = arena_.image("rx_mov_ga");
     const std::int32_t w = std::int32_t(out.extent.width), h = std::int32_t(out.extent.height);
-    const std::int32_t strip = gStripRows;
-    // four dispatches per strip, one descriptor set each, from the executor's pool of 1024 sets per program and chunk
-    if ((h + strip - 1) / strip * 4 > 1000) throw std::invalid_argument("rexture recorder: image too tall for the grain pass");
-    const auto& noiseGrid = arena_.image("rx_lc_m");
-    const auto& halo = arena_.image("rx_lc_halo");
-    const auto& x1 = arena_.image("rx_lc_x1");
-    const auto& x2 = arena_.image("rx_lc_x2");
-    const auto run = [&](std::int32_t op, std::int32_t r0, std::int32_t r1, std::int32_t y0, std::int32_t rows,
-                         std::int32_t a1, std::int32_t a2) {
-        const LowCoveragePc q{op, w, h, r0, r1, y0, rows, a1, a2, config_.noiseAlpha, config_.noiseBeta, config_.burstFrames};
-        executor_.record(c, ShaderId::RxLowcovEaw, {{ib(0, out), ib(1, halo), ib(2, x1), ib(3, x2), ib(4, noiseGrid)}, {}}, &q,
-                         sizeof(q), divUp(std::uint32_t(w), 16), divUp(std::uint32_t(rows), 16));
+    const auto size = [&](std::int32_t l) {
+        return Extent2D{std::uint32_t((w + (1 << l) - 1) >> l), std::uint32_t((h + (1 << l) - 1) >> l)};
+    };
+    std::uint32_t atlasW = 0;
+    for (std::int32_t l = 1; l <= 6; ++l) atlasW += size(l).width;
+    if (atlasW > atlas.extent.width || 2u * size(1).height > atlas.extent.height)
+        throw std::invalid_argument("rexture recorder: image too small for the grain evening pyramid");
+    const DispatchBindings b{{ib(0, out), ib(1, atlas), ib(2, gain), ib(3, arena_.image("rx_lc_m")), ib(4, refA),
+                              ib(5, arena_.image("rx_mov_gb"))},
+                             {}};
+    EvenPc q{0, 0, w, h, config_.noiseAlpha, config_.noiseBeta, std::int32_t(size(1).height), {}};
+    for (std::int32_t l = 1, x = 0; l <= 6; ++l) { q.ox[l] = x; x += std::int32_t(size(l).width); }
+    const auto run = [&](std::int32_t op, std::int32_t level, std::uint32_t gx, std::uint32_t gy) {
+        q.op = op;
+        q.level = level;
+        executor_.record(c, ShaderId::RxEven, b, &q, sizeof(q), gx, gy);
         computeWriteBarrier(c);
     };
-    for (std::int32_t r0 = 0; r0 < h; r0 += strip) {
-        const std::int32_t r1 = std::min(r0 + strip, h);
-        const std::int32_t a1 = std::max(r0 - 12, 0), b1 = std::min(r1 + 12, h);
-        const std::int32_t a2 = std::max(r0 - 8, 0), b2 = std::min(r1 + 8, h);
-        run(0, r0, r1, a1, b1 - a1, a1, a2);                                   // x1 = A1(x0)
-        run(1, r0, r1, a2, b2 - a2, a1, a2);                                   // x2 = A2(x1)
-        if (r1 < h) run(3, r0, r1, std::max(r1 - kStripHalo, r0), std::min(kStripHalo, r1 - r0), a1, a2);  // next strip's halo
-        run(2, r0, r1, r0, r1 - r0, a1, a2);                                   // out = x3 + g (x0 - x3), in place
-    }
+    for (std::int32_t op = 0; op <= 4; ++op) run(op, 0, divUp(refA.extent.width, 16), divUp(refA.extent.height, 16));
+    for (std::int32_t l = 1; l <= 6; ++l) run(5, l, divUp(size(l).width, 16), divUp(size(l).height, 8));    // G_l, A_{l-1}
+    for (std::int32_t l = 0; l <= 5; ++l) run(6, l, divUp(size(l + 1).width, 16), divUp(size(l + 1).height, 16));   // a_l
+    for (std::int32_t l = 5; l >= 0; --l) run(7, l, divUp(size(l).width, 16), divUp(size(l).height, 16));   // R_l
     if (mark_) mark_("grain");
 }
 }  // namespace rawr::raw_gpu_pipeline
@@ -635,11 +729,14 @@ void RextureRecorder::recordAccumulatePair(VkCommandBuffer c, VkImageView rawSlo
     p.frames = 2;
     p.gain0 = gain0;
     p.gain1 = gain1;
+    p.fit = config_.detailRestore ? 1 : 0;
     ImageBinding raw{0, rawSlot0, VK_IMAGE_LAYOUT_GENERAL};
     executor_.record(c, ShaderId::RxAccumulate,
                      {{raw, ib(1, arena_.image("rx_flow_l3")), ib(2, arena_.image("rx_er")), ib(3, arena_.image("rx_base_cov")),
                        ib(4, a), ib(5, arena_.image("rx_acc_b")), ib(6, arena_.image("rx_acc_c")), ib(7, a), raw8(rawSlot1),
-                       ib(9, arena_.image("rx_flow_l3_b")), ib(10, arena_.image("rx_er_b"))},
+                       ib(9, arena_.image("rx_flow_l3_b")), ib(10, arena_.image("rx_er_b")),
+                       ib(11, arena_.image("rx_fit_w")), ib(12, arena_.image("rx_fit_acc")), ib(13, arena_.image("rx_fit_w_b")),
+                       ib(14, arena_.image("rx_fit_acc2")), ib(15, arena_.image("rx_fit_bg"))},
                       {}},
                      &p, sizeof(p), divUp(a.extent.width, 16), divUp(a.extent.height, 16));
     computeWriteBarrier(c);

@@ -5,6 +5,16 @@ on:
     branches: [main, 17u-port, 17u-upstream-merge, xiaomi-17u]
   pull_request:
   workflow_dispatch:
+    inputs:
+      variant:
+        description: "debug, or benchmark (optimized native/Kotlin, installs alongside as Rawr Benchmark)"
+        type: choice
+        options: [debug, benchmark]
+        default: debug
+      skip_tests:
+        description: "Skip unit tests (assemble only)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -68,9 +78,12 @@ jobs:
           CCACHE_COMPILERCHECK: content
           CCACHE_BASEDIR: ${{ github.workspace }}
           CCACHE_NOHASHDIR: "true"
-          SKIP_TESTS: ${{ contains(github.event.head_commit.message, '[skip tests]') }}
+          SKIP_TESTS: ${{ github.event.inputs.skip_tests == 'true' || contains(github.event.head_commit.message, '[skip tests]') }}
+          VARIANT: ${{ github.event.inputs.variant || 'debug' }}
         run: |
-          if [ "$SKIP_TESTS" = "true" ]; then
+          if [ "$VARIANT" = "benchmark" ]; then
+            ./gradlew :app:assembleBenchmark
+          elif [ "$SKIP_TESTS" = "true" ]; then
             ./gradlew :app:assembleDebug
           else
             ./gradlew :app:testDebugUnitTest :app:assembleDebug
@@ -79,7 +92,23 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: rawr-debug-${{ github.sha }}
-          path: app/build/outputs/apk/debug/*.apk
+          path: app/build/outputs/apk/*/*.apk
+          retention-days: 14
+
+      # SPIR-V of every embedded shader (arm64 build), renamed *.comp.spv for
+      # the Adreno Offline Compiler (_debug\aoc.bat).
+      - name: Collect shader SPIR-V
+        run: |
+          mkdir -p shaders-spv
+          find app/.cxx app/build -path '*arm64-v8a*' -name '*.spv' 2>/dev/null | while read -r f; do
+            cp -f "$f" "shaders-spv/$(basename "$f" .spv).comp.spv"
+          done
+          ls shaders-spv | wc -l
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shaders-spv-${{ github.sha }}
+          path: shaders-spv/
           retention-days: 14
 
       # Merges to main republish the `debug` prerelease so its download link

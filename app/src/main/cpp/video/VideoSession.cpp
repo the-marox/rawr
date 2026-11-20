@@ -142,7 +142,17 @@ void VideoSession::record(VkCommandBuffer command, uint32_t frameSlot, uint32_t 
                           rawrcam::diagnostics::GpuTimingTracker& timing, bool monitorEnabled,
                           const std::function<VkCommandBuffer(VkCommandBuffer)>& splitSubmit,
                           const std::function<void(VkCommandBuffer, VkImageView, uint32_t, uint32_t)>& sceneMeter) {
-    if (!recordingTone_) recordingTone_ = params;
+    if (!recordingTone_) {
+        recordingTone_ = params;
+        // Once per recording: why the idle viewfinder and the file may frame differently.
+        if (lensDistortion_)
+            __android_log_print(ANDROID_LOG_INFO, "RawrNativeVideo",
+                                "VIDEO_DISTORTION_STATE enabled=%d lens=%ux%u raw=%ux%u", activeConfig_.distortionEnabled ? 1 : 0,
+                                lensDistortion_->width, lensDistortion_->height, rawWidth, rawHeight);
+        else
+            __android_log_print(ANDROID_LOG_INFO, "RawrNativeVideo", "VIDEO_DISTORTION_STATE enabled=%d lens=none",
+                                activeConfig_.distortionEnabled ? 1 : 0);
+    }
     auto frozen = params;
     frozen.renderTransform = recordingTone_->renderTransform;
     frozen.outputSpace = recordingTone_->outputSpace;

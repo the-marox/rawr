@@ -1,5 +1,9 @@
 #include "pipeline/FrameSubmitCoordinator.h"
 
+#include <chrono>
+
+#include "video/ContextKeptArea.h"
+
 #include <android/log.h>
 #include <sys/system_properties.h>
 #include <time.h>
@@ -327,7 +331,13 @@ std::optional<FrameSubmitCoordinator::AcquiredSubmit> FrameSubmitCoordinator::ac
             vkCheck(preview, "video preview fence status");
     }
     const bool uiActive = uiPresentationActive_.load(std::memory_order_relaxed) || capturePort_.multiframeEnabled();
-    if (uiActive && !presentationPaused_ && !metadata.hidePreview && swapchainRenderer_.ready() && !slot->previewSubmitted) {
+    // Recording above 30 fps: refresh the viewfinder on every other frame. The
+    // recorded video is untouched; the skipped frames save the monitor write
+    // in the tonemap plus the scopes/present pass (~1.2 ms GPU at 4K60).
+    const bool monitorThrottled =
+        videoIndex && videoHighFps_.load(std::memory_order_relaxed) && ((videoMonitorTick_++ & 1u) != 0u);
+    if (uiActive && !presentationPaused_ && !metadata.hidePreview && swapchainRenderer_.ready() && !slot->previewSubmitted &&
+        !monitorThrottled) {
         uint32_t index = 0;
         const VkResult acquire = swapchainRenderer_.acquireNextImage(slot->imageAvailable, &index);
         trace.record(rawrcam::diagnostics::RuntimeTraceStage::SwapAcquire, params.timestampNs, metadata.frameOrdinal,
@@ -345,7 +355,7 @@ std::optional<FrameSubmitCoordinator::AcquiredSubmit> FrameSubmitCoordinator::ac
         } else {
             vkCheck(acquire, "vkAcquireNextImageKHR");
         }
-    } else if (videoIndex) {
+    } else if (videoIndex && !monitorThrottled) {
         ++previewSkippedDuringVideo_;
     }
     if (!swapIndex && !videoIndex) {
@@ -551,8 +561,10 @@ void FrameSubmitCoordinator::submitSplitVideoAndMonitor(const SubmitParams& para
         waits[waitCount] = slot->cameraAcquire;
         stages[waitCount++] = rawWaitStage;
     }
-    waits[waitCount] = videoOutput_->available(slotIndex);
-    stages[waitCount++] = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+    if (const VkSemaphore available = videoOutput_->available(slotIndex)) {
+        waits[waitCount] = available;
+        stages[waitCount++] = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+    }
 
     // Each frame goes to the queue in three parts (demosaic, post, tonemap).
     VkCommandBuffer current = slot->videoCommand;
@@ -595,9 +607,8 @@ void FrameSubmitCoordinator::submitSplitVideoAndMonitor(const SubmitParams& para
                                  // Spot and focus are on the full frame; the video image is its record crop.
                                  const auto* cc = metadata.cameraContext.get();
                                  const auto kept =
-                                     cc ? rawrcam::video::videoKeptArea(config_.rawWidth, config_.rawHeight,
-                                                                        cc->cropLeft, cc->cropTop, cc->cropRight,
-                                                                        cc->cropBottom)
+                                     cc ? rawrcam::video::contextKeptArea(config_.rawWidth, config_.rawHeight, *cc,
+                                                                          videoHighFps_.load(std::memory_order_relaxed))
                                         : rawrcam::video::VideoKeptArea{};
                                  const auto crop = rawrcam::video::videoSourceRect(config_.rawWidth, config_.rawHeight,
                                                                                    width, height, kept);
@@ -677,10 +688,19 @@ void FrameSubmitCoordinator::submitSplitVideoAndMonitor(const SubmitParams& para
         vkCheck(vkResetCommandBuffer(slot->command, 0), "video monitor reset command");
         vkCheck(vkBeginCommandBuffer(slot->command, &begin), "video monitor begin command");
         videoOutput_->beginMonitorTiming(slot->command, slotIndex);
-        const auto extent = videoOutput_->extent();
+        const auto extent = videoOutput_->monitorExtent();
+        // Scopes while recording: each slot recomputes at most every 300 ms (~10
+        // scope updates/s over the rotating slots); other frames reuse the slot's
+        // last scope image. Saves ~2 ms GPU per shown frame at 342 MHz.
+        const int64_t scopeNow = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                     std::chrono::steady_clock::now().time_since_epoch()).count();
+        int64_t& scopeLast = videoScopeLastNs_[slotIndex % videoScopeLastNs_.size()];
+        const bool scopeCompute = scopeNow - scopeLast >= 300'000'000;
+        if (scopeCompute) scopeLast = scopeNow;
         resources_.recorder()->recordVideoScopes(slot->command, slotIndex, videoOutput_->monitorView(slotIndex),
                                                  videoOutput_->monitorImage(slotIndex), extent.width, extent.height,
-                                                 config_.sensorOrientationDegrees, scopeDeviceRotationDegrees_);
+                                                 config_.sensorOrientationDegrees, scopeDeviceRotationDegrees_,
+                                                 scopeCompute);
         swapchainRenderer_.record(slot->command, slotIndex, *acquired.swapIndex, extent.width, extent.height,
                                   config_.sensorOrientationDegrees, displayRotationDegrees_, 0u, false, 0u, true);
         resources_.recorder()->restoreVideoScopes(slot->command, slotIndex);
@@ -790,6 +810,7 @@ FrameSubmitCoordinator::RecordedSubmit FrameSubmitCoordinator::recordSubmitComma
     recordInput.distortionCorrectionEnabled = distortionCorrectionEnabled_.load(std::memory_order_relaxed);
     recordInput.videoCropOutWidth = videoCropOutWidth_.load(std::memory_order_relaxed);
     recordInput.videoCropOutHeight = videoCropOutHeight_.load(std::memory_order_relaxed);
+    recordInput.videoHighFps = videoHighFps_.load(std::memory_order_relaxed);
     recordInput.filmEnabled = filmSimEnabled_;
     recordInput.filmLook = filmLook_;
     recordInput.viewfinderDivisor = viewfinderDivisor_;
@@ -888,8 +909,10 @@ void FrameSubmitCoordinator::submitAndPresent(const SubmitParams& params, const 
         stages[waitCount++] = recorded.rawWaitStage;
     }
     if (acquired.videoIndex && videoOutput_) {
-        waits[waitCount] = videoOutput_->available(slotIndex);
-        stages[waitCount++] = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+        if (const VkSemaphore available = videoOutput_->available(slotIndex)) {
+            waits[waitCount] = available;
+            stages[waitCount++] = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+        }
     }
 
     VkSubmitInfo si{};

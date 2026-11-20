@@ -693,7 +693,7 @@ std::string serializeCameraProfile(const CameraProfile& profile) {
             ObjectWriter layout;
             layout.number("block", r.sensorLayoutBlock);
             if (r.photoSensorLayoutBlock > 1) layout.number("photoBlock", r.photoSensorLayoutBlock);
-            if (r.photoReduced) layout.text("photoOutput", "reduced");
+            if (r.photoReduced) layout.text("photoOutput", r.photoReduced25 ? "reduced25" : "reduced");
             if (r.photoPhaseFit) layout.flag("photoPhaseFit", true);
             if (r.colourOrder) layout.text("colourOrder", cfaOrderName(*r.colourOrder));
             layout.text("liveRemosaic", r.liveRemosaic == 0 ? "fast" : r.liveRemosaic == 3 ? "detail" : "standard");
@@ -707,6 +707,14 @@ std::string serializeCameraProfile(const CameraProfile& profile) {
             if (r.cropRight) crop.number("right", r.cropRight);
             if (r.cropBottom) crop.number("bottom", r.cropBottom);
             image.raw("cropEdges", crop.str());
+        }
+        if (r.highFpsCropLeft || r.highFpsCropTop || r.highFpsCropRight || r.highFpsCropBottom) {
+            ObjectWriter crop;
+            if (r.highFpsCropLeft) crop.number("left", r.highFpsCropLeft);
+            if (r.highFpsCropTop) crop.number("top", r.highFpsCropTop);
+            if (r.highFpsCropRight) crop.number("right", r.highFpsCropRight);
+            if (r.highFpsCropBottom) crop.number("bottom", r.highFpsCropBottom);
+            image.raw("cropEdgesHighFps", crop.str());
         }
         if (r.distortion) {
             std::string distortion;
@@ -1143,16 +1151,19 @@ std::optional<LensRoute> readLens(const Json& l, std::string* error) {
         }
         r.photoSensorLayoutBlock = uint32_t(photoBlock);
         const std::string photoOutput = c->str("photoOutput", "full");
-        if (photoOutput != "full" && photoOutput != "reduced") {
+        if (photoOutput != "full" && photoOutput != "reduced" && photoOutput != "reduced25") {
             if (error) *error = "invalid sensorLayout photoOutput " + photoOutput + " for lens " + r.lensId;
             return std::nullopt;
         }
-        r.photoReduced = photoOutput == "reduced";
+        r.photoReduced = photoOutput != "full";
+        r.photoReduced25 = photoOutput == "reduced25";
         r.photoPhaseFit = c->flag("photoPhaseFit", false);
-        if (r.photoReduced && photoBlock != 4.0) {
-            if (error) *error = "sensorLayout photoOutput reduced needs photoBlock 4 for lens " + r.lensId;
+        if (r.photoReduced && photoBlock != 4.0 && photoBlock != 1.0) {
+            if (error) *error = "sensorLayout photoOutput " + photoOutput + " needs photoBlock 1 or 4 for lens " + r.lensId;
             return std::nullopt;
         }
+        // The phase fit is a 4x4-mosaic correction; a Bayer photo stream ignores it.
+        if (photoBlock != 4.0) r.photoPhaseFit = false;
         if (const std::string order = c->str("colourOrder"); !order.empty()) {
             r.colourOrder = cfaOrderFromName(order);
             if (!r.colourOrder) {
@@ -1168,24 +1179,29 @@ std::optional<LensRoute> readLens(const Json& l, std::string* error) {
     }
     // Raw edges the HAL pads with non-image rows/columns, dropped before
     // anything develops or writes the frame.
-    if (const Json* c = image.get("cropEdges"); c && c->kind == Json::Kind::Object) {
+    for (const auto& [key, left, top, right, bottom] :
+         {std::tuple{"cropEdges", &r.cropLeft, &r.cropTop, &r.cropRight, &r.cropBottom},
+          std::tuple{"cropEdgesHighFps", &r.highFpsCropLeft, &r.highFpsCropTop, &r.highFpsCropRight,
+                     &r.highFpsCropBottom}}) {
+    if (const Json* c = image.get(key); c && c->kind == Json::Kind::Object) {
         const uint32_t period = 2u * std::max(1u, r.sensorLayoutBlock);
-        for (const auto& [name, field] : {std::pair<const char*, uint32_t*>{"left", &r.cropLeft},
-                                          std::pair<const char*, uint32_t*>{"top", &r.cropTop},
-                                          std::pair<const char*, uint32_t*>{"right", &r.cropRight},
-                                          std::pair<const char*, uint32_t*>{"bottom", &r.cropBottom}}) {
+        for (const auto& [name, field] : {std::pair<const char*, uint32_t*>{"left", left},
+                                          std::pair<const char*, uint32_t*>{"top", top},
+                                          std::pair<const char*, uint32_t*>{"right", right},
+                                          std::pair<const char*, uint32_t*>{"bottom", bottom}}) {
             const double value = c->num(name, 0.0);
             if (value < 0.0 || value != std::floor(value) || value > 65535.0) {
-                if (error) *error = std::string("invalid cropEdges ") + name + " for lens " + r.lensId;
+                if (error) *error = std::string("invalid ") + key + " " + name + " for lens " + r.lensId;
                 return std::nullopt;
             }
             if (uint32_t(value) % period != 0u) {
-                if (error) *error = std::string("cropEdges ") + name + " must be a multiple of " +
+                if (error) *error = std::string(key) + " " + name + " must be a multiple of " +
                                     std::to_string(period) + " for lens " + r.lensId;
                 return std::nullopt;
             }
             *field = uint32_t(value);
         }
+    }
     }
     if (!readLevels(image.get("levels"), r.levels)) {
         if (error) *error = "invalid levels for lens " + r.lensId;

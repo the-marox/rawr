@@ -64,7 +64,7 @@ class PersistentSettingsController(
             is SaveFilmPreset, is RenameFilmPreset, is DeleteFilmPreset,
             is RevertFilmPreset, is UpdateFilmPreset, is ImportFilmPreset -> reduceFilmSettings(state, action)
 
-            is SetMultiframeChromaDenoise, is SetMultiframeRextureNativeRgb, is SetMultiframeBaseFrameMode, is SetMultiframeNumericValue,
+            is SetMultiframeChromaDenoise, is SetMultiframeRextureNativeRgb, is SetMultiframeRextureDetailRestore, is SetMultiframeBaseFrameMode, is SetMultiframeNumericValue,
             is SetMultiframeMergeAlgorithm, is SetMultiframeLensOverride -> reduceMultiframeSettings(state, action)
             is SetLookLensOverride -> state.withValues(state.values.withOwnLookForActiveLens(action.enabled))
 
@@ -103,7 +103,7 @@ class PersistentSettingsController(
             is SetSelfTimer, is SetLocationTagging, is SetOisPreference,
             is SetAntiFlicker, is SetExposureStep,
             is SetHighlightProtection, is SetAutoKeyExposure, is SetLocalTone, is SetControlSurfaceStyle, is SetCaptureControlLayout,
-            is SetGridMode, is SetViewfinderDivisor, is SetShowDcpQuickSelect, is SetLevelMeter, is SetViewfinderControlVisible,
+            is SetGridMode, is SetViewfinderDivisor, is SetShowDcpQuickSelect, is SetLevelMeter, is SetLightMeter, is SetViewfinderControlVisible,
             is SetLensBarGrouping, is SetLensBarSize,
             is SetEyeControlsViewfinder, is SetLensProfiles -> reduceCaptureSettings(state, action)
 

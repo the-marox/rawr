@@ -231,6 +231,7 @@ struct TonemapEngine::Impl {
     bool videoMonitorOutput = false;
     bool neutralLutTexture = false;
     bool userLutTexture = false;
+    bool userLutLinear = false;
     TonemapConfig rendererConfig{};
 
     VkDescriptorSetLayout descriptorSetLayout = VK_NULL_HANDLE;
@@ -274,6 +275,7 @@ struct TonemapEngine::Impl {
           videoMonitorOutput(createInfo.videoMonitorOutput),
           neutralLutTexture(createInfo.neutralLutTexture),
           userLutTexture(createInfo.userLutTexture),
+          userLutLinear(createInfo.userLutTexture && createInfo.userLutLinear),
           rendererConfig(createInfo.config),
           userLutPayload(lut::packGpuPayload(createInfo.lutChain)),
           gamutConversions(userLutPayload) {
@@ -291,7 +293,7 @@ struct TonemapEngine::Impl {
                     const auto& stage = userLutPayload.stages[i];
                     auto& texture = userTextures[i];
                     createLutTexture(createInfo, stage.size, userLutPayload.rgbaTexels[stage.texelOffset].data(),
-                        texture.image, texture.memory, texture.view, texture.sampler);
+                        texture.image, texture.memory, texture.view, texture.sampler, userLutLinear);
                 }
             } else createUserLutBuffer();
             createComputePipeline(createInfo.shaderSpirv, createInfo.shaderSpirvBytes);
@@ -383,12 +385,23 @@ struct TonemapEngine::Impl {
 
     void createLutTexture(const TonemapCreateInfo& ci, uint32_t size, const float* data,
                           VkImage& textureImage, VkDeviceMemory& textureMemory,
-                          VkImageView& textureView, VkSampler& textureSampler) {
-        const VkDeviceSize bytes = VkDeviceSize(size) * size * size * 4 * sizeof(float);
+                          VkImageView& textureView, VkSampler& textureSampler, bool linear = false) {
+        // Linear filtering is mandatory for RGBA16F but optional for RGBA32F.
+        const size_t texels = size_t(size) * size * size * 4;
+        std::vector<uint16_t> halfTexels;
+        if (linear) {
+            halfTexels.resize(texels);
+            for (size_t i = 0; i < texels; ++i) {
+                const _Float16 h = static_cast<_Float16>(data[i]);
+                std::memcpy(&halfTexels[i], &h, sizeof(uint16_t));
+            }
+        }
+        const void* upload = linear ? static_cast<const void*>(halfTexels.data()) : static_cast<const void*>(data);
+        const VkDeviceSize bytes = VkDeviceSize(texels) * (linear ? sizeof(uint16_t) : sizeof(float));
         VkImageCreateInfo image{};
         image.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
         image.imageType = VK_IMAGE_TYPE_3D;
-        image.format = VK_FORMAT_R32G32B32A32_SFLOAT;
+        image.format = linear ? VK_FORMAT_R16G16B16A16_SFLOAT : VK_FORMAT_R32G32B32A32_SFLOAT;
         image.extent = {size, size, size};
         image.mipLevels = image.arrayLayers = 1;
         image.samples = VK_SAMPLE_COUNT_1_BIT;
@@ -427,7 +440,7 @@ struct TonemapEngine::Impl {
                           "TonemapEngine: LUT texture view");
         VkSamplerCreateInfo sampler{};
         sampler.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-        sampler.magFilter = sampler.minFilter = VK_FILTER_NEAREST;
+        sampler.magFilter = sampler.minFilter = linear ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
         sampler.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
         sampler.addressModeU = sampler.addressModeV = sampler.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
         checkVulkanResult(vkCreateSampler(context.device, &sampler, context.allocator, &textureSampler),
@@ -458,7 +471,7 @@ struct TonemapEngine::Impl {
             checkVulkanResult(vkAllocateMemory(context.device, &allocation, context.allocator, &memory), "LUT staging memory");
             checkVulkanResult(vkBindBufferMemory(context.device, staging, memory, 0), "LUT staging bind");
             checkVulkanResult(vkMapMemory(context.device, memory, 0, VK_WHOLE_SIZE, 0, &mapped), "LUT staging map");
-            std::memcpy(mapped, data, static_cast<size_t>(bytes));
+            std::memcpy(mapped, upload, static_cast<size_t>(bytes));
             if (!(host.properties & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)) {
                 VkMappedMemoryRange range{};
         range.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
@@ -921,8 +934,8 @@ void TonemapEngine::record(const TonemapRecordInfo& recordInfo) {
     if (impl_->videoMonitorOutput && (!recordInfo.monitor.view ||
         recordInfo.monitor.format != VK_FORMAT_R8G8B8A8_UNORM ||
         recordInfo.monitor.layout != VK_IMAGE_LAYOUT_GENERAL ||
-        recordInfo.monitor.width != recordInfo.output.width ||
-        recordInfo.monitor.height != recordInfo.output.height))
+        recordInfo.monitor.width != (recordInfo.output.width + 1u) / 2u ||
+        recordInfo.monitor.height != (recordInfo.output.height + 1u) / 2u))
         throw std::invalid_argument("TonemapEngine: invalid linear video monitor");
 
     const GpuParameters parameters =

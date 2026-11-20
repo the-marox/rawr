@@ -1,0 +1,65 @@
+#version 450
+// Encoded RGB (the tonemap output) -> BT.709 limited-range Y'CbCr 4:2:0,
+// written straight into the encoder's linear input buffer (P010 or NV12).
+// One invocation packs a 4x2 pixel block: whole 32-bit words for both the
+// luma rows and the interleaved chroma row, so no two invocations share a word.
+layout(local_size_x = 8, local_size_y = 8) in;
+#ifndef YUV_10BIT
+#define YUV_10BIT 1
+#endif
+#if YUV_10BIT
+layout(binding = 0, rgb10_a2) uniform readonly image2D src;
+#else
+layout(binding = 0, rgba8) uniform readonly image2D src;
+#endif
+layout(std430, binding = 1) writeonly buffer EncoderBuffer { uint words[]; } dst;
+layout(push_constant) uniform Push {
+    uvec2 size;
+    uint yOffsetWords, yStrideWords, cOffsetWords, cStrideWords, swapUV, pad;
+} pc;
+
+const vec3 kLuma = vec3(0.2126, 0.7152, 0.0722);
+
+void main() {
+    uvec2 o = gl_GlobalInvocationID.xy * uvec2(4u, 2u);
+    if (o.x >= pc.size.x || o.y >= pc.size.y) return;
+    float y[8];
+    vec2 c[2] = vec2[2](vec2(0.0), vec2(0.0));
+    for (uint r = 0u; r < 2u; ++r) {
+        for (uint i = 0u; i < 4u; ++i) {
+            vec3 rgb = clamp(imageLoad(src, ivec2(o) + ivec2(int(i), int(r))).rgb, 0.0, 1.0);
+            float l = dot(kLuma, rgb);
+            y[r * 4u + i] = l;
+            c[i >> 1] += vec2((rgb.b - l) / 1.8556, (rgb.r - l) / 1.5748);
+        }
+    }
+    c[0] *= 0.25;
+    c[1] *= 0.25;
+    vec2 c0 = pc.swapUV != 0u ? c[0].yx : c[0];
+    vec2 c1 = pc.swapUV != 0u ? c[1].yx : c[1];
+#if YUV_10BIT
+    // P010: 10 significant bits in the top of each 16-bit sample.
+    for (uint r = 0u; r < 2u; ++r) {
+        uint s[4];
+        for (uint i = 0u; i < 4u; ++i) s[i] = uint(clamp(round(64.0 + 876.0 * y[r * 4u + i]), 0.0, 1023.0)) << 6u;
+        uint base = pc.yOffsetWords + (o.y + r) * pc.yStrideWords + (o.x >> 1);
+        dst.words[base] = s[0] | (s[1] << 16u);
+        dst.words[base + 1u] = s[2] | (s[3] << 16u);
+    }
+    uvec2 q0 = uvec2(clamp(round(512.0 + 896.0 * c0), 0.0, 1023.0)) << 6u;
+    uvec2 q1 = uvec2(clamp(round(512.0 + 896.0 * c1), 0.0, 1023.0)) << 6u;
+    uint cbase = pc.cOffsetWords + (o.y >> 1) * pc.cStrideWords + (o.x >> 1);
+    dst.words[cbase] = q0.x | (q0.y << 16u);
+    dst.words[cbase + 1u] = q1.x | (q1.y << 16u);
+#else
+    for (uint r = 0u; r < 2u; ++r) {
+        uint w = 0u;
+        for (uint i = 0u; i < 4u; ++i) w |= uint(clamp(round(16.0 + 219.0 * y[r * 4u + i]), 0.0, 255.0)) << (8u * i);
+        dst.words[pc.yOffsetWords + (o.y + r) * pc.yStrideWords + (o.x >> 2)] = w;
+    }
+    uvec2 q0 = uvec2(clamp(round(128.0 + 224.0 * c0), 0.0, 255.0));
+    uvec2 q1 = uvec2(clamp(round(128.0 + 224.0 * c1), 0.0, 255.0));
+    dst.words[pc.cOffsetWords + (o.y >> 1) * pc.cStrideWords + (o.x >> 2)] =
+        q0.x | (q0.y << 8u) | (q1.x << 16u) | (q1.y << 24u);
+#endif
+}

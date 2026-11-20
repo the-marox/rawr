@@ -30,6 +30,10 @@ struct MonitorFrame {
     const rawrcam::geometry::LensDistortionModel* lensWarp = nullptr;
     // Lens profile mirror of the viewfinder (geometry::kLensMirror* bits).
     uint32_t lensMirror = 0;
+    // Scope sampling extent in preview pixels from the top-left (0 = whole
+    // frame): keeps padded bottom/right raw edges (blank 60 fps rows) out of
+    // the waveform and vectorscope.
+    uint32_t scopeWidth = 0, scopeHeight = 0;
 };
 class MonitorRecorder final {
    public:
@@ -47,7 +51,7 @@ class MonitorRecorder final {
                  uint32_t cropH = 0) const;
     void recordVideoScopes(VkCommandBuffer command, uint32_t frameSlot, VkImageView monitorView, VkImage monitorImage,
                            uint32_t width, uint32_t height, int sensorOrientationDegrees,
-                           int deviceRotationDegrees) const;
+                           int deviceRotationDegrees, bool compute = true) const;
     void restoreVideoScopes(VkCommandBuffer command, uint32_t frameSlot) const;
 
    private:

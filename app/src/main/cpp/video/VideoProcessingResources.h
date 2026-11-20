@@ -9,6 +9,7 @@
 #include "develop/render/DcpRenderStage.h"
 #include "imaging/FrameLimits.h"
 #include "post_demosaic/PostDemosaicProcessor.h"
+#include "video/VideoFastPath.h"
 #include "video_pipeline/VideoDemosaic.h"
 #include "video_pipeline/VideoProcessingConfig.h"
 #include "vulkan/ImageResources.h"
@@ -48,6 +49,9 @@ class VideoProcessingResources final {
         VkDevice device = VK_NULL_HANDLE;
         std::unique_ptr<tonemap::TonemapEngine> tonemap;
         std::unique_ptr<VideoDemosaic> demosaic;
+        // 17U fast path (RAW -> P010 in one pass) and the RGBA16F tonemap that bakes its LUT.
+        std::unique_ptr<tonemap::TonemapEngine> fastBake;
+        std::unique_ptr<VideoFastPath> fast;
         std::array<std::unique_ptr<rawr::post::PostDemosaicProcessor>, rawrcam::imaging::kRealtimeFramesInFlight>
             post{};
         std::array<rawrcam::vulkan::OwnedImage, rawrcam::imaging::kRealtimeFramesInFlight> monitor{};
@@ -79,6 +83,9 @@ class VideoProcessingResources final {
     ProcessingKey processingKey_{};
     std::unique_ptr<tonemap::TonemapEngine> tonemap_;
     std::unique_ptr<VideoDemosaic> demosaic_;
+    std::unique_ptr<tonemap::TonemapEngine> fastBake_;
+    std::unique_ptr<VideoFastPath> fast_;
+    bool fastLogged_ = false;
     std::array<std::unique_ptr<rawr::post::PostDemosaicProcessor>, rawrcam::imaging::kRealtimeFramesInFlight> post_{};
     std::array<std::unique_ptr<develop::rendered::DcpRenderStage>, rawrcam::imaging::kRealtimeFramesInFlight> dcp_{};
     std::array<rawrcam::vulkan::OwnedImage, rawrcam::imaging::kRealtimeFramesInFlight> monitor_{};

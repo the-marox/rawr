@@ -80,6 +80,9 @@ struct CameraControlCapabilities {
     // equal to rawWidth/rawHeight when nothing is dropped. Open Gate size.
     int32_t keptWidth = 0;
     int32_t keptHeight = 0;
+    // Same above 30 fps (image.cropEdgesHighFps, max with cropEdges): Open Gate at 60 fps.
+    int32_t keptWidthHighFps = 0;
+    int32_t keptHeightHighFps = 0;
     // Active camera profile and its UI lenses as (lensId, label).
     std::string cameraProfileId;
     std::vector<std::pair<std::string, std::string>> profileLenses;

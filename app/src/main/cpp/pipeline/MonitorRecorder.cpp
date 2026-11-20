@@ -27,11 +27,20 @@
 namespace rawrcam::pipeline {
 void MonitorRecorder::recordVideoScopes(VkCommandBuffer command, uint32_t frameSlot, VkImageView monitorView,
                                         VkImage monitorImage, uint32_t width, uint32_t height,
-                                        int sensorOrientationDegrees, int deviceRotationDegrees) const {
+                                        int sensorOrientationDegrees, int deviceRotationDegrees, bool compute) const {
     const auto scopeState = imageScopes_.presentationState();
     bool any = false;
     for (const auto& placement : scopeState.placements) any |= placement.type != rawrcam::monitoring::ScopeType::None;
     if (!any) return;
+    if (!compute) {
+        // Throttled frame: show this slot's last scopes; only the layout handoff
+        // the presenter (and restoreVideoScopes) expects.
+        for (uint32_t i = 0; i < scopeState.placements.size(); ++i) {
+            if (scopeState.placements[i].type != rawrcam::monitoring::ScopeType::None)
+                rawrcam::vulkan::computeWriteToFragmentRead(command, imageScopes_.renderedImage(frameSlot, i));
+        }
+        return;
+    }
     VkImageMemoryBarrier monitorReady{};
     monitorReady.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
     monitorReady.oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
@@ -108,7 +117,7 @@ void MonitorRecorder::recordOverlays(const MonitorFrame& in) const {
         const uint32_t sourceQuarterTurns =
             rawrcam::geometry::presentationQuarterTurns(in.sensorOrientationDegrees, in.scopeDeviceRotationDegrees);
         imageScopes_.record(in.command, in.slotIndex, in.tonemappedView, in.tonemappedImage, sourceQuarterTurns,
-                            in.renderedExposureFeedbackEnabled);
+                            in.renderedExposureFeedbackEnabled, in.scopeWidth, in.scopeHeight);
         performance_.markScopesDone(in.command, in.slotIndex);
         monitoringOverlay_.record(in.command, in.slotIndex, in.linearView, in.linearImage, in.tonemappedView,
                                   in.tonemappedImage, in.shadowLiftEv, in.blackPointEv);

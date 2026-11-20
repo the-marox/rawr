@@ -179,6 +179,7 @@ rawrcam_module(video
   DEPENDS color develop diagnostics_logging diagnostics_timing imaging vulkan
   SOURCES
     video/VideoOutput.cpp
+    video/VideoFastPath.cpp
     video/VideoProcessingResources.cpp
     video/VideoRecorder.cpp
     video/VideoSession.cpp
@@ -210,6 +211,7 @@ rawrcam_module(capture
     capture/single/SingleFrameCoordinator.cpp
     capture/single/SingleFrameCaptureJob.cpp
     capture/ReducedRaw.cpp
+    capture/BlockRemosaicGpu.cpp
     capture/single/SingleFrameCaptureAcquisition.cpp
     capture/single/SingleFrameCaptureJournal.cpp
     capture/single/SingleFrameCaptureDevelop.cpp

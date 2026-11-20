@@ -208,6 +208,10 @@ typedef struct tinydng_gps {
   uint8_t has_track;
   char track_ref;
   uint32_t track[2];
+  /* GPSImgDirectionRef / GPSImgDirection (tags 16/17): where the lens pointed, 'T'rue or 'M'agnetic north. */
+  uint8_t has_img_direction;
+  char img_direction_ref;
+  uint32_t img_direction[2];
 } tinydng_gps;
 
 static inline int tinydng_gps_coordinate_valid(const uint32_t value[3][2], double limit) {
@@ -308,6 +312,9 @@ typedef struct tinydng_exif {
   /* ExifIFD CameraElevationAngle (0x9405, SRATIONAL): degrees, positive = lens above the horizon. */
   int32_t camera_elevation_angle[2];
   uint8_t has_camera_elevation_angle;
+  /* ExifIFD Pressure (0x9402, RATIONAL): barometric pressure, hPa. */
+  uint32_t pressure[2];
+  uint8_t has_pressure;
   tinydng_blob maker_note; /* ExifIFD */
 } tinydng_exif;
 

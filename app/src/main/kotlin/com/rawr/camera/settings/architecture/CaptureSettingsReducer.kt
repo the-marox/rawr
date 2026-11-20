@@ -94,5 +94,8 @@ internal fun reduceCaptureSettings(
     is SetLevelMeter -> {
         state.withValues(state.values.copy(levelMeterEnabled = action.enabled))
     }
+    is SetLightMeter -> {
+        state.withValues(state.values.copy(lightMeterEnabled = action.enabled))
+    }
     else -> error("Unsupported capture settings action: $action")
 }

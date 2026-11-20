@@ -42,6 +42,9 @@
             1024
           ],
           "white": 16383
+        },
+        "cropEdgesHighFps": {
+          "bottom": 512
         }
       }
     },
@@ -177,6 +180,9 @@
             0
           ],
           "white": 0
+        },
+        "cropEdgesHighFps": {
+          "bottom": 512
         }
       }
     },
@@ -343,6 +349,9 @@
             1024
           ],
           "white": 16383
+        },
+        "cropEdgesHighFps": {
+          "bottom": 512
         }
       }
     },
@@ -676,6 +685,9 @@
             1024
           ],
           "white": 16383
+        },
+        "cropEdgesHighFps": {
+          "bottom": 512
         }
       }
     },

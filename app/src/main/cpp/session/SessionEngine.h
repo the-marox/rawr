@@ -63,6 +63,8 @@ class SessionEngine {
     // Base record frame (1920x1080, 3840x2160, or 0x0 = Open Gate) and the
     // aspect crop inside it (0:0 = none). 0x0 with no aspect clears the crop.
     // [halve]: 2x smaller after the aspect crop (1080p with the phone upright).
+    // Video mode above 30 fps: frame inside the high-fps sensor mode's image area.
+    void setVideoHighFps(bool high);
     void setVideoPreviewCropOut(uint32_t width, uint32_t height, uint32_t aspectNum = 0, uint32_t aspectDen = 0,
                                 bool halve = false);
     // Keeps the recording processing for this size (0x0 = full RAW, Open
@@ -290,9 +292,11 @@ class SessionEngine {
     uint32_t videoAspectNum_ = 0;
     uint32_t videoAspectDen_ = 0;
     bool videoCropHalve_ = false;
+    bool videoHighFps_ = false;  // mu_
     void applyVideoCropLocked();
     // Base frame (0x0 = the image area) with the aspect crop applied.
     void videoFrameLocked(uint32_t& width, uint32_t& height) const;
+    rawrcam::video::VideoKeptArea videoKeptAreaLocked(const rawrcam::metadata::CameraContextMetadata& m) const;
     rawrcam::diagnostics::PipelineDiagnostics pipelineDiagnostics_{
         [this](const std::string& line) { appendDiagnostic(line); }};
     capture::CaptureCoordinator capture_{

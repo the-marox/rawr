@@ -45,10 +45,55 @@ internal class VideoOutputStore(private val context: Context) {
         }
     }
 
+    /**
+     * Saves a sidecar file of a published video (a Gyroflow .gcsv log). In a folder picked as a document tree it
+     * goes beside the video, where Gyroflow finds it on its own; MediaStore keeps camera folders for media, so
+     * there it goes to Download/RAWR/Gyroflow. Returns where it went.
+     */
+    fun saveSidecar(videoUri: Uri, saveLocationId: String, displayName: String, source: java.io.File): Uri {
+        val resolver = context.contentResolver
+        val target: Uri = if (videoUri.authority == MediaStore.AUTHORITY) {
+            val values = ContentValues().apply {
+                put(MediaStore.Downloads.DISPLAY_NAME, displayName)
+                put(MediaStore.Downloads.MIME_TYPE, SIDECAR_MIME)
+                put(MediaStore.Downloads.RELATIVE_PATH, "${android.os.Environment.DIRECTORY_DOWNLOADS}/RAWR/Gyroflow")
+                put(MediaStore.Downloads.IS_PENDING, 1)
+            }
+            checkNotNull(resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)) {
+                "Could not create $displayName in Downloads"
+            }
+        } else {
+            val tree = checkNotNull(CaptureSaveLocation.fromId(saveLocationId, CaptureSaveLocation.VIDEO_ROOTS).treeUri) {
+                "Video folder has no document tree"
+            }.toUri()
+            val parent = DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree))
+            checkNotNull(DocumentsContract.createDocument(resolver, parent, SIDECAR_MIME, displayName)) {
+                "Could not create $displayName beside the video"
+            }
+        }
+        try {
+            checkNotNull(resolver.openOutputStream(target)) { "Could not open $displayName" }.use { out ->
+                source.inputStream().use { it.copyTo(out) }
+            }
+            if (target.authority == MediaStore.AUTHORITY) {
+                resolver.update(target, ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) }, null, null)
+            }
+        } catch (error: Exception) {
+            runCatching { delete(target) }
+            throw error
+        }
+        return target
+    }
+
     fun delete(uri: Uri) {
         if (uri.authority == MediaStore.AUTHORITY) context.contentResolver.delete(uri, null, null)
         else check(DocumentsContract.deleteDocument(context.contentResolver, uri)) {
             "Could not remove unfinished video"
         }
+    }
+
+    private companion object {
+        /** A generic type keeps the .gcsv name: providers rename files whose extension does not match the type. */
+        const val SIDECAR_MIME = "application/octet-stream"
     }
 }

@@ -51,8 +51,10 @@ enum class ShaderId : std::uint32_t {
     RxRcdDiagonal,
     RxRcdGreenSites,
     RxRcdExport,
-    RxLowcovEaw,
+    RxEven,
     RxFbFlags,
+    RxFit,
+    RxMoving,
     Count
 };
 struct ImageBinding {

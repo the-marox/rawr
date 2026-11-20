@@ -131,6 +131,8 @@ class FrameSubmitCoordinator final {
     void setFilmSimLook(const spektrafilm_native::FilmLook& value) { filmLook_ = value; }
     // Idle video-mode preview crop: recording output size (0 = full frame).
     // Written on the camera worker, read on the submit thread.
+    // Video mode above 30 fps: frame inside the high-fps sensor mode's image area.
+    void setVideoHighFps(bool value) noexcept { videoHighFps_.store(value, std::memory_order_relaxed); }
     void setVideoPreviewCropOut(uint32_t width, uint32_t height) noexcept {
         videoCropOutWidth_.store(width, std::memory_order_relaxed);
         videoCropOutHeight_.store(height, std::memory_order_relaxed);
@@ -321,6 +323,9 @@ class FrameSubmitCoordinator final {
     // Written on the camera worker, read on the submit thread.
     std::atomic<bool> filmSimEnabled_ = false;
     std::atomic<uint32_t> videoCropOutWidth_{0};
+    std::atomic<bool> videoHighFps_{false};
+    uint32_t videoMonitorTick_ = 0;  // viewfinder throttle while recording above 30 fps
+    std::array<int64_t, 8> videoScopeLastNs_{};  // per-slot scope refresh while recording
     std::atomic<uint32_t> videoCropOutHeight_{0};
     spektrafilm_native::FilmLook filmLook_{};
     uint32_t viewfinderDivisor_ = 2;

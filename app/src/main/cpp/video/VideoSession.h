@@ -84,6 +84,11 @@ class VideoSession final {
     void stop() noexcept;
     bool ready() const noexcept { return output_.ready(); }
     VkExtent2D extent() const noexcept { return output_.extent(); }
+    // The on-screen monitor is written at half resolution (one pixel per 2x2).
+    VkExtent2D monitorExtent() const noexcept {
+        const auto e = output_.extent();
+        return {(e.width + 1u) / 2u, (e.height + 1u) / 2u};
+    }
     // VkFormat ids the encoder Surface offered at start(), for diagnostics.
     const std::string& offeredFormats() const noexcept { return output_.offeredFormats(); }
     const std::string& startTimingJson() const noexcept { return startTimingJson_; }

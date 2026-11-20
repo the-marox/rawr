@@ -92,6 +92,22 @@ std::optional<GeometryMap> mapGeometry(const rawrcam::imaging::RawSnapshot& fram
         if (a.right <= a.left || a.bottom <= a.top) break;
         return GeometryMap{0, 0, a.top, a.left, a.bottom, a.right, "scaled_full_pixel_array"};
     }
+    // A 25 MP reduced photo is the pixel array scaled by a non-integer factor (about 1.41 per side
+    // from a 4x binned array): the active area scales per axis, rounded inward.
+    if (g.pixelArrayWidth && g.pixelArrayHeight && frame.width > g.pixelArrayWidth &&
+        frame.height > g.pixelArrayHeight && frame.width % g.pixelArrayWidth && frame.height % g.pixelArrayHeight) {
+        const double sx = double(frame.width) / g.pixelArrayWidth, sy = double(frame.height) / g.pixelArrayHeight;
+        if (std::fabs(sx / sy - 1.0) < 0.005) {
+            const auto& a = g.preCorrectionActiveArray;
+            const auto in = [](int32_t v, double s) { return uint32_t(std::ceil(std::max(0, v) * s - 1e-6)); };
+            const auto out = [](int32_t v, double s) { return uint32_t(std::floor(std::max(0, v) * s + 1e-6)); };
+            const uint32_t top = in(a.top, sy), left = in(a.left, sx);
+            const uint32_t bottom = std::min(frame.height, out(a.bottom, sy));
+            const uint32_t right = std::min(frame.width, out(a.right, sx));
+            if (bottom > top && right > left)
+                return GeometryMap{0, 0, top, left, bottom, right, "resampled_full_pixel_array"};
+        }
+    }
     if (rectWidth(g.preCorrectionActiveArray) == frame.width &&
         rectHeight(g.preCorrectionActiveArray) == frame.height) {
         return GeometryMap{static_cast<uint32_t>(g.preCorrectionActiveArray.left),
@@ -452,6 +468,13 @@ std::optional<TinyDngWriteParams> makeTinyDngWriteParams(const rawrcam::imaging:
 
     fillDngExif(p, frame, captureContext);
     p.gps = captureContext.gps;
+    if (p.gps) p.gps = rawrcam::metadata::gpsForLensFacing(*p.gps, ctx.lensFacing);
+    if (captureContext.ambient && captureContext.ambient->pressureHpa) {
+        const auto pressure = rawrcam::metadata::pressureRational(*captureContext.ambient->pressureHpa);
+        p.exif.pressure[0] = pressure[0];
+        p.exif.pressure[1] = pressure[1];
+        p.exif.has_pressure = 1;
+    }
     p.exif.has_exif_version = 1;
     // CameraElevationAngle (pitch) is an EXIF 3.0 tag, so a level promotes the version like GPS does.
     std::memcpy(p.exif.exif_version, (p.gps || captureContext.level) ? "0300" : "0231", 4);
@@ -460,8 +483,9 @@ std::optional<TinyDngWriteParams> makeTinyDngWriteParams(const rawrcam::imaging:
         p.exif.camera_elevation_angle[0] = angle[0];
         p.exif.camera_elevation_angle[1] = angle[1];
         p.exif.has_camera_elevation_angle = 1;
-        p.xmpPacket = rawrcam::metadata::levelXmpPacket(*captureContext.level);
     }
+    if (captureContext.level || captureContext.ambient)
+        p.xmpPacket = rawrcam::metadata::captureXmpPacket(captureContext.level, captureContext.ambient);
 
     p.privateData = buildDngProvenance(frame, captureContext, gm->mode);
     raw.rawr_private_data = reinterpret_cast<char*>(p.privateData.data());

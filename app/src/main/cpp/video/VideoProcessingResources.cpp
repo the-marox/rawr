@@ -17,6 +17,13 @@
 #include "tonemap_video_linear_texture.h"
 #include "tonemap_video_rgb10a2_texture.h"
 #include "tonemap_video_rgba8_texture.h"
+#include "tonemap_video_linear_usertex.h"
+#include "tonemap_video_rgb10a2_usertex.h"
+#include "tonemap_video_rgba8_usertex.h"
+#include "tonemap_video_linear_userlinear.h"
+#include "tonemap_video_rgb10a2_userlinear.h"
+#include "tonemap_video_rgba8_userlinear.h"
+#include <sys/system_properties.h>
 #include "vulkan/VulkanContext.h"
 namespace {
 int64_t steadyNs() {
@@ -57,6 +64,32 @@ std::unique_ptr<tonemap::TonemapEngine> makeTonemap(rawrcam::vulkan::VulkanConte
         }
     };
     selectShader(useTexture);
+    // Experiment: debug.rawr.video.lut = texel | linear keeps the render LUT
+    // chain in 3D textures (tetrahedral texelFetch, or hardware trilinear).
+    char lutMode[PROP_VALUE_MAX] = {};
+    __system_property_get("debug.rawr.video.lut", lutMode);
+    // Adreno 840 default: hardware trilinear (measured 8.4 -> 5.8 ms per 4K frame
+    // vs buffer). "buffer" restores the tetrahedral buffer path.
+    std::string userMode = lutMode;
+    if (userMode.empty() && context.gpuName() == "Adreno (TM) 840") userMode = "linear";
+    const bool userTexture = renderLut && (userMode == "texel" || userMode == "linear") &&
+                             tonemap::TonemapEngine::supportsNeutralLutTexture(context.physicalDevice());
+    if (userTexture) {
+        const bool lin = userMode == "linear";
+        tone.neutralLutTexture = true;
+        tone.userLutTexture = true;
+        tone.userLutLinear = lin;
+        if (format == VK_FORMAT_R8G8B8A8_UNORM) {
+            tone.shaderSpirv = reinterpret_cast<const uint32_t*>(lin ? tonemap_video_rgba8_userlinear_spv : tonemap_video_rgba8_usertex_spv);
+            tone.shaderSpirvBytes = lin ? tonemap_video_rgba8_userlinear_spv_size : tonemap_video_rgba8_usertex_spv_size;
+        } else if (format == VK_FORMAT_A2B10G10R10_UNORM_PACK32) {
+            tone.shaderSpirv = reinterpret_cast<const uint32_t*>(lin ? tonemap_video_rgb10a2_userlinear_spv : tonemap_video_rgb10a2_usertex_spv);
+            tone.shaderSpirvBytes = lin ? tonemap_video_rgb10a2_userlinear_spv_size : tonemap_video_rgb10a2_usertex_spv_size;
+        } else {
+            tone.shaderSpirv = reinterpret_cast<const uint32_t*>(lin ? tonemap_video_linear_userlinear_spv : tonemap_video_linear_usertex_spv);
+            tone.shaderSpirvBytes = lin ? tonemap_video_linear_userlinear_spv_size : tonemap_video_linear_usertex_spv_size;
+        }
+    }
     tone.lutUploadQueue = context.queue();
     tone.lutUploadQueueFamily = context.queueFamily();
     tone.outputFormat = format;
@@ -65,6 +98,19 @@ std::unique_ptr<tonemap::TonemapEngine> makeTonemap(rawrcam::vulkan::VulkanConte
     tone.workgroupSizeY = 8;
     tone.maxFramesInFlight = rawrcam::imaging::kRealtimeFramesInFlight;
     tone.lutChain = renderLut;
+    if (userTexture) {
+        try {
+            std::lock_guard<std::mutex> lock(context.primaryQueue().mutex());
+            auto engine = std::make_unique<tonemap::TonemapEngine>(tone);
+            __android_log_print(ANDROID_LOG_INFO, "RawrNative", "VIDEO_TONEMAP_LUT backend=user_%s stages=%zu",
+                                userMode.c_str(), renderLut->stages.size());
+            return engine;
+        } catch (const std::exception& error) {
+            __android_log_print(ANDROID_LOG_WARN, "RawrNative", "VIDEO_TONEMAP_LUT user texture fallback: %s", error.what());
+            tone.neutralLutTexture = tone.userLutTexture = tone.userLutLinear = false;
+            selectShader(false);
+        }
+    }
     if (useTexture) {
         try {
             // Share the queue's submission authority with preview and recording.
@@ -77,7 +123,8 @@ std::unique_ptr<tonemap::TonemapEngine> makeTonemap(rawrcam::vulkan::VulkanConte
             selectShader(false);
         }
     }
-    __android_log_print(ANDROID_LOG_INFO, "RawrNative", "VIDEO_TONEMAP_LUT backend=buffer custom=%d", renderLut ? 1 : 0);
+    __android_log_print(ANDROID_LOG_INFO, "RawrNative", "VIDEO_TONEMAP_LUT backend=buffer chain=%d stages=%zu", renderLut ? 1 : 0,
+                        renderLut ? renderLut->stages.size() : size_t(0));
     return std::make_unique<tonemap::TonemapEngine>(tone);
 }
 }  // namespace
@@ -102,6 +149,7 @@ void VideoProcessingResources::beginRecording() {
     monitorPending_.fill(false);
     monitorSumMs_ = 0.0;
     monitorSamples_ = 0;
+    fastLogged_ = false;
     stagePending_.fill(false);
     stageSumMs_.fill(0.0);
     stageSamples_ = 0;
@@ -115,8 +163,8 @@ VideoProcessingResources::Prepared VideoProcessingResources::prepare(rawrcam::vu
     out.key = key;
     out.device = context.device();
     for (auto& image : out.monitor)
-        image = rawrcam::vulkan::createOwnedImage(context.physicalDevice(), context.device(), key.width, key.height,
-                                                  VK_FORMAT_R8G8B8A8_UNORM,
+        image = rawrcam::vulkan::createOwnedImage(context.physicalDevice(), context.device(), (key.width + 1u) / 2u,
+                                                  (key.height + 1u) / 2u, VK_FORMAT_R8G8B8A8_UNORM,
                                                   VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
     out.dummyMonitor = rawrcam::vulkan::createOwnedImage(context.physicalDevice(), context.device(), 1, 1,
                                                          VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_STORAGE_BIT);
@@ -143,6 +191,23 @@ VideoProcessingResources::Prepared VideoProcessingResources::prepare(rawrcam::vu
         if (config.highlightEnabled && config.highlightMethod == 1u) stage->prepareColoropp();
     }
     out.tonemap = makeTonemap(context, key.outputFormat, renderLut);
+    // 17U fast path: 1:1 quad demosaic into a YUV encoder (P010 or NV12). Off with
+    // `adb shell setprop debug.rawr.video.fast 0`.
+    char fastProp[PROP_VALUE_MAX] = {};
+    __system_property_get("debug.rawr.video.fast", fastProp);
+    const bool fastTenBit = key.outputFormat == VK_FORMAT_A2B10G10R10_UNORM_PACK32;
+    if (fastProp[0] != '0' && (fastTenBit || key.outputFormat == VK_FORMAT_R8G8B8A8_UNORM) &&
+        out.demosaic->sensorScale() == 1u && std::string(out.demosaic->method()) == "quad_guided_chroma") {
+        try {
+            out.fastBake = makeTonemap(context, VK_FORMAT_R16G16B16A16_SFLOAT, renderLut);
+            out.fast = std::make_unique<VideoFastPath>(context.physicalDevice(), context.device(), key.width,
+                                                       key.height, fastTenBit);
+        } catch (const std::exception& error) {
+            __android_log_print(ANDROID_LOG_WARN, "RawrNativeVideo", "VIDEO_FAST_PATH unavailable: %s", error.what());
+            out.fast.reset();
+            out.fastBake.reset();
+        }
+    }
     return out;
 }
 void VideoProcessingResources::install(Prepared&& prepared) {
@@ -151,6 +216,8 @@ void VideoProcessingResources::install(Prepared&& prepared) {
     processingKey_ = prepared.key;
     tonemap_ = std::move(prepared.tonemap);
     demosaic_ = std::move(prepared.demosaic);
+    fastBake_ = std::move(prepared.fastBake);
+    fast_ = std::move(prepared.fast);
     post_ = std::move(prepared.post);
     for (uint32_t i = 0; i < monitor_.size(); ++i) {
         monitor_[i] = prepared.monitor[i];
@@ -172,6 +239,8 @@ void VideoProcessingResources::release() noexcept {
     if (device && tonemap_) (void)context_.waitIdle();
     for (auto& stage : dcp_) stage.reset();
     tonemap_.reset();
+    fast_.reset();
+    fastBake_.reset();
     for (auto& stage : post_) stage.reset();
     demosaic_.reset();
     if (device) {
@@ -193,6 +262,7 @@ void VideoProcessingResources::updateRenderLut(const tonemap::lut::LutChain* ren
     if (!tonemap_) return;
     if (recording) check(context_.waitIdle(), "video LUT wait");
     tonemap_ = makeTonemap(context_, processingKey_.outputFormat, renderLut);
+    if (fastBake_) fastBake_ = makeTonemap(context_, VK_FORMAT_R16G16B16A16_SFLOAT, renderLut);
 }
 void VideoProcessingResources::collectStageTiming(uint32_t frameSlot) {
     if (!stagePending_[frameSlot]) return;
@@ -219,6 +289,9 @@ void VideoProcessingResources::collectStageTiming(uint32_t frameSlot) {
     }
     ++stageSamples_;
     totalPeak_.add(steadyNs(), total);
+    // Recording-only GPU cost per stage, every 2 s at 60 fps (averages since record start).
+    if (stageSamples_ % 120 == 0)
+        __android_log_print(ANDROID_LOG_INFO, "RawrNativeVideo", "VIDEO_GPU_STAGES %s", stageTimingJson().c_str());
 }
 void VideoProcessingResources::beginMonitorTiming(VkCommandBuffer command, uint32_t frameSlot) {
     if (frameSlot >= monitorPools_.size() || !monitorPools_[frameSlot]) return;

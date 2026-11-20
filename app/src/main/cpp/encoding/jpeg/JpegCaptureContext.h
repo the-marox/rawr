@@ -11,6 +11,7 @@
 #include "encoding/OutputFd.h"
 #include "metadata/GpsMetadata.h"
 #include "metadata/LevelMetadata.h"
+#include "metadata/AmbientMetadata.h"
 
 namespace rawrcam::encoding::jpeg {
 
@@ -39,6 +40,7 @@ struct JpegCaptureContext {
     std::string displayName;
     std::optional<tinydng_gps> gps;
     std::optional<rawrcam::metadata::CaptureLevel> level;
+    std::optional<rawrcam::metadata::CaptureAmbient> ambient;
     std::optional<std::array<uint8_t, 4>> sourceExifVersion;
     int quality = 98;
     // Photo aspect ratio (num:den in sensor orientation, 0:0 = full frame): the writer

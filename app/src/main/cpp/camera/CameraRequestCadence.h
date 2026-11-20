@@ -25,6 +25,14 @@ inline std::optional<std::array<int32_t, 2>> cameraTargetFpsRange(const CameraCo
         return std::array<int32_t, 2>{state.capabilities.frameRate, state.capabilities.frameRate};
     if (state.recordingFps > 0) return std::array<int32_t, 2>{state.recordingFps, state.recordingFps};
     const auto& caps = state.capabilities;
+    // Idle video mode above 30 fps runs the viewfinder at the recording rate:
+    // the sensor then stays in the same readout mode when recording starts
+    // (no reframe, no restart drops). 30 fps and below keep the AE range.
+    if (state.videoMode && state.videoPreviewFps > 30 &&
+        std::any_of(caps.aeTargetFpsRanges.begin(), caps.aeTargetFpsRanges.end(), [&](const auto& range) {
+            return range[0] == state.videoPreviewFps && range[1] == state.videoPreviewFps;
+        }))
+        return std::array<int32_t, 2>{state.videoPreviewFps, state.videoPreviewFps};
     if (priorityRequested && caps.priorityAeTargetFpsMin > 0 &&
         caps.priorityAeTargetFpsMax >= caps.priorityAeTargetFpsMin) {
         int32_t floor = caps.priorityAeTargetFpsMin;

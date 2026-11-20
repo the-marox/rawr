@@ -1,4 +1,5 @@
 #include "capture/ReducedRaw.h"
+#include "capture/single/StillCfaRemosaic.h"
 #include "capture/ReducedRawMetadata.h"
 #include "diagnostics/timing/GpuTimingTracker.h"
 // Composition root: construction, core lifecycle, metadata ingress, shutdown.
@@ -80,9 +81,7 @@ SessionEngine::SessionEngine(std::string filesDir) : filesDir_(std::move(filesDi
         const bool configured = realtime_.configureCamera(generation, metadata);
         lastCameraContext_ = std::make_shared<const rawrcam::metadata::CameraContextMetadata>(metadata);
         // Recordings frame inside the image area: padded raw edges stay out.
-        videoSession_.setKeptArea(rawrcam::video::videoKeptArea(realtime_.rawWidth(), realtime_.rawHeight(),
-                                                                metadata.cropLeft, metadata.cropTop,
-                                                                metadata.cropRight, metadata.cropBottom));
+        videoSession_.setKeptArea(videoKeptAreaLocked(metadata));
         // An Open Gate aspect crop follows the new lens's image area.
         if (configured && videoCropBaseWidth_ == 0 && videoAspectNum_ != 0) applyVideoCropLocked();
         profileReaderUsage_ = metadata.rawReaderUsage;
@@ -163,6 +162,7 @@ SessionEngine::SessionEngine(std::string filesDir) : filesDir_(std::move(filesDi
                     if (!reason.empty()) {
                         appendDiagnostic("REDUCED_RAW_FALLBACK full_size reason=" + reason);
                         context->photoReduced = false;
+                        context->photoReduced25 = false;
                         context->photoPhaseFit = false;
                     } else if (context->photoPhaseFit && context->baselineWhiteLevel > 0.0f &&
                                !capture::reducedRawFitFits(context->baselineWhiteLevel)) {
@@ -170,9 +170,10 @@ SessionEngine::SessionEngine(std::string filesDir) : filesDir_(std::move(filesDi
                         context->photoPhaseFit = false;
                     }
                 }
-                const uint32_t reduction = capture::reducedRawRequested(*context) ? 2u : 1u;
-                capture_.multiframe().configureFullSize(g.rawBufferWidth / reduction, g.rawBufferHeight / reduction,
-                                                       context->rawPreviewCfa);
+                const auto merged = capture::reducedRawRequested(*context)
+                                        ? capture::reducedRawSize(*context, g.rawBufferWidth, g.rawBufferHeight)
+                                        : capture::ReducedRawSize{g.rawBufferWidth, g.rawBufferHeight};
+                capture_.multiframe().configureFullSize(merged.width, merged.height, context->rawPreviewCfa);
                 appendDiagnostic("FULL_SIZE_STILL_CONFIG raw=" + std::to_string(g.rawBufferWidth) + "x" +
                                  std::to_string(g.rawBufferHeight) + " buffer=" + std::to_string(width) + "x" +
                                  std::to_string(height));
@@ -312,18 +313,45 @@ void SessionEngine::setVideoPreviewCropOut(uint32_t width, uint32_t height, uint
     applyVideoCropLocked();
 }
 
+rawrcam::video::VideoKeptArea SessionEngine::videoKeptAreaLocked(
+    const rawrcam::metadata::CameraContextMetadata& m) const {
+    // Above 30 fps the sensor mode can pad more edges (image.cropEdgesHighFps).
+    const bool high = videoHighFps_;
+    return rawrcam::video::videoKeptArea(realtime_.rawWidth(), realtime_.rawHeight(),
+                                         high ? std::max(m.cropLeft, m.highFpsCropLeft) : m.cropLeft,
+                                         high ? std::max(m.cropTop, m.highFpsCropTop) : m.cropTop,
+                                         high ? std::max(m.cropRight, m.highFpsCropRight) : m.cropRight,
+                                         high ? std::max(m.cropBottom, m.highFpsCropBottom) : m.cropBottom);
+}
+
+void SessionEngine::setVideoHighFps(bool high) {
+    std::lock_guard<std::mutex> lock(mu_);
+    if (videoHighFps_ == high) return;
+    videoHighFps_ = high;
+    realtime_.coordinator().setVideoHighFps(high);
+    if (!lastCameraContext_) return;
+    const auto kept = videoKeptAreaLocked(*lastCameraContext_);
+    LOGI("VIDEO_KEPT_AREA highFps=%d kept=%u,%u %ux%u", high ? 1 : 0, kept.x, kept.y, kept.width, kept.height);
+    videoSession_.setKeptArea(kept);
+    applyVideoCropLocked();
+}
+
 void SessionEngine::videoFrameLocked(uint32_t& width, uint32_t& height) const {
     if (width == 0 || height == 0) {
         // Open Gate: the image area, padded raw edges left out (as VideoSession resolves it).
         const uint32_t rawW = realtime_.rawWidth(), rawH = realtime_.rawHeight();
-        const auto kept = lastCameraContext_
-                              ? rawrcam::video::videoKeptArea(rawW, rawH, lastCameraContext_->cropLeft,
-                                                              lastCameraContext_->cropTop,
-                                                              lastCameraContext_->cropRight,
-                                                              lastCameraContext_->cropBottom)
-                              : rawrcam::video::VideoKeptArea{};
+        const auto kept = lastCameraContext_ ? videoKeptAreaLocked(*lastCameraContext_) : rawrcam::video::VideoKeptArea{};
         width = (kept.valid() ? kept.width : rawW) & ~1u;
         height = (kept.valid() ? kept.height : rawH) & ~1u;
+        if (videoHighFps_ && (videoAspectNum_ == 0 || videoAspectDen_ == 0) && lastCameraContext_) {
+            // Above 30 fps keep the 30 fps Open Gate aspect (centred crop), as
+            // Kotlin's VideoResolutionMode.openGateSize does for the recording.
+            const auto& m = *lastCameraContext_;
+            const auto normal = rawrcam::video::videoKeptArea(rawW, rawH, m.cropLeft, m.cropTop, m.cropRight,
+                                                              m.cropBottom);
+            const uint32_t nw = normal.valid() ? normal.width : rawW, nh = normal.valid() ? normal.height : rawH;
+            rawrcam::video::videoAspectFit(width, height, nw, nh);
+        }
     }
     rawrcam::video::videoAspectFit(width, height, videoAspectNum_, videoAspectDen_);
     // Same as Kotlin's VideoCropRequest.resolve: halved, each side a multiple of 16.
@@ -339,7 +367,11 @@ void SessionEngine::applyVideoCropLocked() {
     if ((width != 0 && height != 0) || aspect) {
         videoFrameLocked(width, height);
     } else {
-        width = height = 0;
+        // Open Gate: crop the viewfinder to the image area when padded edges
+        // are dropped (60 fps modes pad the bottom rows); full frame otherwise.
+        videoFrameLocked(width, height);
+        const uint32_t rawW = realtime_.rawWidth() & ~1u, rawH = realtime_.rawHeight() & ~1u;
+        if (width >= rawW && height >= rawH) width = height = 0;
     }
     videoCropOutWidth_ = width;
     videoCropOutHeight_ = height;
@@ -357,11 +389,7 @@ rawrcam::geometry::SourceCropRect SessionEngine::previewVideoCropRectLocked() co
     const uint32_t previewW = realtime_.previewWidth();
     const uint32_t previewH = realtime_.previewHeight();
     if (rawW < 2 || rawH < 2 || previewW == 0 || previewH == 0) return crop;
-    const auto kept = lastCameraContext_
-                          ? rawrcam::video::videoKeptArea(rawW, rawH, lastCameraContext_->cropLeft,
-                                                          lastCameraContext_->cropTop, lastCameraContext_->cropRight,
-                                                          lastCameraContext_->cropBottom)
-                          : rawrcam::video::VideoKeptArea{};
+    const auto kept = lastCameraContext_ ? videoKeptAreaLocked(*lastCameraContext_) : rawrcam::video::VideoKeptArea{};
     const auto full = rawrcam::video::videoSourceRect(rawW, rawH, videoCropOutWidth_, videoCropOutHeight_, kept);
     if (full.width == 0) return crop;
     const auto scaled = rawrcam::video::scaleVideoSourceRect(full, rawW, rawH, previewW, previewH);
@@ -699,8 +727,10 @@ uint32_t SessionEngine::prepareFullSizeBurst(uint32_t maxFrames) {
     const size_t bytes = size_t(width) * height * sizeof(uint16_t);
     diagnostics::CaptureStageTimer allocationTiming("fullres_allocate", tag);
     const bool reduced = capture::reducedRawRequested(*context);
-    const uint32_t outputWidth = reduced ? width / 2 : width, outputHeight = reduced ? height / 2 : height;
-    auto journal = std::make_shared<capture::persistence::AcquiredRawJournal>(filesDir_, reduced ? bytes / 4 : bytes, count);
+    const auto output = reduced ? capture::reducedRawSize(*context, width, height) : capture::ReducedRawSize{width, height};
+    const uint32_t outputWidth = output.width, outputHeight = output.height;
+    auto journal = std::make_shared<capture::persistence::AcquiredRawJournal>(
+        filesDir_, size_t(outputWidth) * outputHeight * sizeof(uint16_t), count);
     // Camera frames the GPU reads in place (zero copy) stay leased until their slot is collected. Declared
     // before the reducer, whose destructor waits for outstanding GPU work, so they outlive it.
     std::array<std::optional<imaging::RawFrameLease>, 2> heldLeases;
@@ -715,7 +745,7 @@ uint32_t SessionEngine::prepareFullSizeBurst(uint32_t maxFrames) {
     }};
     const bool gpuDirect = reduced && stillGpuDirectEnabled();
     std::unique_ptr<capture::ReducedRaw> reducer;
-    if (reduced) reducer = std::make_unique<capture::ReducedRaw>(vulkanContext_, width, height);
+    if (reduced) reducer = std::make_unique<capture::ReducedRaw>(vulkanContext_, *context, width, height);
     std::vector<uint8_t> reducedPixels;
     size_t reducedSubmitted = 0, reducedCollected = 0;
     const auto collectReduced = [&] {
@@ -730,6 +760,8 @@ uint32_t SessionEngine::prepareFullSizeBurst(uint32_t maxFrames) {
     };
     // Allocated on first use: a reduced burst of RAW10 frames decodes straight into the reducer's upload buffers.
     std::vector<uint8_t> packed;
+    std::unique_ptr<capture::BlockRemosaicGpu> gpuRemosaic;  // created at the first block-CFA frame
+    bool gpuRemosaicTried = false;
     allocationTiming.finish();
     struct Frame {
         imaging::RawFrameLease lease{imaging::AcquiredRawFrame{}};
@@ -914,17 +946,32 @@ uint32_t SessionEngine::prepareFullSizeBurst(uint32_t maxFrames) {
         }
         if (context->cfaBlock > 1u) {
             diagnostics::CaptureStageTimer remosaicTiming("fullres_remosaic", tag, index + 1);
-            const auto threads = std::clamp(std::thread::hardware_concurrency(), 1u, 8u);
             // 4x4 blocks (Xiaomi 200 MP): the fast path, as single stills use (~0.7 s instead of ~16 s a frame).
             if (context->cfaBlock == 4u && packed.size() >= size_t(width) * height * 2u) {
+                const auto threads = std::clamp(std::thread::hardware_concurrency(), 1u, 8u);
                 const auto& b = context->baselineBlackLevelPhysicalRggb;
                 imaging::remosaicBlockCfaFast(reinterpret_cast<uint16_t*>(packed.data()), width, height,
                                               context->cfaBlock, context->rawPreviewCfa,
                                               0.25f * (b[0] + b[1] + b[2] + b[3]), context->baselineWhiteLevel,
                                               threads);
             } else {
-                imaging::remosaicBlockCfa(packed, width, height, context->cfaBlock, context->rawPreviewCfa,
-                                         threads, imaging::CfaRemosaicQuality::Standard);
+                // GPU first: the 50 MP Detail pass is ~40 ms there against ~300 ms on eight CPU cores.
+                // A device that cannot hold the buffers (or a lens/quality the shader lacks) uses the CPU.
+                if (!gpuRemosaicTried) {
+                    gpuRemosaicTried = true;
+                    try {
+                        gpuRemosaic = std::make_unique<capture::BlockRemosaicGpu>(vulkanContext_, width, height);
+                    } catch (const std::exception& e) {
+                        appendDiagnostic("FULLRES_REMOSAIC_GPU_UNAVAILABLE tag=" + std::to_string(tag) +
+                                         " error=" + e.what());
+                    }
+                }
+                [[maybe_unused]] const bool onGpu = capture::remosaicBlockCfaBuffer(packed, width, height, *context,
+                                                                   frames.back().metadata.blackLevelPhysicalRggb,
+                                                                   gpuRemosaic.get());
+                CAPTURE_DEBUG_LOG("FULLRES_REMOSAIC tag=%llu frame=%u block=%u quality=%s gpu=%d",
+                                  static_cast<unsigned long long>(tag), index + 1, context->cfaBlock,
+                                  capture::remosaicQualityName(capture::photoRemosaicQuality(*context)), onGpu ? 1 : 0);
             }
         }
         diagnostics::CaptureStageTimer journalTiming("fullres_journal_append", tag, index + 1);
@@ -932,6 +979,7 @@ uint32_t SessionEngine::prepareFullSizeBurst(uint32_t maxFrames) {
     }
     while (reducedCollected < reducedSubmitted) collectReduced();
     reducer.reset();
+    gpuRemosaic.reset();
     std::vector<uint8_t>().swap(reducedPixels);
     // Completion belongs to the whole burst, never to each individual frame.
     diagnostics::CaptureStageTimer idleTiming("fullres_wait_sequence_end", tag);
