@@ -9,9 +9,12 @@ first and moves to `xiaomi-17u` once verified.
 ### Video
 
 - **Gyro stabilisation** (Settings › Video Encoder › Stabilisation: Off,
-  Standard, Strong; off by default). Ported from apos-fandango's Rawr X14U
-  fork (github.com/apos-fandango/rawr-xiaomi14u): its gyro integrator and
-  shake track. On the 17U the shake is taken out by moving the crop window
+  Standard, Strong; off by default). From apos-fandango's Rawr X14U fork
+  (github.com/apos-fandango/rawr-xiaomi14u, commit 9bd6bac): the gyro
+  integrator with its smoothed path and the timestamped shake track. The
+  rest of the stabilisation below (applying it in the fast path, OIS off,
+  soft edge, the sub-pixel warp with roll, Level horizon) is this fork's
+  own. First version: the shake was taken out by moving the crop window
   inside the sensor's spare area in the recording fast path, so it adds no
   GPU pass. Pitch and yaw only (no roll), 4K and 1080p (Open Gate has no
   spare area), fast path only. The crop moves in 2-pixel steps with

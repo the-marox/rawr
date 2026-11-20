@@ -16,7 +16,9 @@ import kotlin.math.round
  * sends the difference (the shake) to the native recorder with its timestamp, so each frame is corrected for the
  * moment it was captured (geometry/Stabilizer.h).
  *
- * Ported from apos-fandango's Rawr X14U fork (github.com/apos-fandango/rawr-xiaomi14u, commit 9bd6bac, GPL-3.0).
+ * The gyro integration and the alpha-beta smoothed path are ported from apos-fandango's Rawr X14U fork
+ * (github.com/apos-fandango/rawr-xiaomi14u, commit 9bd6bac, GPL-3.0); the soft edge, the roll room and the horizon
+ * levelling are this fork's.
  * The 17U warps the sampling window inside the sensor margin (shift and turn, sub-pixel, in the fast recording pass);
  * the margin comes from the recording itself (NativeStabilizer.room). The lens OIS is off while this runs
  * (StabilizerState). With horizon levelling, the turn follows the gravity sensor instead of the smoothed roll.
