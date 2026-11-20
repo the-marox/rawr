@@ -66,11 +66,13 @@ first and moves to `xiaomi-17u` once verified.
   First test (no zoom yet): the turn's direction is right (in the video the
   applied turn cancelled the camera's roll, -0.81 vs -0.83 per degree), but
   tilts of up to 15 degrees ran past the ~5 degrees the margin allowed.
-- Lens switch: the viewfinder keeps the old lens's last image until the
-  new lens has a few frames in and AE/AWB report settled (at most 800 ms),
-  instead of showing the HAL's first default-exposure frames, a black frame
-  and the colour/exposure convergence (seen frame by frame in a screen
-  recording of a switch). Presentation only; recording is unaffected.
+- Lens switch: the viewfinder keeps the old lens's last image while the
+  new lens's first frames (the HAL's default exposure: a flash, or a black
+  frame) come in: until AE/AWB report settled, or past 450 ms once 4
+  frames are out. Presentation only; recording is unaffected. AE still
+  reports searching at 800 ms on every switch, so the rest of its
+  convergence stays visible; starting the new lens from the previous lens's
+  exposure is the next step.
 - Tried and reverted: a deeper realtime RAW reader (8 images) and ingress
   queue (3 frames) against the start-of-take drop, from apos-fandango's
   X14U fix (rawr-xiaomi14u, commits 39a49615 and b2d85abe). On the 17U a

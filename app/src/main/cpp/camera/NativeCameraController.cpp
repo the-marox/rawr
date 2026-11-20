@@ -1441,15 +1441,18 @@ struct NativeCameraController::Impl final : CameraEventSink {
             results.sensitivityReportedPerRequest().has_value(), autoSettled, SensitivityProbeStartup::Clock::now());
         actions.frame->suppressPreview = decision.suppressPreview;
         if (lensSwitchHolding && !actions.frame->optimizedStillRequestId.value_or(0)) {
-            // Reveal once a few frames are in and AE and AWB report settled (or run manual), at most 800 ms after the
-            // switch; until then the viewfinder keeps the last image (hidePreview, presentation only).
+            // Reveal once a few frames are in and AE and AWB report settled (or run manual); past 450 ms after the
+            // switch, as soon as the first 4 frames (the HAL's defaults) are out. Until then the viewfinder keeps the
+            // last image (hidePreview, presentation only). 17U: AE still reported searching at 800 ms on every switch,
+            // so waiting for it only made the switch feel slower.
             ++lensSwitchHoldFrames;
             const bool awbSettled = frame.awbState < 0 || frame.awbState == ACAMERA_CONTROL_AWB_STATE_CONVERGED ||
                                     frame.awbState == ACAMERA_CONTROL_AWB_STATE_LOCKED;
             const bool aeSettled = autoSettled || frame.aeMode == ACAMERA_CONTROL_AE_MODE_OFF;
             const auto heldMs = std::chrono::duration_cast<std::chrono::milliseconds>(
                                     std::chrono::steady_clock::now() - lensSwitchHoldStart).count();
-            if ((lensSwitchHoldFrames > 2 && aeSettled && awbSettled) || heldMs > 800) {
+            if ((lensSwitchHoldFrames > 2 && aeSettled && awbSettled) || (lensSwitchHoldFrames > 4 && heldMs > 450) ||
+                heldMs > 800) {
                 lensSwitchHolding = false;
                 diag("CAMERA_LENS_SWITCH_REVEAL frames=" + std::to_string(lensSwitchHoldFrames) +
                      " ms=" + std::to_string(heldMs) + " ae=" + std::to_string(frame.aeState) +
