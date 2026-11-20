@@ -18,6 +18,13 @@ first and moves to `xiaomi-17u` once verified.
   hysteresis, so it doesn't flicker between steps on a steady hand.
   First test: the slow wander of a handheld shot went from ~70/50 px to
   ~6-16 px over 10 s, no dropped frames.
+- Stabilisation turns the lens OIS off while it runs (video mode with
+  Stabilisation on); the OIS setting itself is kept. Measured on the 17U:
+  with OIS on, the lens already removes most of the hand tremor (3-12 Hz)
+  that the gyro still sees, so correcting it again doubled the fine jitter
+  (1.6 to 3.3 px). With OIS off the gyro matches the image (correlation
+  0.89, gain 0.94, no frame lag) and Standard cut the fine jitter of the
+  same take by about half. Not yet better than OIS alone: work in progress.
 
 ## 0.5.1-17u.3
 

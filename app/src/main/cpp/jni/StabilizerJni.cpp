@@ -14,9 +14,13 @@ extern "C" JNIEXPORT void JNICALL Java_com_rawr_camera_video_NativeStabilizer_se
 
 extern "C" JNIEXPORT void JNICALL Java_com_rawr_camera_video_NativeStabilizer_push(JNIEnv*, jobject, jlong timeNs,
                                                                                  jfloat pitch, jfloat yaw,
-                                                                                 jfloat roll) {
-    if (!std::isfinite(pitch) || !std::isfinite(yaw) || !std::isfinite(roll)) return;
-    rawrcam::geometry::stabilizerTrack().push({int64_t(timeNs), float(pitch), float(yaw), float(roll)});
+                                                                                 jfloat roll, jfloat rawPitch,
+                                                                                 jfloat rawYaw, jfloat rawRoll) {
+    if (!std::isfinite(pitch) || !std::isfinite(yaw) || !std::isfinite(roll) || !std::isfinite(rawPitch) ||
+        !std::isfinite(rawYaw) || !std::isfinite(rawRoll))
+        return;
+    rawrcam::geometry::stabilizerTrack().push({int64_t(timeNs), float(pitch), float(yaw), float(roll), float(rawPitch),
+                                               float(rawYaw), float(rawRoll)});
 }
 
 // Shift room of the current recording as angles {x, y} (radians); zeros when there is none.

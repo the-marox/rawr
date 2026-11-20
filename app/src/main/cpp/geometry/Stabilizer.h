@@ -19,6 +19,8 @@ struct StabilizerSample {
     float pitch = 0.0f;  // about x
     float yaw = 0.0f;    // about y
     float roll = 0.0f;   // about z (not corrected by the crop shift)
+    // The camera's integrated turn (before smoothing), only for the RawrStab trace.
+    float rawPitch = 0.0f, rawYaw = 0.0f, rawRoll = 0.0f;
 };
 
 class StabilizerTrack {
@@ -68,6 +70,9 @@ class StabilizerTrack {
         out.pitch = a.pitch + t * (b.pitch - a.pitch);
         out.yaw = a.yaw + t * (b.yaw - a.yaw);
         out.roll = a.roll + t * (b.roll - a.roll);
+        out.rawPitch = a.rawPitch + t * (b.rawPitch - a.rawPitch);
+        out.rawYaw = a.rawYaw + t * (b.rawYaw - a.rawYaw);
+        out.rawRoll = a.rawRoll + t * (b.rawRoll - a.rawRoll);
         return true;
     }
 

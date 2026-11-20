@@ -15,7 +15,7 @@ import kotlin.math.exp
  *
  * Ported from apos-fandango's Rawr X14U fork (github.com/apos-fandango/rawr-xiaomi14u, commit 9bd6bac, GPL-3.0).
  * The 17U corrects pitch and yaw only, by moving the crop window inside the sensor margin; the margin comes from the
- * recording itself (NativeStabilizer.room).
+ * recording itself (NativeStabilizer.room). The lens OIS is off while this runs (StabilizerState).
  *
  * The smoothed path is an alpha-beta tracker (critically damped), so a steady pan is followed without lagging
  * behind; when the shake would need more margin than the crop leaves, the path is pulled along instead.
@@ -46,6 +46,7 @@ internal class StabilizerSensor(context: Context) : SensorEventListener {
         }
         enabled = want
         runCatching { NativeStabilizer.setEnabled(want) }
+        StabilizerState.setActive(want)
         if (want && !listening) {
             listening = manager?.registerListener(this, gyro, 5_000) == true
         } else if (!want && listening) {
@@ -88,7 +89,7 @@ internal class StabilizerSensor(context: Context) : SensorEventListener {
         clampAxis(0, shake, room[1] * .9f)
         clampAxis(1, shake, room[0] * .9f)
         clampAxis(2, shake, 0f)
-        runCatching { NativeStabilizer.push(t, shake[0], shake[1], shake[2]) }
+        runCatching { NativeStabilizer.push(t, shake[0], shake[1], shake[2], angle[0], angle[1], angle[2]) }
     }
 
     /** Keeps the shake on [axis] within [limit], pulling the smoothed path along when it would go past. */

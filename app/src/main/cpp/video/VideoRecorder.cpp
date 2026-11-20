@@ -59,8 +59,11 @@ std::array<int32_t, 2> stabilizerShift(const VideoDemosaic& demosaic, const Vide
             applied[i] = std::clamp(int32_t(std::lround(target * 0.5f)) * 2, -room[i], room[i]);
     }
     // Per-frame trace for checking the gyro/frame timing offline (`adb logcat -s RawrStab`).
-    __android_log_print(ANDROID_LOG_INFO, "RawrStab", "STAB t=%lld want=%.2f,%.2f applied=%d,%d room=%d,%d",
-                        static_cast<long long>(frameNs), want[0], want[1], applied[0], applied[1], room[0], room[1]);
+    // raw = the camera's integrated turn as pixels (x, y) and roll in degrees, before smoothing.
+    __android_log_print(ANDROID_LOG_INFO, "RawrStab",
+                        "STAB t=%lld want=%.2f,%.2f applied=%d,%d room=%d,%d raw=%.2f,%.2f,%.3f focal=%.1f",
+                        static_cast<long long>(frameNs), want[0], want[1], applied[0], applied[1], room[0], room[1],
+                        -shake.rawYaw * focal, shake.rawPitch * focal, shake.rawRoll * 57.29578f, focal);
     return applied;
 }
 }  // namespace
