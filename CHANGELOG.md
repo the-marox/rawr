@@ -4,7 +4,7 @@ Fork of [Rawr](https://github.com/adityawarmanfw/rawr) for the Xiaomi 17 Ultra.
 Releases follow Ed's version: `0.5.1-17u.N`. Test work lands on `yuv-probe`
 first and moves to `xiaomi-17u` once verified.
 
-## Unreleased (`yuv-probe`, test builds)
+## 0.5.1-17u.3
 
 Goal of this round: 4K60 10-bit recording without dropped frames on the 17U.
 
@@ -64,8 +64,8 @@ viewfinder quality High, 10-bit unless noted.
   reframe at record start.
 - **Open Gate above 30 fps records 3408x2560 (4:3)** (was 4096x3072,
   which the encoder refused). The 60 fps sensor mode only has 2560 image
-  rows, so the frame keeps the 30 fps 4:3 aspect with a centred crop, like
-  MotionCam. The viewfinder keeps the same 4:3 box; switching 30 to
+  rows, so the frame keeps the 30 fps 4:3 aspect with a centred crop. The
+  viewfinder keeps the same 4:3 box; switching 30 to
   60 fps looks like a ~1.2x zoom, and the recording matches what the
   viewfinder shows. At 30 fps Open Gate stays 4096x3072.
 
@@ -96,6 +96,10 @@ viewfinder quality High, 10-bit unless noted.
   stills and bursts on 4x4 blocks) and the 200 MP JPEG from the blocks
   stay; the zero-copy reduced burst stays for 4x4 blocks, Bayer reduced
   frames take the upload path.
+- Checked on the 17U after the merge: 50 MP singles and 17-frame
+  multiframe on 1x and 3.2x (DNG and JPEG); 200 MP singles on the tele
+  (fast remosaic ~0.8-0.9 s, JPEG ~8.5 s after the press); 4K60 10-bit
+  recording with no encoder drops.
 
 ### Auxiliary sensors (PR #1 by the-marox)
 
@@ -133,7 +137,8 @@ viewfinder quality High, 10-bit unless noted.
 
 ### Known issues
 
-- One frame can still drop in the first second of a recording.
+- One frame can still drop in the first second of a recording; one
+  mid-recording drop was seen once in Open Gate at 60 fps.
 - The app's main thread uses ~24% of a core while recording.
 
 ### Build
