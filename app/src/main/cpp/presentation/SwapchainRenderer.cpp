@@ -204,7 +204,10 @@ void SwapchainRenderer::record(VkCommandBuffer command, uint32_t frameSlot, uint
         info.scopes[i].width = placement.width;
         info.scopes[i].height = placement.height;
         info.scopes[i].quarterTurns = placement.presentationQuarterTurns & 3u;
-        const float sourceAspect = videoSource ? static_cast<float>(previewWidth) / previewHeight : scopeSourceAspect_;
+        // The scope textures keep their own fixed aspect while recording too;
+        // the video monitor aspect letterboxed them and the black bars hid the
+        // rounded corners.
+        const float sourceAspect = scopeSourceAspect_;
         info.scopes[i].sourceAspect = (info.scopes[i].quarterTurns & 1u) != 0u ? (1.0f / sourceAspect) : sourceAspect;
         info.scopes[i].cornerRadius = placement.cornerRadius;
         info.scopes[i].enabled = placement.type != rawrcam::monitoring::ScopeType::None && diagnosticMode == 0u;

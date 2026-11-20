@@ -114,10 +114,19 @@ internal fun PhysicalCaptureLayout(
             Box(
                 Modifier.fillMaxWidth().weight(1f).pointerInput(recordingNow) {
                     if (!recordingNow) return@pointerInput
-                    // Observe taps without consuming them: focus and controls still get them.
+                    // A swipe reveals the controls; a tap stays a focus tap.
+                    // Events are observed, never consumed.
                     awaitEachGesture {
-                        awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-                        revealTick++
+                        val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                        while (true) {
+                            val event = awaitPointerEvent(PointerEventPass.Initial)
+                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                            if ((change.position - down.position).getDistance() > viewConfiguration.touchSlop) {
+                                revealTick++
+                                break
+                            }
+                            if (!change.pressed) break
+                        }
                     }
                 }
             ) {

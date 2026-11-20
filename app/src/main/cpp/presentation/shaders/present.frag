@@ -45,6 +45,19 @@ void main(){
         return;
     }
 
+    // Scopes: rounded mask before the aspect fit, so letterbox bars never
+    // square the card corners.
+    if(pc.diagnosticMode >= 100u){
+        float r = clamp(pc.cornerRadius, 0.0, 0.5);
+        if (r > 0.0) {
+            vec2 scale = vec2(pc.dstAspect, 1.0);
+            vec2 halfSize = 0.5 * scale;
+            vec2 d = abs((uv - vec2(0.5)) * scale) - (halfSize - vec2(r));
+            float roundedDistance = length(max(d, vec2(0.0))) + min(max(d.x, d.y), 0.0) - r;
+            if (roundedDistance > 0.0) discard;
+        }
+    }
+
     vec2 q=uv;
     if(pc.dstAspect > pc.srcAspect){
         float w=pc.srcAspect/pc.dstAspect;
