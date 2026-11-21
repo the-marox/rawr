@@ -133,6 +133,9 @@ class RawAhbImporter {
     // (descriptor sets) can go with it. Called on the importing thread.
     using EvictListener = std::function<void(const ImportedRaw&)>;
     void setEvictListener(EvictListener listener) { evictListener_ = std::move(listener); }
+    // Whether the driver imports a RAW16 AHB with buffer-reader usage as a VkBuffer at all (one
+    // allocation of our own, released before returning). See FrameSubmitCoordinator's GLES bridge.
+    bool raw16BufferImportWorks(uint32_t width, uint32_t height) noexcept;
 
    private:
     // One AHardwareBuffer_acquire reference, released on destruction.

@@ -51,6 +51,7 @@ rawrcam_module(vulkan
     vulkan/VulkanContext.cpp
     vulkan/VulkanDispatch.cpp
     vulkan/RawAhbImporter.cpp
+    vulkan/GlesRawBridge.cpp
     vulkan/Synchronization.cpp
     vulkan/CommandResources.cpp
 )

@@ -24,6 +24,7 @@
 #include "pipeline/FrameDiagnosticsPort.h"
 #include "pipeline/FrameLifecyclePort.h"
 #include "pipeline/RawCpuUploadPool.h"
+#include "vulkan/GlesRawBridge.h"
 #include "pipeline/RealtimeResources.h"
 
 struct AAssetManager;
@@ -189,7 +190,8 @@ class FrameSubmitCoordinator final {
     // RAW16 readers then need GPU buffer access instead of image usage. A
     // block-CFA lens always does: the remosaic reads the camera buffer.
     [[nodiscard]] bool raw16BufferIngressRequired() const noexcept {
-        return raw16ImageImportLatched_.load(std::memory_order_relaxed) || config_.cfaBlock > 1u;
+        return !bridgeSelected_.load(std::memory_order_relaxed) &&
+               (raw16ImageImportLatched_.load(std::memory_order_relaxed) || config_.cfaBlock > 1u);
     }
     [[nodiscard]] bool cpuIngressActive() const noexcept { return cpuIngressActive_.load(std::memory_order_relaxed); }
     void setForceCpuIngress(bool enabled) noexcept { forceCpuIngress_.store(enabled, std::memory_order_relaxed); }
@@ -200,7 +202,7 @@ class FrameSubmitCoordinator final {
         cpuOnlyReader_.store(true, std::memory_order_relaxed);
     }
     // Frees CPU-upload resources. Caller must have the GPU idle.
-    void releaseCpuUpload() noexcept { cpuUpload_.destroy(); }
+    void releaseCpuUpload() noexcept { bridge_.reset(); cpuUpload_.destroy(); }
 
    private:
     void tryPair(uint64_t timestampNs);
@@ -296,6 +298,13 @@ class FrameSubmitCoordinator final {
     std::string lastSubmitFailure_;
     uint64_t repeatedSubmitFailures_ = 0;
     RawCpuUploadPool cpuUpload_;
+    // RAW16 through GLES when the driver's Vulkan refuses the camera buffer (vulkan/GlesRawBridge.h).
+    rawrcam::vulkan::GlesRawBridge bridge_;
+    bool bridgeEnabled_ = false;
+    bool bridgeNativeChecked_ = false;
+    bool bridgeNativeRefused_ = false;  // the driver imports no RAW16 AHB as a buffer
+    bool bridgeLogged_ = false;
+    std::atomic<bool> bridgeSelected_{false};  // sticky: readers keep image usage
     std::atomic<bool> cpuIngressLatched_{false};
     std::atomic<bool> forceCpuIngress_{false};
     std::atomic<bool> cpuIngressActive_{false};
