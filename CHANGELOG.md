@@ -4,7 +4,28 @@ Fork of [Rawr](https://github.com/adityawarmanfw/rawr) for the Xiaomi 17 Ultra.
 Releases follow Ed's version: `0.5.1-17u.N`. Test work lands on `yuv-probe`
 first and moves to `xiaomi-17u` once verified.
 
-## Unreleased (`yuv-probe`, test builds)
+## 0.5.1-17u.4
+
+Ed's upstream #135 first, then this fork's work since 0.5.1-17u.3. Each
+item says how it was checked; checks are on a Xiaomi 17 Ultra unless noted.
+
+### From upstream Rawr (Ed): #135
+
+- #135 Bayer bin 22 MP: the smaller reduced size ("reduced25") on Bayer
+  lenses now goes through a direct 3x bin (22 MP from 200 MP) instead of
+  the 2x bin then resample; colour kernels refitted; vivo X300 Ultra
+  profile.
+- Rawr AE: a still's gain uses the exposure target in effect when the frame
+  was taken (kept per frame timestamp), not the one when the burst is
+  processed, which for 200 MP can be seconds later.
+- On the 17U: its reduced lenses are 4x4 (block sums, not the Bayer bin),
+  so the bin changes don't touch the default profile; the AE change applies
+  to every photo. Merged without conflicts on top of this fork (#129 to
+  #133 recorded as already merged by hand).
+- Checked on the 17U after the merge: 50 MP singles and 17-frame
+  multiframe on 1x and 3.2x; single and multiframe came out at matching
+  brightness. Leaving the app and shooting right after coming back gave
+  the same post gain (1.0) as a shot 3 s later.
 
 ### Video
 
@@ -81,6 +102,11 @@ first and moves to `xiaomi-17u` once verified.
   112/192 px, zoom 1.1x, turn room 9.7 degrees): tilts up to ~9 came out
   level, an 11 degree tilt was turned 9.7 (the horizon kept ~1-3). The 1.2x
   path (2304 rows) is not yet checked on a take.
+  Release check, Stabilisation Standard, gyro log against the video and
+  the RawrStab trace: on 1x (margins 120/192 px) and 3.2x, both at 1.1x
+  with 9.7 degrees of turn room, tilts up to ~9 degrees came out level; at
+  14 degrees the trace shows 9.74 applied of 14.2 wanted, so ~4.5 stays
+  visible. Strong not checked (the turn room doesn't depend on it).
 - Tried and reverted: holding the viewfinder on a lens switch until the
   new lens's first frames settle. It hid the HAL's default-exposure flash,
   but AE still searched at 800 ms on every switch, and in video mode Rawr
@@ -93,17 +119,6 @@ first and moves to `xiaomi-17u` once verified.
   3-minute 4K60 take still dropped 7 frames at the start (2-4 before) and
   had 6 one-frame sensor gaps (2-3 before), at a higher GPU clock.
 
-### RAW ingress (PR #2 by the-marox)
-
-- GLES bridge for RAW16 on the Xiaomi 15 (by the-marox, commits f3e8c96
-  and 8e053d9): where the Vulkan driver refuses the camera's RAW16 buffers,
-  the frame is read through a GLES pbuffer context into a buffer Vulkan
-  imports, instead of the CPU upload. On only for ro.product.device "dada"
-  (Xiaomi 15); `debug.rawr.gles_bridge=1` opts another device in, `=0` opts
-  out. Off, the RAW16 ingress is the previous one: on the 17U nothing of
-  the bridge runs (no probe, no EGL context); the app only links EGL and
-  GLESv3. Merge into yuv-probe: the link line conflict resolved by hand.
-
 ### Lenses (17U profile)
 
 - New lenses 3.2x 200>25 and 4.3x 200>25, after the 200>50 ones: the same
@@ -111,14 +126,8 @@ first and moves to `xiaomi-17u` once verified.
   50 MP result resampled to half its pixels, 25 MP), for smaller files.
   To see them: Settings > Lens > Reset to device default (or clear the
   app's data); it replaces lenses edited by hand.
-
-### Exposure controls
-
-- Manual ISO shows the standard numbers on the third stops: 80, 160, 320,
-  640, 1250, 2500 instead of 79, 159, 317, 635, 1270, 2540 (the exact
-  values rounded). The 1/24 EV fine steps between them stay; full and third
-  stops keep their snapping. Fork change to Ed's scale
-  (NativeCapabilityProjection.kt).
+- Checked on the 17U: after the reset both lenses sit right after their
+  200>50, and they shoot and save.
 
 ### Renderer
 
@@ -133,6 +142,12 @@ first and moves to `xiaomi-17u` once verified.
   (CfaRemosaic.h). Checked off-device on that DNG: detection picks 2x2 with
   a wide margin and the remosaiced raw renders with correct colour; a true
   Bayer raw stays Bayer.
+- Large uncompressed DNGs: the Auto detection now runs on the full decode
+  that builds the raw cache (named -auto<n>, so a later open doesn't decode
+  again). Reading a region first made tinydng decode the whole strip inside
+  its 128 MiB cap, and that 50 MP DNG failed to open ("memory cap
+  exceeded"). Checked on the 17U: it opens, detected as Quad 2x2, with
+  correct colour; the CFA section shows in the RAW tab.
 - Optional Renderer icon in the app drawer (Renderer › options › Icon in
   app drawer), for launchers that don't show app shortcuts. Off by default.
   The Renderer now runs in its own task, so opening it from a launcher
@@ -140,20 +155,31 @@ first and moves to `xiaomi-17u` once verified.
 - Settings › Renderer: opens the Renderer and holds the same app drawer
   icon switch, so it can be found without a launcher shortcut or the long
   press on the gallery thumbnail.
+- Checked on the 17U: Settings > Renderer opens it; the drawer icon opens
+  the Renderer. Known: sharing a DNG from Google Photos doesn't offer the
+  Renderer (it registers for the exact DNG types only).
 
-### From upstream Rawr (Ed): #135
+### Exposure controls
 
-- #135 Bayer bin 22 MP: the smaller reduced size ("reduced25") on Bayer
-  lenses now goes through a direct 3x bin (22 MP from 200 MP) instead of
-  the 2x bin then resample; colour kernels refitted; vivo X300 Ultra
-  profile.
-- Rawr AE: a still's gain uses the exposure target in effect when the frame
-  was taken (kept per frame timestamp), not the one when the burst is
-  processed, which for 200 MP can be seconds later.
-- On the 17U: its reduced lenses are 4x4 (block sums, not the Bayer bin),
-  so the bin changes don't touch the default profile; the AE change applies
-  to every photo. Merged without conflicts on top of this fork (#129 to
-  #133 recorded as already merged by hand). Not yet checked on the 17U.
+- Manual ISO shows the standard numbers on the third stops: 80, 160, 320,
+  640, 1250, 2500 instead of 79, 159, 317, 635, 1270, 2540 (the exact
+  values rounded). The 1/24 EV fine steps between them stay; full and third
+  stops keep their snapping. Fork change to Ed's scale
+  (NativeCapabilityProjection.kt). Checked on the 17U.
+
+### RAW ingress (PR #2 by the-marox)
+
+- GLES bridge for RAW16 on the Xiaomi 15 (by the-marox, commits f3e8c96
+  and 8e053d9): where the Vulkan driver refuses the camera's RAW16 buffers,
+  the frame is read through a GLES pbuffer context into a buffer Vulkan
+  imports, instead of the CPU upload. On only for ro.product.device "dada"
+  (Xiaomi 15); `debug.rawr.gles_bridge=1` opts another device in, `=0` opts
+  out. Off, the RAW16 ingress is the previous one: on the 17U nothing of
+  the bridge runs (no probe, no EGL context); the app only links EGL and
+  GLESv3. Merge into yuv-probe: the link line conflict resolved by hand.
+- Checked on the 17U: viewfinder normal, a 200 MP tele photo (the case
+  that reached the RAW16 fallback before), no GLES_BRIDGE line in the log.
+  Tested on the Xiaomi 15 by the-marox.
 
 ## 0.5.1-17u.3
 
