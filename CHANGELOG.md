@@ -66,6 +66,16 @@ first and moves to `xiaomi-17u` once verified.
   First test (no zoom yet): the turn's direction is right (in the video the
   applied turn cancelled the camera's roll, -0.81 vs -0.83 per degree), but
   tilts of up to 15 degrees ran past the ~5 degrees the margin allowed.
+  Measured with the 1.1x zoom (gyro log against the recorded horizon): tilts
+  up to ~5 degrees came out level (a 4 degree tilt stayed at -0.25), a 21
+  degree tilt was levelled by only ~5.5 (the horizon showed ~15-16
+  degrees), and no frame had empty corners. That matches the 2304-row
+  sensor mode's margin, where 1.1x leaves ~5.5 degrees (the ~10 of the
+  first estimate assumed 2560 rows). The zoom now follows the recording's
+  margins: the smallest of 1.1x and what a 9 degree turn needs, up to 1.25x
+  (about 1.2x from 2304 rows, 1.1x from 2560 or more). More zoom upscales
+  more (4K from ~3200 px wide at 1.2x). The STAB log line
+  (`adb logcat -s RawrStab`) now shows the zoom and the turn room.
 - Tried and reverted: holding the viewfinder on a lens switch until the
   new lens's first frames settle. It hid the HAL's default-exposure flash,
   but AE still searched at 800 ms on every switch, and in video mode Rawr

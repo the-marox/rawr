@@ -44,13 +44,21 @@ std::optional<VideoFastPath::Warp> stabilizerWarp(const VideoDemosaic& demosaic,
     const int32_t top = cy - int32_t(kept.y) - kApron, bottom = int32_t(kept.y + kept.height) - (cy + h) - kApron;
     const float marginX = float(std::max(0, std::min(left, right))), marginY = float(std::max(0, std::min(top, bottom)));
     const float halfW = 0.5f * float(w), halfH = 0.5f * float(h);
-    // Horizon levelling zooms in a little (kLevelScale samples a smaller window) so the frame can turn about 10
-    // degrees and still shift; without it the margin allows ~5 degrees with no shift left.
-    constexpr float kLevelScale = 1.0f / 1.1f;
+    // Horizon levelling zooms in (scale < 1 samples a smaller window) so the frame can turn kLevelTurn. The zoom it
+    // needs depends on the sensor mode's rows: 4K from 2560 rows turns ~10 degrees at 1.1x, but from 2304 rows
+    // 1.1x only allowed ~5.5 (measured on the 17U: a 21 degree tilt was levelled by ~5.5). So the zoom is the
+    // smallest of 1.1x and what kLevelTurn needs with this recording's margins, up to kMaxLevelZoom.
+    constexpr float kLevelTurn = 0.157f;  // 9 degrees, inside the fast pass's ~10 degree RGB tile ring
+    constexpr float kMinLevelZoom = 1.1f, kMaxLevelZoom = 1.25f;
     // Turning needs the turned shader variant (sub-pixel resampling, about twice the GPU work of the regular pass on
     // the 17U), so only horizon levelling turns; plain stabilisation moves the crop in even steps for free.
     const bool levelling = stabilizerLevelHorizon().load(std::memory_order_relaxed) && turnAvailable;
-    const float scale = levelling ? kLevelScale : 1.0f;
+    float scale = 1.0f;
+    if (levelling) {
+        const float c = std::cos(kLevelTurn), sn = std::sin(kLevelTurn);
+        const float fit = std::min((halfW + marginX) / (halfW * c + halfH * sn), (halfH + marginY) / (halfW * sn + halfH * c));
+        scale = std::clamp(fit, 1.0f / kMaxLevelZoom, 1.0f / kMinLevelZoom);
+    }
     // Room for the window's corners: half the frame plus the margin, against the scaled, turned half frame.
     const auto fits = [&](float angle, float sx, float sy) {
         const float c = std::cos(angle), sn = std::fabs(std::sin(angle));
@@ -113,10 +121,11 @@ std::optional<VideoFastPath::Warp> stabilizerWarp(const VideoDemosaic& demosaic,
     // raw = the camera's integrated turn as pixels (x, y) and roll in degrees, before smoothing.
     __android_log_print(ANDROID_LOG_INFO, "RawrStab",
                         "STAB t=%lld want=%.2f,%.2f applied=%.2f,%.2f room=%.0f,%.0f raw=%.2f,%.2f,%.3f focal=%.1f "
-                        "roll=%.3f,%.3f",
+                        "roll=%.3f,%.3f zoom=%.3f maxRoll=%.2f",
                         static_cast<long long>(frameNs), want[0], want[1], warp.shiftX, warp.shiftY, marginX, marginY,
                         -shake.rawYaw * focal, shake.rawPitch * focal, shake.rawRoll * 57.29578f, focal,
-                        -shake.roll * 57.29578f, angle * 57.29578f);
+                        -shake.roll * 57.29578f, angle * 57.29578f, 1.0f / scale,
+                        levelling ? maxTurn(0.0f, 0.0f) * 57.29578f : 0.0f);
     return warp;
 }
 }  // namespace

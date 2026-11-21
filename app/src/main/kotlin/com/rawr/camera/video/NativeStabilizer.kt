@@ -10,7 +10,7 @@ internal object NativeStabilizer {
     }
 
     external fun setEnabled(enabled: Boolean)
-    /** Horizon levelling: the recorder zooms 1.1x and turns by the tilt from level before shifting. */
+    /** Horizon levelling: the recorder zooms 1.1x to 1.25x (room for a 9 degree turn) and turns by the tilt from level before shifting. */
     external fun setLevelHorizon(enabled: Boolean)
     /** The shake (corrected) and the camera's integrated turn (raw, for the RawrStab trace), radians. */
     external fun push(timeNs: Long, pitch: Float, yaw: Float, roll: Float, rawPitch: Float, rawYaw: Float, rawRoll: Float)

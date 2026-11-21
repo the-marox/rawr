@@ -114,8 +114,8 @@ inline std::atomic<float>& stabilizerRoomY() noexcept {
     static std::atomic<float> value{0.0f};
     return value;
 }
-// Horizon levelling on (Settings > Video Encoder > Stabilisation > Level horizon): the warp zooms 1.1x and turns by
-// the tilt from level first.
+// Horizon levelling on (Settings > Video Encoder > Stabilisation > Level horizon): the warp zooms 1.1x to 1.25x (what
+// a 9 degree turn needs with the recording's margins) and turns by the tilt from level first.
 inline std::atomic<bool>& stabilizerLevelHorizon() noexcept {
     static std::atomic<bool> value{false};
     return value;
