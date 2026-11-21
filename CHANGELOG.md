@@ -81,7 +81,7 @@ first and moves to `xiaomi-17u` once verified.
 ### Exposure controls
 
 - Manual ISO shows the standard numbers on the third stops: 80, 160, 320,
-  640, 1250, 2500 instead of 79, 159, 317, 635, 1270, 2520 (the exact
+  640, 1250, 2500 instead of 79, 159, 317, 635, 1270, 2540 (the exact
   values rounded). The 1/24 EV fine steps between them stay; full and third
   stops keep their snapping. Fork change to Ed's scale
   (NativeCapabilityProjection.kt).
