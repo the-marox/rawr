@@ -194,6 +194,7 @@ private fun SettingsHome(dispatch: SettingsDispatch) {
             SettingsHomeEntry(SettingsSection.Jpeg, Icons.Rounded.Image),
             SettingsHomeEntry(SettingsSection.VideoEncoder, Icons.Rounded.Videocam),
             SettingsHomeEntry(SettingsSection.Storage, Icons.Rounded.Folder),
+            SettingsHomeEntry(SettingsSection.Renderer, Icons.Rounded.Edit),
             SettingsHomeEntry(SettingsSection.Experimental, Icons.Rounded.Science),
             SettingsHomeEntry(SettingsSection.Debug, Icons.Rounded.BugReport),
             SettingsHomeEntry(SettingsSection.About, Icons.Rounded.Info)

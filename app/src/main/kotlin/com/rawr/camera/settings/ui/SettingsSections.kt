@@ -95,6 +95,10 @@ internal fun SettingsSectionContent(
             StorageSettings(state, onPickSaveDirectory)
         }
 
+        SettingsSection.Renderer -> {
+            RendererSettings()
+        }
+
         SettingsSection.VideoEncoder -> {
             VideoEncoderSettings(state, dispatch)
         }

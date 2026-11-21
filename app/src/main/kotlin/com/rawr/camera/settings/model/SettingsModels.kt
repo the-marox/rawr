@@ -36,6 +36,7 @@ enum class SettingsSection(val title: String) {
     Monitoring("Monitoring"),
     ControlStyle("Control Style"),
     Storage("Storage"),
+    Renderer("Renderer"),
     VideoEncoder("Video Encoder"),
     Experimental("Experimental"),
     GpuDriver("GPU Driver"),

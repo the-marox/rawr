@@ -95,6 +95,9 @@ first and moves to `xiaomi-17u` once verified.
   app drawer), for launchers that don't show app shortcuts. Off by default.
   The Renderer now runs in its own task, so opening it from a launcher
   doesn't bring up the camera.
+- Settings › Renderer: opens the Renderer and holds the same app drawer
+  icon switch, so it can be found without a launcher shortcut or the long
+  press on the gallery thumbnail.
 
 ## 0.5.1-17u.3
 
