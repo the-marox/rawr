@@ -13,8 +13,9 @@ item says how it was checked; checks are on a Xiaomi 17 Ultra unless noted.
 
 - #135 Bayer bin 22 MP: the smaller reduced size ("reduced25") on Bayer
   lenses now goes through a direct 3x bin (22 MP from 200 MP) instead of
-  the 2x bin then resample; colour kernels refitted; vivo X300 Ultra
-  profile.
+  the 2x bin then resample; colour kernels refitted. The vivo X300 Ultra
+  profile (not the 17U's) also sends vivo's pro-mode vendor key on its
+  lenses.
 - Rawr AE: a still's gain uses the exposure target in effect when the frame
   was taken (kept per frame timestamp), not the one when the burst is
   processed, which for 200 MP can be seconds later.
