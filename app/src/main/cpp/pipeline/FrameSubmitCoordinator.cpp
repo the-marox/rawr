@@ -35,6 +35,7 @@
 #include "geometry/Stabilizer.h"
 #include "video/VideoSession.h"
 #include "video_pipeline/VideoCrop.h"
+#include "vulkan/GlesRawBridgePolicy.h"
 #include "vulkan/RawAhbImporter.h"
 #include "vulkan/Synchronization.h"
 #include "vulkan/VulkanContext.h"
@@ -119,6 +120,15 @@ void FrameSubmitCoordinator::configure(const FrameSubmitConfiguration& config) {
         // Exercises the RAW16 GPU buffer copy on devices whose image import works.
         if (__system_property_get("debug.rawr.raw16_buffer_ingress", value) > 0 && value[0] == '1')
             raw16ImageImportLatched_.store(true, std::memory_order_relaxed);
+        // GLES bridge for drivers whose Vulkan refuses RAW16 AHBs (vulkan/GlesRawBridge.h): only on
+        // the devices it was validated on, unless `debug.rawr.gles_bridge` says otherwise
+        // (vulkan/GlesRawBridgePolicy.h). Off, the RAW16 ingress below is unchanged.
+        char device[PROP_VALUE_MAX]{};
+        char bridge[PROP_VALUE_MAX]{};
+        __system_property_get("ro.product.device", device);
+        const char setting = __system_property_get("debug.rawr.gles_bridge", bridge) > 0 ? bridge[0] : '\0';
+        bridgeEnabled_.store(rawrcam::vulkan::glesBridgeAllowed(device, setting));
+        if (!bridgeEnabled_.load()) bridgeSelected_.store(false);
         raw10ParityEnabled_ = __system_property_get("debug.rawr.raw10_parity", value) > 0 && value[0] == '1';
     }
     cpuUpload_.configure(config_.rawWidth, config_.rawHeight);
@@ -142,7 +152,7 @@ void FrameSubmitCoordinator::resetConfiguration() noexcept {
 
 void FrameSubmitCoordinator::shutdownDeviceResources() noexcept {
     resetConfiguration();
-    cpuUpload_.destroy();
+    releaseCpuUpload();
     capturePort_.shutdownMultiframe();
 }
 
@@ -417,7 +427,13 @@ rawrcam::vulkan::ImportedRaw& FrameSubmitCoordinator::ingestRaw(const SubmitPara
     // RAW16 whose image import was rejected: copy the imported camera buffer
     // into the pool's owned R16 image on the GPU.
     if (!raw10 && !cpuIngressRequired() && config_.diagnosticMode == 0u) {
+        auto pack = [&]() -> rawrcam::vulkan::ImportedRaw& {
+            auto twin = bridge_.pack(vulkanContext_.device(), vulkanContext_.getAhbProperties(), slotIndex,
+                                     params.ahb, params.acquireFenceFd, config_.rawWidth, config_.rawHeight);
+            return cpuUpload_.gpuCopy(slotIndex, twin);
+        };
         try {
+            if (bridgeSelected_.load()) return pack();
             const auto& camera =
                 resources_.importer()->importRaw16Buffer(params.ahb, config_.rawWidth, config_.rawHeight);
             rawrcam::vulkan::ImportedRaw& raw = cpuUpload_.gpuCopy(slotIndex, camera);
@@ -435,6 +451,43 @@ rawrcam::vulkan::ImportedRaw& FrameSubmitCoordinator::ingestRaw(const SubmitPara
             }
             return raw;
         } catch (const std::exception& e) {
+            if (bridgeSelected_.load()) {
+                // The bridge itself failed: give the frame to the CPU upload and stop bridging.
+                bridgeSelected_.store(false);
+                bridgeEnabled_.store(false);
+                const std::string line = std::string("RAW_INGRESS_GLES_BRIDGE_FAILED reason=") + e.what();
+                LOGE("%s", line.c_str());
+                lifecyclePort_.postDiagnostic(line);
+            } else if (bridgeEnabled_.load()) {
+                // The camera buffer import failed too. If the driver refuses RAW16 buffers outright
+                // (asked once with an AHB of our own), no reader can make the buffer copy work: the
+                // bridge takes over for good and readers keep image usage, which the GLES import
+                // reads through. Otherwise it only covers this session, and the next reader asks for
+                // buffer usage so the driver's own buffer copy gets its chance first.
+                if (!bridgeNativeChecked_) {
+                    bridgeNativeChecked_ = true;
+                    bridgeNativeRefused_ =
+                        !resources_.importer()->raw16BufferImportWorks(config_.rawWidth, config_.rawHeight);
+                }
+                try {
+                    auto& raw = pack();
+                    if (bridgeNativeRefused_) bridgeSelected_.store(true);
+                    if (!bridgeLogged_) {
+                        bridgeLogged_ = true;
+                        const std::string line = "RAW_INGRESS_GLES_BRIDGE format=RAW16 rowStrideBytes=" +
+                                                 std::to_string(raw.rowStrideBytes) +
+                                                 (bridgeNativeRefused_ ? " mode=sticky" : " mode=session");
+                        LOGI("%s", line.c_str());
+                        lifecyclePort_.postDiagnostic(line);
+                    }
+                    return raw;
+                } catch (const std::exception& failure) {
+                    bridgeEnabled_.store(false);
+                    const std::string line = std::string("RAW_INGRESS_GLES_BRIDGE_FAILED reason=") + failure.what();
+                    LOGE("%s", line.c_str());
+                    lifecyclePort_.postDiagnostic(line);
+                }
+            }
             // A reader configured before the latch has no GPU buffer usage, so
             // its failure says nothing about the driver: upload this session
             // and retry once the reader is reconfigured for buffer access.

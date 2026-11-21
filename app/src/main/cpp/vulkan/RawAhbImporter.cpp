@@ -252,6 +252,64 @@ ImportedRaw& RawAhbImporter::import(AHardwareBuffer* ahb, uint32_t rawWidth_, ui
     return inserted.first->second.raw;
 }
 
+// Whether this driver imports a RAW16 AHB as a buffer at all, asked once with an AHB of our own that
+// has the usage a buffer-ingress reader gets, in the same shape as ensureBufferImport. The Xiaomi 15
+// (Adreno 830, driver 7cd9369a93) refuses it, as it refuses every RAW16 AHB; where it works, the
+// camera buffer copy can too once the reader asks for buffer usage.
+bool RawAhbImporter::raw16BufferImportWorks(uint32_t width, uint32_t height) noexcept {
+    constexpr uint32_t kHalPixelFormatRaw16 = 0x20;
+    constexpr uint64_t kCameraWrite = 1ull << 17;  // GRALLOC_USAGE_HW_CAMERA_WRITE
+    AHardwareBuffer_Desc desc{};
+    desc.width = width;
+    desc.height = height;
+    desc.layers = 1;
+    desc.format = kHalPixelFormatRaw16;
+    desc.usage = AHARDWAREBUFFER_USAGE_CPU_READ_OFTEN | AHARDWAREBUFFER_USAGE_GPU_DATA_BUFFER | kCameraWrite;
+    // Without buffer usage the reader is demoted to CPU-only: no buffer copy either way.
+    if (width == 0 || height == 0 || AHardwareBuffer_isSupported(&desc) == 0) return false;
+    AHardwareBuffer* ahb = nullptr;
+    if (AHardwareBuffer_allocate(&desc, &ahb) != 0 || ahb == nullptr) return false;
+    bool works = false;
+    try {
+        VkAndroidHardwareBufferFormatPropertiesANDROID fp{};
+        fp.sType = VK_STRUCTURE_TYPE_ANDROID_HARDWARE_BUFFER_FORMAT_PROPERTIES_ANDROID;
+        VkAndroidHardwareBufferPropertiesANDROID hp{};
+        hp.sType = VK_STRUCTURE_TYPE_ANDROID_HARDWARE_BUFFER_PROPERTIES_ANDROID;
+        hp.pNext = &fp;
+        vkCheck(getProperties_(device_, ahb, &hp), "AHB buffer properties");
+        if (hp.allocationSize == 0 || hp.memoryTypeBits == 0) throw std::runtime_error("empty AHB properties");
+        DeviceObjects objects(device_);
+        VkBufferCreateInfo bi{};
+        bi.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        bi.size = hp.allocationSize;
+        bi.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+        bi.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        VkBuffer buffer = VK_NULL_HANDLE;
+        vkCheck(vkCreateBuffer(device_, &bi, nullptr, &buffer), "create imported AHB buffer");
+        objects.adoptBuffer(buffer);
+        VkImportAndroidHardwareBufferInfoANDROID import{};
+        import.sType = VK_STRUCTURE_TYPE_IMPORT_ANDROID_HARDWARE_BUFFER_INFO_ANDROID;
+        import.buffer = ahb;
+        VkMemoryDedicatedAllocateInfo dedicated{};
+        dedicated.sType = VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO;
+        dedicated.pNext = &import;
+        dedicated.buffer = buffer;
+        VkMemoryAllocateInfo ma{};
+        ma.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        ma.pNext = &dedicated;
+        ma.allocationSize = hp.allocationSize;
+        ma.memoryTypeIndex = findImportMemoryType(physical_, hp.memoryTypeBits, 0);
+        VkDeviceMemory memory = VK_NULL_HANDLE;
+        vkCheck(vkAllocateMemory(device_, &ma, nullptr, &memory), "allocate imported AHB buffer memory");
+        objects.adoptMemory(memory);
+        vkCheck(vkBindBufferMemory(device_, buffer, memory, 0), "bind imported AHB buffer");
+        works = true;
+    } catch (const std::exception&) {
+    }
+    AHardwareBuffer_release(ahb);
+    return works;
+}
+
 void RawAhbImporter::ensureBufferImport(AHardwareBuffer* ahb) noexcept {
     if (ahb == nullptr) return;
     const uintptr_t key = reinterpret_cast<uintptr_t>(ahb);

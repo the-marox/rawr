@@ -78,6 +78,17 @@ first and moves to `xiaomi-17u` once verified.
   3-minute 4K60 take still dropped 7 frames at the start (2-4 before) and
   had 6 one-frame sensor gaps (2-3 before), at a higher GPU clock.
 
+### RAW ingress (PR #2 by the-marox)
+
+- GLES bridge for RAW16 on the Xiaomi 15 (by the-marox, commits f3e8c96
+  and 8e053d9): where the Vulkan driver refuses the camera's RAW16 buffers,
+  the frame is read through a GLES pbuffer context into a buffer Vulkan
+  imports, instead of the CPU upload. On only for ro.product.device "dada"
+  (Xiaomi 15); `debug.rawr.gles_bridge=1` opts another device in, `=0` opts
+  out. Off, the RAW16 ingress is the previous one: on the 17U nothing of
+  the bridge runs (no probe, no EGL context); the app only links EGL and
+  GLESv3. Merge into yuv-probe: the link line conflict resolved by hand.
+
 ### Exposure controls
 
 - Manual ISO shows the standard numbers on the third stops: 80, 160, 320,
