@@ -24,8 +24,8 @@
 #include "pipeline/FrameDiagnosticsPort.h"
 #include "pipeline/FrameLifecyclePort.h"
 #include "pipeline/RawCpuUploadPool.h"
-#include "vulkan/GlesRawBridge.h"
 #include "pipeline/RealtimeResources.h"
+#include "vulkan/GlesRawBridge.h"
 
 struct AAssetManager;
 
@@ -300,7 +300,8 @@ class FrameSubmitCoordinator final {
     RawCpuUploadPool cpuUpload_;
     // RAW16 through GLES when the driver's Vulkan refuses the camera buffer (vulkan/GlesRawBridge.h).
     rawrcam::vulkan::GlesRawBridge bridge_;
-    bool bridgeEnabled_ = false;
+    // Set in configure(), read and cleared on the ingest thread.
+    std::atomic<bool> bridgeEnabled_{false};
     bool bridgeNativeChecked_ = false;
     bool bridgeNativeRefused_ = false;  // the driver imports no RAW16 AHB as a buffer
     bool bridgeLogged_ = false;
