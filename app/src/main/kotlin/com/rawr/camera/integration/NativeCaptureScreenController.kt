@@ -228,6 +228,14 @@ class NativeCaptureScreenController(
                 focusAt(action.point)
             }
 
+            is PickWhiteBalanceAt -> {
+                update { it.copy(whiteBalancePickArmed = false) }
+                if (state.value.capabilities.manualWhiteBalanceSupported) {
+                    val p = action.point.clamped(0f)
+                    coordinator.pickWhiteBalance(p.x, p.y)
+                }
+            }
+
             Refocus -> {
                 focusAt(state.value.focus.target)
             }

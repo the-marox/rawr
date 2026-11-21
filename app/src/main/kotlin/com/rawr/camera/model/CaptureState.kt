@@ -180,6 +180,8 @@ data class CaptureUiState(
     val autoWhiteBalanceTemperatureK: Int? = null,
     val autoWhiteBalanceTint: Int? = null,
     val whiteBalancePanelOpen: Boolean = false,
+    /** WB sampler armed: the next viewfinder tap neutralises that area (Manual WB). Rawr 17U fork. */
+    val whiteBalancePickArmed: Boolean = false,
     /** Auto overlays armed by the user; each renders only while its interaction trigger fires. */
     val armedOverlays: Set<OverlayMode> = emptySet(),
     /** Manual exclusive FalseColor, independent of the auto trigger gates. */

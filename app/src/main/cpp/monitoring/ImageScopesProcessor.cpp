@@ -263,7 +263,8 @@ void ImageScopesProcessor::recordSceneExposure(VkCommandBuffer command, uint32_t
                                                const std::array<float, 3>& lumaWeights, float clipLuma,
                                                const std::array<float, 4>& spot, uint32_t weighting,
                                                const std::array<float, 3>& channelCeilings,
-                                               const std::array<float, 4>& focus) {
+                                               const std::array<float, 4>& focus,
+                                               const std::array<float, 4>& sample) {
     if (!backend_ || frameSlot >= rawrcam::imaging::kRealtimeFramesInFlight || linearView == VK_NULL_HANDLE) return;
     auto& rb = sceneStatsReadback_[frameSlot];
     rb.recorded = false;
@@ -285,6 +286,10 @@ void ImageScopesProcessor::recordSceneExposure(VkCommandBuffer command, uint32_t
     info.focusY0 = focus[1];
     info.focusX1 = focus[2];
     info.focusY1 = focus[3];
+    info.sampleX0 = sample[0];
+    info.sampleY0 = sample[1];
+    info.sampleX1 = sample[2];
+    info.sampleY1 = sample[3];
     info.weighting = static_cast<image_scopes::SceneWeighting>(std::min<uint32_t>(weighting, 2u));
     for (size_t c = 0; c < 3; ++c)
         info.channelCeilings[c] = std::isfinite(channelCeilings[c]) ? std::max(0.0f, channelCeilings[c]) : 0.0f;

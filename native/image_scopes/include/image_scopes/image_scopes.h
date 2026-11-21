@@ -48,6 +48,10 @@ struct SceneExposureStatsRecordInfo {
     // Focus area: when focusX1 > focusX0 and focusY1 > focusY0, samples inside
     // this normalized rectangle also fill focusBins (1/255 resolution).
     float focusX0 = 0.0f, focusY0 = 0.0f, focusX1 = 0.0f, focusY1 = 0.0f;
+    // WB sampler: when sampleX1 > sampleX0 and sampleY1 > sampleY0, the
+    // unclipped input RGB inside this normalized rectangle is summed into
+    // wbSampleSum/wbSampleCount (1/255 resolution). Rawr 17U fork.
+    float sampleX0 = 0.0f, sampleY0 = 0.0f, sampleX1 = 0.0f, sampleY1 = 0.0f;
 };
 
 struct DisplayWaveformRecordInfo {

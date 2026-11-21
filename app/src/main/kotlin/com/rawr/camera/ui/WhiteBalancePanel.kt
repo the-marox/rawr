@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import com.rawr.camera.architecture.CaptureDispatch
 import com.rawr.camera.architecture.SetWhiteBalanceMode
 import com.rawr.camera.architecture.SetWhiteBalanceTempTint
+import com.rawr.camera.architecture.ToggleWhiteBalancePick
 import com.rawr.camera.model.CaptureUiState
 import com.rawr.camera.model.Orientation
 import com.rawr.camera.model.WhiteBalanceMode
@@ -84,6 +85,22 @@ internal fun WhiteBalancePanel(state: CaptureUiState, dispatch: CaptureDispatch,
                         .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(CaptureDimens.TopBarPaletteInnerGap)
             ) {
+                // WB sampler (Rawr 17U fork): arms the next viewfinder tap to
+                // neutralise that area and switch to Manual, then closes the panel.
+                SmallChoice(
+                    label = if (state.whiteBalancePickArmed) "PICK: TAP VIEW" else "PICK NEUTRAL",
+                    active = state.whiteBalancePickArmed,
+                    enabled = state.capabilities.manualWhiteBalanceSupported,
+                    testTag = CaptureTestTags.whiteBalance("Pick"),
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .height(CaptureDimens.TopBarPaletteMinorChoiceHeight)
+                            .semantics { contentDescription = "Pick white balance from the viewfinder" }
+                ) {
+                    haptics.selection()
+                    dispatch(ToggleWhiteBalancePick)
+                }
                 orderedModes.chunked(2).forEach { row ->
                     Row(
                         Modifier.fillMaxWidth(),

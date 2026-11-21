@@ -293,6 +293,9 @@ void setExposureCompensationSteps(EngineHandle h, int32_t v) noexcept {
 void setSpotAeTarget(EngineHandle h, bool active, float x, float y) noexcept {
     if (h) engine(h)->setSpotAeDisplay(active, x, y);
 }
+void pickWhiteBalance(EngineHandle h, float x, float y) noexcept {
+    if (h) engine(h)->pickWhiteBalanceDisplay(x, y);
+}
 void setFocusMode(EngineHandle h, int v, float x, float y, uint64_t requestId) noexcept {
     if (h) engine(h)->setFocusMode(v, x, y, requestId);
 }

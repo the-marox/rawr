@@ -4,6 +4,26 @@ Fork of [Rawr](https://github.com/adityawarmanfw/rawr) for the Xiaomi 17 Ultra.
 Releases follow Ed's version: `0.5.1-17u.N`. Test work lands on `yuv-probe`
 first and moves to `xiaomi-17u` once verified.
 
+## Unreleased (`yuv-probe`, test builds)
+
+### White balance
+
+- WB sampler: WB panel > PICK NEUTRAL, then tap a white or grey area in the
+  viewfinder. Rawr measures that area (about 5% of the frame) in the scene
+  meter, before the render, and switches to Manual with the temperature and
+  tint that make it neutral; the sliders fine-tune from there. A second
+  pick refines from the current Manual values. Too dark or clipped areas are
+  ignored (logcat tag RawrWbPick). Asked for by Matt in the Rawr group.
+- Why: in Auto, Rawr renders with the white balance gains the camera HAL
+  gives third-party apps. Checked on a 17U DNG under warm indoor light: the
+  HAL neutral (R 0.567, B 0.601) was cooler than the light on a white wall
+  (R 0.634, B 0.531), so the wall came out cream/yellow. Matt measured the
+  same on a vivo X300 Ultra: Rawr about 100-300 K warmer than the stock app.
+- How: the scene meter (image_scopes scene_exposure shaders) also sums the
+  RGB inside a sample rectangle; the session turns the measured ratios into
+  a Manual temp/tint request on the camera controller.
+- Not yet checked on the 17U.
+
 ## 0.5.1-17u.4
 
 Ed's upstream #135 first, then this fork's work since 0.5.1-17u.3. Each

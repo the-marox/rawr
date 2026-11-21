@@ -142,6 +142,8 @@ class NativeCameraController {
     // into range and enters manual-gains mode.
     bool setWhiteBalanceMode(WhiteBalanceControlMode mode, int64_t requestId);
     void setWhiteBalanceTempTint(int32_t temperatureK, int32_t tint, int32_t editedAxes, int64_t requestId);
+    // WB sampler: change the rendered gains by ratioR/ratioB (green fixed), in Manual. Rawr 17U fork.
+    bool pickWhiteBalance(float ratioR, float ratioB);
     // Locked entry preserves the displayed coordinates while capturing the
     // live HAL gains baseline. Uses absolute gains when no HAL seed exists.
     void setWhiteBalanceLocked(int32_t temperatureK, int32_t tint, int64_t requestId);

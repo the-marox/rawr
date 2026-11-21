@@ -28,6 +28,7 @@ import com.rawr.camera.architecture.CaptureFilmEvent
 import com.rawr.camera.architecture.CaptureQuickEvent
 import com.rawr.camera.architecture.CloseFocusSelector
 import com.rawr.camera.architecture.FocusAt
+import com.rawr.camera.architecture.PickWhiteBalanceAt
 import com.rawr.camera.architecture.ToggleMonitorPanel
 import com.rawr.camera.architecture.ToggleWhiteBalancePanel
 import com.rawr.camera.model.*
@@ -113,7 +114,7 @@ internal fun CaptureViewfinder(
                                     change.consume()
                                 }
                             )
-                        }.pointerInput(state.orientation, state.exposureControl.mode) {
+                        }.pointerInput(state.orientation, state.exposureControl.mode, state.whiteBalancePickArmed) {
                             detectTapGestures(
                                 onTap = { offset ->
                                     if (quickPanelOpen) {
@@ -122,7 +123,8 @@ internal fun CaptureViewfinder(
                                     }
                                     if (viewfinderSize.width > 0 && viewfinderSize.height > 0) {
                                         haptics.selection()
-                                        dispatch(FocusAt(offset.toNormalized(viewfinderSize)))
+                                        val point = offset.toNormalized(viewfinderSize)
+                                        dispatch(if (state.whiteBalancePickArmed) PickWhiteBalanceAt(point) else FocusAt(point))
                                     }
                                 },
                                 onLongPress = { offset ->
@@ -142,6 +144,17 @@ internal fun CaptureViewfinder(
         )
 
         ScopeLayer(state, dispatch, preview)
+        if (state.whiteBalancePickArmed) {
+            androidx.compose.material3.Text(
+                text = "Tap a white or grey area to set the white balance",
+                color = Color.White,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 56.dp)
+                    .background(Color(0x99000000))
+                    .padding(horizontal = 10.dp, vertical = 6.dp)
+            )
+        }
         Box(Modifier.matchParentSize().then(if (popupOpen) Modifier else Modifier.zIndex(2f))) {
             if (preview.nativeContent) preview.faceOverlay() else FaceBoxes(state.faceDetections)
             AfTarget(state, dispatch)

@@ -1723,6 +1723,16 @@ struct NativeCameraController::Impl final : CameraEventSink {
              " accepted=" + (accepted ? "true" : "false"));
         if (accepted) submitRepeatingLocked();
     }
+    bool pickWhiteBalance(float ratioR, float ratioB) {
+        std::lock_guard<std::mutex> lock(mutex);
+        const bool accepted = requestWhiteBalancePick(control, ratioR, ratioB);
+        diag("CAMERA_CONTROL_REQUEST wbPick ratioR=" + std::to_string(ratioR) + " ratioB=" + std::to_string(ratioB) +
+             " tempK=" + std::to_string(control.requestedWhiteBalanceTemperatureK) +
+             " tint=" + std::to_string(control.requestedWhiteBalanceTint) +
+             " accepted=" + (accepted ? "true" : "false"));
+        if (accepted) submitRepeatingLocked();
+        return accepted;
+    }
     void setWhiteBalanceLockedValue(int32_t temperatureK, int32_t tint, int64_t requestId) {
         std::lock_guard<std::mutex> lock(mutex);
         const bool accepted = requestWhiteBalanceLocked(control, temperatureK, tint, requestId);
@@ -2239,6 +2249,9 @@ bool NativeCameraController::setWhiteBalanceMode(WhiteBalanceControlMode mode, i
 void NativeCameraController::setWhiteBalanceTempTint(int32_t temperatureK, int32_t tint, int32_t editedAxes,
                                                      int64_t requestId) {
     impl_->setWhiteBalanceTempTint(temperatureK, tint, editedAxes, requestId);
+}
+bool NativeCameraController::pickWhiteBalance(float ratioR, float ratioB) {
+    return impl_->pickWhiteBalance(ratioR, ratioB);
 }
 void NativeCameraController::setWhiteBalanceLocked(int32_t temperatureK, int32_t tint, int64_t requestId) {
     impl_->setWhiteBalanceLockedValue(temperatureK, tint, requestId);

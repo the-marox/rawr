@@ -60,6 +60,15 @@ object CaptureReducer {
             )
         }
 
+        ToggleWhiteBalancePick -> {
+            state.copy(
+                whiteBalancePickArmed = !state.whiteBalancePickArmed,
+                whiteBalancePanelOpen = false,
+                monitorPanelOpen = false,
+                focus = state.focus.copy(selectorOpen = false)
+            )
+        }
+
         CloseTopBarPanels -> {
             state.copy(monitorPanelOpen = false, whiteBalancePanelOpen = false)
         }

@@ -310,6 +310,7 @@ class NativePreviewEngine {
     external fun setWhiteBalanceMode(handle: Long, mode: Int, requestId: Long)
 
     external fun setWhiteBalanceTempTint(handle: Long, temperatureK: Int, tint: Int, editedAxes: Int, requestId: Long)
+    external fun pickWhiteBalance(handle: Long, x: Float, y: Float)
 
     external fun setWhiteBalanceLocked(handle: Long, temperatureK: Int, tint: Int, requestId: Long)
 

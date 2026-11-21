@@ -151,6 +151,28 @@ std::string SessionEngine::faceDetectionsDisplaySnapshot() {
     s << ']';
     return s.str();
 }
+void SessionEngine::pickWhiteBalanceDisplay(float x, float y) {
+    std::optional<rawrcam::geometry::NormalizedPoint> point;
+    {
+        std::lock_guard<std::mutex> lock(mu_);
+        if (!realtime_.configured() || !swapchainRenderer_.ready()) return;
+        const int presentationRotation =
+            (realtime_.sensorOrientationDegrees() - realtime_.displayRotationDegrees() + 360) % 360;
+        point = rawrcam::geometry::displayToSource(
+            x, y, realtime_.previewWidth(), realtime_.previewHeight(), swapchainRenderer_.extent().width,
+            swapchainRenderer_.extent().height, presentationRotation, previewVideoCropRectLocked());
+        if (!point) return;
+    }
+    point = throughLensWarp(*point, swapchainRenderer_.presentedLensMirror(),
+                            swapchainRenderer_.presentedLensWarp());
+    if (!point) return;
+    std::lock_guard<std::mutex> lock(wbPickMutex_);
+    wbPickPending_ = true;
+    wbPickX_ = point->x;
+    wbPickY_ = point->y;
+    wbPickFramesLeft_ = 30;  // ~1 s of metered frames to find enough unclipped samples
+}
+
 void SessionEngine::setSpotAeDisplay(bool active, float x, float y) {
     if (!active) {
         if (cameraControls_.controller()) {

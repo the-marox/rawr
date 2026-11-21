@@ -31,7 +31,7 @@ enum SetKind : std::uint32_t {
     SceneReduce
 };
 constexpr VkDeviceSize kExposureScratchBytes = 16ull * 260ull * 4ull;
-constexpr VkDeviceSize kSceneScratchBytes = 16ull * (3ull * kSceneExposureBins + 8ull) * 4ull;
+constexpr VkDeviceSize kSceneScratchBytes = 16ull * (3ull * kSceneExposureBins + 12ull) * 4ull;
 constexpr VkDeviceSize kVecScratchBytes = static_cast<VkDeviceSize>(detail::kVectorScratchBytes);
 constexpr std::uint32_t kMaxDisplayWidth = (std::numeric_limits<std::uint32_t>::max() - 511u) / 512u;
 constexpr std::uint32_t kMaxDisplayHeight = std::numeric_limits<std::uint32_t>::max() / 64u;
@@ -200,8 +200,9 @@ struct SceneMeasurePush {
     std::uint32_t p0;
     float invCeilR, invCeilG, invCeilB;
     std::uint32_t focus;
+    std::uint32_t sample;  // WB sampler rectangle, packed like focus (Rawr 17U fork)
 };
-static_assert(sizeof(SceneMeasurePush) == 48);
+static_assert(sizeof(SceneMeasurePush) == 52);
 // Measure/reduce pipeline layouts: the scene meter's push block is the largest.
 constexpr std::uint32_t kMeasurePushBytes = sizeof(SceneMeasurePush);
 struct WaveMeasurePush {
@@ -653,7 +654,8 @@ void ImageScopes::recordSceneExposureStats(const SceneExposureStatsRecordInfo& i
     Impl::computeReuseBarrier(i.commandBuffer, scratch.b, scratch.size);
     Impl::computeReuseBarrier(i.commandBuffer, out.b, out.size);
     auto ms = impl_->bindMeasure(i.frameSlot, SceneMeasure, i.input.view, i.input.layout, scratch);
-    const float rects[8]{i.spotX0, i.spotY0, i.spotX1, i.spotY1, i.focusX0, i.focusY0, i.focusX1, i.focusY1};
+    const float rects[12]{i.spotX0,  i.spotY0,  i.spotX1,  i.spotY1,  i.focusX0,  i.focusY0,
+                          i.focusX1, i.focusY1, i.sampleX0, i.sampleY0, i.sampleX1, i.sampleY1};
     for (float v : rects)
         if (!std::isfinite(v)) throw std::invalid_argument("image_scopes: scene spot/focus must be finite");
     // Packed 8-bit x0,y0,x1,y1 (floor/ceil so a rectangle never shrinks to nothing).
@@ -665,6 +667,7 @@ void ImageScopes::recordSceneExposureStats(const SceneExposureStatsRecordInfo& i
     };
     const std::uint32_t spotPacked = pack(i.spotX0, i.spotY0, i.spotX1, i.spotY1);
     const std::uint32_t focusPacked = pack(i.focusX0, i.focusY0, i.focusX1, i.focusY1);
+    const std::uint32_t samplePacked = pack(i.sampleX0, i.sampleY0, i.sampleX1, i.sampleY1);
     const auto weighting = static_cast<std::uint32_t>(i.weighting);
     if (weighting > 2u) throw std::invalid_argument("image_scopes: scene weighting must be 0..2");
     float invCeil[3]{};
@@ -676,7 +679,8 @@ void ImageScopes::recordSceneExposureStats(const SceneExposureStatsRecordInfo& i
     // Block size in the low byte, weighting above it.
     SceneMeasurePush mp{i.input.width,    i.input.height,   i.sampleBlockSize | (weighting << 8), i.lumaWeights[0],
                         i.lumaWeights[1], i.lumaWeights[2], i.clipLuma,        spotPacked,
-                        invCeil[0],       invCeil[1],       invCeil[2],        focusPacked};
+                        invCeil[0],       invCeil[1],       invCeil[2],        focusPacked,
+                        samplePacked};
     vkCmdBindPipeline(i.commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, impl_->sceneMeasure);
     vkCmdBindDescriptorSets(i.commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, impl_->measurePl, 0, 1, &ms, 0, nullptr);
     vkCmdPushConstants(i.commandBuffer, impl_->measurePl, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(mp), &mp);

@@ -37,6 +37,9 @@ data object ToggleMonitorPanel : PresentationCaptureAction
 
 data object ToggleWhiteBalancePanel : PresentationCaptureAction
 
+/** Arms (or disarms) the WB sampler and closes the WB panel so the viewfinder takes the tap. */
+data object ToggleWhiteBalancePick : PresentationCaptureAction
+
 data object CloseTopBarPanels : PresentationCaptureAction
 
 data class SetControlSurfaceStyle(val style: ControlSurfaceStyle) : PresentationCaptureAction
@@ -166,6 +169,9 @@ data class SetManualFocus(val normalized: Float) : ApplicationCaptureAction
 data class ApplyCameraCapabilities(val capabilities: CameraCapabilities) : ApplicationCaptureAction
 
 data class FocusAt(val point: NormalizedPoint) : ApplicationCaptureAction
+
+/** WB sampler: neutralise the area around this viewfinder point and switch to Manual WB. */
+data class PickWhiteBalanceAt(val point: NormalizedPoint) : ApplicationCaptureAction
 
 data object Refocus : ApplicationCaptureAction
 

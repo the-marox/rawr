@@ -42,6 +42,7 @@ class SessionFrameCallbacks final : public pipeline::FrameLifecyclePort,
     std::array<float, 4> sceneMeteringSpot() override;
     uint32_t sceneMeteringWeighting() override;
     std::array<float, 4> sceneMeteringFocus() override;
+    std::array<float, 4> sceneWbSample() override;
     std::optional<SceneKeyFeedback> updateSceneKey(std::uint32_t slotIndex,
                                                    const rawrcam::metadata::FrameMetadataSnapshot& metadata,
                                                    std::uint64_t timestampNs, bool recording) override;
@@ -77,6 +78,8 @@ class SessionFrameCallbacks final : public pipeline::FrameLifecyclePort,
     rawrcam::color::rawr_ae::Controller rawrAe_;
     std::uint64_t rawrAeCameraGeneration_ = 0;
     bool rawrAeEngaged() const;
+    // WB sampler: turns the measured sample into a Manual WB request. Rawr 17U fork.
+    void updateWbPick(const image_scopes::SceneExposureStatsData* stats);
     void updateRawrAe(const image_scopes::SceneExposureStatsData* stats, float clipLuma,
                       const rawrcam::metadata::FrameMetadataSnapshot& metadata, std::uint64_t timestampNs);
 };

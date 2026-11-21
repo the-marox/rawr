@@ -46,7 +46,8 @@ class MonitorRecorder final {
                              uint32_t height, const std::array<float, 3>& lumaWeights, float clipLuma,
                              const std::array<float, 4>& spot = {}, uint32_t weighting = 0,
                              const std::array<float, 3>& channelCeilings = {},
-                             const std::array<float, 4>& focus = {}) const;
+                             const std::array<float, 4>& focus = {},
+                             const std::array<float, 4>& sample = {}) const;
     void present(const MonitorFrame& frame, uint32_t cropX = 0, uint32_t cropY = 0, uint32_t cropW = 0,
                  uint32_t cropH = 0) const;
     void recordVideoScopes(VkCommandBuffer command, uint32_t frameSlot, VkImageView monitorView, VkImage monitorImage,

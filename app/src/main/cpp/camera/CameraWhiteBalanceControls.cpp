@@ -103,6 +103,35 @@ bool requestWhiteBalanceMode(CameraControlState& state, WhiteBalanceControlMode 
     return true;
 }
 
+bool requestWhiteBalancePick(CameraControlState& state, float ratioR, float ratioB) {
+    if (!state.capabilities.manualGainsSupported) return false;
+    if (!(ratioR > 0.0f) || !(ratioB > 0.0f) || !std::isfinite(ratioR) || !std::isfinite(ratioB)) return false;
+    int32_t baseTemp = state.requestedWhiteBalanceTemperatureK;
+    int32_t baseTint = state.requestedWhiteBalanceTint;
+    if (state.whiteBalanceMode != WhiteBalanceControlMode::ManualTempTint) {
+        const auto estimate = captureEntry(state);
+        if (!estimate) return false;
+        baseTemp = estimate->temperatureK;
+        baseTint = estimate->tint;
+    }
+    // Manual renders entry x forward(new) / forward(entry): asking forward(new)
+    // = forward(current) x ratio moves the rendered gains by the ratio.
+    const auto fwd = whiteBalanceGainsForTempTint(baseTemp, baseTint);
+    float r = fwd[0] * std::clamp(ratioR, 0.33f, 3.0f);
+    float g = fwd[1];
+    float b = fwd[3] * std::clamp(ratioB, 0.33f, 3.0f);
+    const float lowest = std::min({r, g, b});
+    if (!(lowest > 0.0f)) return false;
+    r /= lowest;
+    g /= lowest;
+    b /= lowest;
+    const auto tt = whiteBalanceTempTintForGains(r, g, b);
+    state.requestedWhiteBalanceTemperatureK = tt[0];
+    state.requestedWhiteBalanceTint = tt[1];
+    state.whiteBalanceMode = WhiteBalanceControlMode::ManualTempTint;
+    return true;
+}
+
 bool requestWhiteBalanceTempTint(CameraControlState& state, int32_t temperatureK, int32_t tint, int32_t editedAxes,
                                  int64_t requestId) {
     state.whiteBalanceRequestId = std::max(state.whiteBalanceRequestId, requestId);

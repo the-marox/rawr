@@ -739,6 +739,9 @@ class RawPreviewCoordinator(application: Application) : AutoCloseable {
 
     fun focusAt(x: Float, y: Float, requestId: Long) = postNative { native.focusAt(nativeHandle, x, y, requestId) }
 
+    /** WB sampler at a viewfinder point (display-normalized); native measures it and sets Manual WB. */
+    fun pickWhiteBalance(x: Float, y: Float) = postNative { native.pickWhiteBalance(nativeHandle, x, y) }
+
     /** Back to full auto: drops the tap-AF region/trigger so continuous AF resumes. */
     fun clearFocus(requestId: Long) = postNative { native.clearTapAf(nativeHandle, requestId) }
 

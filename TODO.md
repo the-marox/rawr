@@ -39,6 +39,18 @@ Open work on this fork. Results of what is done are in [CHANGELOG.md](CHANGELOG.
 - Sensor gaps with OIS off: check whether they change.
 - The app's main thread uses ~24% of a core while recording.
 
+## White balance
+
+- Auto WB under warm indoor light comes out warm/yellow: the HAL's AWB for
+  third-party apps (17U DNG: HAL neutral R 0.567 B 0.601 vs the wall's
+  R 0.634 B 0.531; vivo X300 Ultra 100-300 K warmer than stock per Matt).
+- Optional Rawr-side Auto correction (beta, off by default): estimate the
+  white from bright near-neutral RAW samples and blend it with the HAL's.
+  Prototype on that DNG moved the wall from R/G 1.08 B/G 0.91 to 1.02/0.94.
+  Needs a DNG test set first: warm room with and without a white sheet,
+  daylight, wood/orange-dominant scene, skin under warm light, sunset.
+- Matching WB between lenses when locked.
+
 ## Photo
 
 - Tele photos looked darker than the viewfinder before upstream #135; one

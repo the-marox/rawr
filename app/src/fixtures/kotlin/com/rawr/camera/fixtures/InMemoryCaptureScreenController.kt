@@ -6,6 +6,7 @@ import com.rawr.camera.architecture.ApplyCameraCapabilities
 import com.rawr.camera.architecture.SetAgxControl
 import com.rawr.camera.architecture.SetRenderExposureTenths
 import com.rawr.camera.architecture.CancelSpotAe
+import com.rawr.camera.architecture.PickWhiteBalanceAt
 import com.rawr.camera.architecture.CaptureAction
 import com.rawr.camera.architecture.CaptureReducer
 import com.rawr.camera.architecture.CaptureScreenController
@@ -122,6 +123,10 @@ class InMemoryCaptureScreenController(
 
             is SetWhiteBalanceTempTint -> {
                 update { CaptureTransitions.setWhiteBalanceTempTint(it, action.temperatureK, action.tint) }
+            }
+
+            is PickWhiteBalanceAt -> {
+                update { it.copy(whiteBalancePickArmed = false) }
             }
 
             is LockWhiteBalance -> {

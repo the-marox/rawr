@@ -958,6 +958,10 @@ extern "C" JNIEXPORT void JNICALL Java_com_rawr_camera_integration_NativePreview
     JNIEnv*, jobject, jlong h, jint temperatureK, jint tint, jlong requestId) {
     rawrcam::session::setWhiteBalanceLocked(handle(h), temperatureK, tint, requestId);
 }
+extern "C" JNIEXPORT void JNICALL Java_com_rawr_camera_integration_NativePreviewEngine_pickWhiteBalance(
+    JNIEnv*, jobject, jlong h, jfloat x, jfloat y) {
+    rawrcam::session::pickWhiteBalance(handle(h), static_cast<float>(x), static_cast<float>(y));
+}
 extern "C" JNIEXPORT void JNICALL Java_com_rawr_camera_integration_NativePreviewEngine_setSpotAeTarget(
     JNIEnv*, jobject, jlong h, jboolean active, jfloat x, jfloat y) {
     rawrcam::session::setSpotAeTarget(handle(h), active == JNI_TRUE, static_cast<float>(x), static_cast<float>(y));

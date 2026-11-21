@@ -14,6 +14,8 @@
 // Every sample, spot or not, adds its quantised log2 luma to a whole-frame
 // sum (the spot's night look judges the scene). Samples inside the focus
 // rectangle (packed like the spot, nonzero) also fill focus luma bins.
+// WB sampler (Rawr 17U fork): unclipped samples inside the sample rectangle
+// add their RGB (x SAMPLE_SCALE) to three sums and a count.
 layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
 layout(binding = 0, rgba16f) uniform readonly image2D src;
 layout(std430, binding = 1) buffer Partial { uint data[]; }
@@ -22,8 +24,9 @@ partial;
 const uint PARTITIONS = 16u;
 const uint BIN_COUNT = 256u;
 // total weight, samples, clipped weight, reserved, frame log sum, frame
-// samples, focus samples, reserved
-const uint COUNTERS = 8u;
+// samples, focus samples, reserved, sample R, G, B sums, sample count
+const uint COUNTERS = 12u;
+const float SAMPLE_SCALE = 1024.0;
 const uint CHANNEL = BIN_COUNT;
 const uint FOCUS = 2u * BIN_COUNT;
 const uint STRIDE = 3u * BIN_COUNT + COUNTERS;
@@ -48,6 +51,7 @@ layout(push_constant) uniform PC {
     float invCeilG;
     float invCeilB;
     uint focus;
+    uint wbSample;
 }
 pc;
 
@@ -102,6 +106,13 @@ void main() {
             float frameLog = frameLuma > 0.0 ? (log2(frameLuma) - FRAME_LOG_MIN) * FRAME_LOG_SCALE : 0.0;
             atomicAdd(counters[4], uint(clamp(frameLog + 0.5, 0.0, FRAME_LOG_MAX)));
             atomicAdd(counters[5], 1u);
+            if (pc.wbSample != 0u && !clipped && insideRect(pc.wbSample, x, y)) {
+                vec3 s = clamp(c, vec3(0.0), vec3(16.0)) * SAMPLE_SCALE;
+                atomicAdd(counters[8], uint(s.r + 0.5));
+                atomicAdd(counters[9], uint(s.g + 0.5));
+                atomicAdd(counters[10], uint(s.b + 0.5));
+                atomicAdd(counters[11], 1u);
+            }
             if (pc.focus != 0u && insideRect(pc.focus, x, y)) {
                 atomicAdd(bins[FOCUS + (clipped ? BIN_COUNT - 1u : sceneBin(luma))], 1u);
                 atomicAdd(counters[6], 1u);

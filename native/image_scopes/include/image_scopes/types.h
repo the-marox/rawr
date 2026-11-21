@@ -83,8 +83,13 @@ struct SceneExposureStatsData {
     // Luma bins of the samples inside the focus rectangle only (weight 1,
     // spot or not): the meter blends them in at a chosen share.
     std::uint32_t focusBins[kSceneExposureBins]{};
+    // WB sampler (Rawr 17U fork): sum of the unclipped input RGB inside the
+    // sample rectangle, fixed point (x kSceneSampleScale), and its count.
+    std::uint32_t wbSampleSum[3]{};
+    std::uint32_t wbSampleCount = 0;
 };
-static_assert(sizeof(SceneExposureStatsData) == (3u * kSceneExposureBins + 8u) * 4u);
+static_assert(sizeof(SceneExposureStatsData) == (3u * kSceneExposureBins + 12u) * 4u);
+inline constexpr float kSceneSampleScale = 1024.0f;
 
 // Mean log2 luma of the whole frame.
 inline std::optional<float> sceneFrameLogMeanEv(const SceneExposureStatsData& s) noexcept {

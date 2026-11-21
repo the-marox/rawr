@@ -15,11 +15,13 @@ layout(std430, binding = 1) buffer Out {
     uint focusSamples;
     uint reserved2;
     uint focusBins[256];
+    uint wbSampleSum[3];
+    uint wbSampleCount;
 }
 outb;
 const uint PARTITIONS = 16u;
 const uint BIN_COUNT = 256u;
-const uint COUNTERS = 8u;
+const uint COUNTERS = 12u;
 const uint STRIDE = 3u * BIN_COUNT + COUNTERS;
 
 void main() {
@@ -44,5 +46,7 @@ void main() {
         if (i == 5u) outb.frameSamples = c;
         if (i == 6u) outb.focusSamples = c;
         if (i == 7u) outb.reserved2 = 0u;
+        if (i >= 8u && i <= 10u) outb.wbSampleSum[i - 8u] = c;
+        if (i == 11u) outb.wbSampleCount = c;
     }
 }

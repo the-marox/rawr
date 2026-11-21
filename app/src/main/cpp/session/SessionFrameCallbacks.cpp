@@ -1,5 +1,6 @@
 // Adapts narrow frame ports to session-owned domain collaborators.
 
+#include <android/log.h>
 #include <sys/system_properties.h>
 
 #include <algorithm>
@@ -221,7 +222,64 @@ std::array<float, 4> SessionFrameCallbacks::sceneMeteringFocus() {
     return *context.focusArea;
 }
 
+namespace {
+// WB sampler trace: logcat (tag RawrWbPick) and the session diagnostics.
+void wbPickLog(SessionEngine* engine, const std::string& line) {
+    __android_log_print(ANDROID_LOG_INFO, "RawrWbPick", "%s", line.c_str());
+    engine->recordDiagnosticLine(line);
+}
+}  // namespace
+
+std::array<float, 4> SessionFrameCallbacks::sceneWbSample() {
+    std::lock_guard<std::mutex> lock(engine_->wbPickMutex_);
+    if (!engine_->wbPickPending_) return {};
+    // About 5% of each dimension around the tapped point.
+    constexpr float kHalf = 0.025f;
+    const float cx = std::clamp(engine_->wbPickX_, kHalf, 1.0f - kHalf);
+    const float cy = std::clamp(engine_->wbPickY_, kHalf, 1.0f - kHalf);
+    return {cx - kHalf, cy - kHalf, cx + kHalf, cy + kHalf};
+}
+
+void SessionFrameCallbacks::updateWbPick(const image_scopes::SceneExposureStatsData* stats) {
+    float ratioR = 0.0f, ratioB = 0.0f;
+    {
+        std::lock_guard<std::mutex> lock(engine_->wbPickMutex_);
+        if (!engine_->wbPickPending_) return;
+        // The meter input is camera RGB after the frame's WB gains: equal
+        // channels there are neutral in the render. Needs enough unclipped
+        // samples with signal; otherwise try the next frames, then give up.
+        constexpr uint32_t kMinSamples = 16;
+        const bool usable = stats && stats->wbSampleCount >= kMinSamples && stats->wbSampleSum[1] > 0u;
+        if (!usable) {
+            if (--engine_->wbPickFramesLeft_ <= 0) {
+                engine_->wbPickPending_ = false;
+                wbPickLog(engine_, "WB_PICK failed: no usable samples (too dark or clipped)");
+            }
+            return;
+        }
+        const double r = double(stats->wbSampleSum[0]), g = double(stats->wbSampleSum[1]), b = double(stats->wbSampleSum[2]);
+        const double meanG = g / double(stats->wbSampleCount) / double(image_scopes::kSceneSampleScale);
+        if (!(r > 0.0) || !(b > 0.0) || meanG < 1.0e-3) {
+            if (--engine_->wbPickFramesLeft_ <= 0) {
+                engine_->wbPickPending_ = false;
+                wbPickLog(engine_, "WB_PICK failed: area too dark");
+            }
+            return;
+        }
+        ratioR = float(g / r);
+        ratioB = float(g / b);
+        engine_->wbPickPending_ = false;
+        wbPickLog(engine_, "WB_PICK samples=" + std::to_string(stats->wbSampleCount) + " meanRGB/G=" +
+                      std::to_string(r / g) + "," + std::to_string(b / g));
+    }
+    if (auto* controller = engine_->cameraControls_.controller()) controller->pickWhiteBalance(ratioR, ratioB);
+}
+
 bool SessionFrameCallbacks::sceneKeyMeteringEnabled() {
+    {
+        std::lock_guard<std::mutex> lock(engine_->wbPickMutex_);
+        if (engine_->wbPickPending_) return true;
+    }
     return rawrAeEngaged() || (engine_->autoKeyMode() != rawrcam::color::AutoKeyMode::Off &&
                                                    !engine_->sceneReferredRender_.load(std::memory_order_relaxed));
 }
@@ -233,6 +291,7 @@ std::optional<rawrcam::pipeline::FrameDiagnosticsPort::SceneKeyFeedback> Session
     static_assert(image_scopes::kSceneExposureMinEv == rawrcam::color::kSceneKeyMinEv);
     static_assert(image_scopes::kSceneExposureMaxEv == rawrcam::color::kSceneKeyMaxEv);
     const auto stats = engine_->monitoringCoordinator_.scopes().consumeSceneExposure(slotIndex);
+    updateWbPick(stats ? &*stats : nullptr);
     updateRawrAe(stats ? &*stats : nullptr, engine_->monitoringCoordinator_.scopes().sceneClipLuma(slotIndex), metadata,
                  timestampNs);
     const auto mode = engine_->autoKeyMode();

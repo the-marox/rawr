@@ -102,6 +102,7 @@ void setManualExposureTimeNs(EngineHandle handle, int64_t value) noexcept;
 void setManualSensitivity(EngineHandle handle, int32_t value) noexcept;
 void setExposureCompensationSteps(EngineHandle handle, int32_t value) noexcept;
 void setSpotAeTarget(EngineHandle handle, bool active, float x, float y) noexcept;
+void pickWhiteBalance(EngineHandle handle, float x, float y) noexcept;
 void setFocusMode(EngineHandle handle, int mode, float x, float y, uint64_t requestId) noexcept;
 void focusAt(EngineHandle handle, float x, float y, uint64_t requestId) noexcept;
 void clearTapAf(EngineHandle handle, uint64_t requestId) noexcept;

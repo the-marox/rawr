@@ -25,5 +25,11 @@ bool requestWhiteBalanceMode(CameraControlState& state, WhiteBalanceControlMode 
 bool requestWhiteBalanceTempTint(CameraControlState& state, int32_t temperatureK, int32_t tint, int32_t editedAxes,
                                  int64_t requestId);
 bool requestWhiteBalanceLocked(CameraControlState& state, int32_t temperatureK, int32_t tint, int64_t requestId);
+// WB sampler (Rawr 17U fork): the rendered gains should change by ratioR and
+// ratioB (green fixed) to neutralise the sampled area. Enters manual from the
+// current white (auto: the live HAL entry; manual: the requested temp/tint),
+// so the result lands where the sliders can fine-tune it. Keeps the request id
+// (the UI follows the snapshot, as for its own requests).
+bool requestWhiteBalancePick(CameraControlState& state, float ratioR, float ratioB);
 
 }  // namespace rawrcam::camera

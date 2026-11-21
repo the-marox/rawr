@@ -105,6 +105,8 @@ struct RawDevelopRecordInput {
     uint32_t sceneWeighting = 0;  // image_scopes::SceneWeighting
     // Focus area the meter also bins (normalized x0,y0,x1,y1; empty = none).
     std::array<float, 4> sceneFocus{};
+    // WB sampler rectangle the meter sums RGB in (normalized; empty = none). Rawr 17U fork.
+    std::array<float, 4> sceneSample{};
     // Undistort the viewfinder with the lens profile calibration (photo
     // Distortion correction setting), so framing matches the photo.
     bool distortionCorrectionEnabled = false;
@@ -138,7 +140,8 @@ class RawDevelopRecorder final {
     void recordSceneExposure(VkCommandBuffer command, uint32_t frameSlot, VkImageView view, uint32_t width,
                              uint32_t height, const std::array<float, 9>& sensorToSrgb,
                              const std::array<float, 4>& wb, const std::array<float, 4>& spot = {},
-                             uint32_t weighting = 0, const std::array<float, 4>& focus = {}) const;
+                             uint32_t weighting = 0, const std::array<float, 4>& focus = {},
+                             const std::array<float, 4>& sample = {}) const;
     void recordVideoScopes(VkCommandBuffer command, uint32_t frameSlot, VkImageView monitorView, VkImage monitorImage,
                            uint32_t width, uint32_t height, int sensorOrientationDegrees,
                            int deviceRotationDegrees, bool compute = true) const;

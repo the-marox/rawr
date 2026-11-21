@@ -112,6 +112,9 @@ class SessionEngine {
         return swapchainRenderer_.livePresentation();
     }
     void setSpotAeDisplay(bool active, float x, float y);
+    // WB sampler (Rawr 17U fork): measure the viewfinder area around (x, y)
+    // in the next metered frames and set Manual WB that neutralises it.
+    void pickWhiteBalanceDisplay(float x, float y);
     void setColorMode(const std::string& mode);
     void setCpuRawCopyProbeFrames(uint32_t frames);
     uint64_t requestRawStillCapture(rawrcam::encoding::dng::DngCaptureContext dngContext,
@@ -392,6 +395,12 @@ class SessionEngine {
     // curve snapshots are protected separately from the session mutex.
     std::atomic<int> autoKeyMode_{0};
     mutable std::mutex autoKeyMutex_;
+    // WB sampler request: sensor-normalized centre, pending until a metered
+    // frame measures it (or it gives up). Guarded by wbPickMutex_.
+    mutable std::mutex wbPickMutex_;
+    bool wbPickPending_ = false;
+    float wbPickX_ = 0.5f, wbPickY_ = 0.5f;
+    int wbPickFramesLeft_ = 0;
     tonemap::AdaptiveToneParams autoKeyCurve_{};
     // Image > Shadow Lift: photo local tone mapping shadows EV (0 = adaptive curve).
     std::atomic<float> localToneShadowsEv_{0.0f};
