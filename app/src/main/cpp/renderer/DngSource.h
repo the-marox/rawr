@@ -93,9 +93,14 @@ class DngSource {
     // read() may run on several binning workers: guards the lazy raw-cache
     // build and tinydng region decodes.
     std::mutex decodeMutex_;
+    // Auto layout on a DNG read through the raw cache: the block is found on
+    // the decoded raster when the cache is built (ensureRawCache).
+    bool detectPending_ = false;
     void ensureRawCache();
     std::vector<uint16_t> decodeRegion(uint32_t x, uint32_t y, uint32_t w, uint32_t h);
-    uint32_t detectBlock();
+    // From the full decoded raster when given, else from a region decode.
+    uint32_t detectBlock(const uint16_t* raster = nullptr);
+    void checkBlockGeometry() const;
 #ifndef NDEBUG
     std::vector<float> replayCfa_;
 #endif

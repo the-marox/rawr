@@ -256,19 +256,44 @@ DngSource::DngSource(const std::string& path, const CfaOverride& cfaOverride)
         }
         // Block mosaic: Rawr's own DNGs are always Bayer; others are checked
         // unless the editor chose the layout.
-        if (cfaOverride.layout == 0) {
-            block = rawr ? 1u : detectBlock();
-            cfaSource = rawr ? "tagged" : "detected";
+        if (cfaOverride.layout == 0 && !rawr && rawCacheRequired_) {
+            // Read through the raw cache (compressed or large strips): a region
+            // decode here would pull the whole image into tinydng's capped
+            // memory (an uncompressed 50 MP strip DNG fails its 128 MiB cap).
+            // The block is found on the full decode that builds the cache,
+            // named -auto<n>; an existing one already says it.
+            cfaSource = "detected";
+            bool cached = false;
+            const size_t bytes = size_t(p.width) * p.height * sizeof(uint16_t);
+            for (uint32_t n : {1u, 2u, 4u}) {
+                const std::string candidate = rawCachePath_ + "-auto" + std::to_string(n);
+                std::error_code ec;
+                if (std::filesystem::exists(candidate, ec) && std::filesystem::file_size(candidate, ec) == bytes) {
+                    block = n;
+                    rawCachePath_ = candidate;
+                    cached = true;
+                    break;
+                }
+            }
+            if (!cached) {
+                detectPending_ = true;
+                ensureRawCache();
+            }
+            checkBlockGeometry();
         } else {
-            block = cfaOverride.layout;
-            cfaSource = "override";
-        }
-        if (block > 1) {
-            if ((p.width % (2 * block)) || (p.height % (2 * block)))
-                throw std::runtime_error("DNG size is not a whole number of CFA blocks");
-            // The remosaic needs the whole raster: it runs once into the raw cache.
-            rawCacheRequired_ = true;
-            if (cfaOverride.layout == 0) rawCachePath_ += "-auto" + std::to_string(block);
+            if (cfaOverride.layout == 0) {
+                block = rawr ? 1u : detectBlock();
+                cfaSource = rawr ? "tagged" : "detected";
+            } else {
+                block = cfaOverride.layout;
+                cfaSource = "override";
+            }
+            if (block > 1) {
+                checkBlockGeometry();
+                // The remosaic needs the whole raster: it runs once into the raw cache.
+                rawCacheRequired_ = true;
+                if (cfaOverride.layout == 0) rawCachePath_ += "-auto" + std::to_string(block);
+            }
         }
     } catch (...) {
         tinydng_document_destroy(context_, document_);
@@ -294,7 +319,12 @@ void DngSource::ensureRawCache() {
         rawCache_ = static_cast<const uint16_t*>(mapped);
         rawCacheBytes_ = bytes;
     };
-    if (std::filesystem::exists(rawCachePath_) && std::filesystem::file_size(rawCachePath_) == bytes) {
+    if (detectPending_) {
+        // Builds before the CFA layout cached this DNG undetected under the
+        // plain name: drop it, the detected cache replaces it.
+        std::error_code ec;
+        std::filesystem::remove(rawCachePath_, ec);
+    } else if (std::filesystem::exists(rawCachePath_) && std::filesystem::file_size(rawCachePath_) == bytes) {
         mapFile(rawCachePath_);
         return;
     }
@@ -323,6 +353,12 @@ void DngSource::ensureRawCache() {
         if (decoded.width != image_->width || decoded.height != image_->height || decoded.bits_per_sample != 16 ||
             decoded.samples_per_pixel != 1)
             throw std::runtime_error("Invalid decoded DNG cache geometry");
+        if (detectPending_) {
+            block = detectBlock(static_cast<const uint16_t*>(mapped));
+            checkBlockGeometry();
+            rawCachePath_ += "-auto" + std::to_string(block);
+            detectPending_ = false;
+        }
         // A block mosaic becomes Bayer in the same block order here, so
         // every reader (demosaic, binning, meters) sees Bayer in `cfa`.
         if (block > 1)
@@ -393,19 +429,33 @@ std::vector<uint16_t> DngSource::decodeRegion(uint32_t x, uint32_t y, uint32_t w
 // Bayer raw the four sites of a 2x2 cell are different colours (R, G, G, B),
 // so their means differ; in a block mosaic of side n they are the same colour
 // and the difference appears between n x n blocks instead. 1 = Bayer.
-uint32_t DngSource::detectBlock() {
+void DngSource::checkBlockGeometry() const {
+    if (block > 1 && ((image_->width % (2 * block)) || (image_->height % (2 * block))))
+        throw std::runtime_error("DNG size is not a whole number of CFA blocks");
+}
+uint32_t DngSource::detectBlock(const uint16_t* raster) {
     const auto& p = *image_;
     const uint32_t side = std::min({1024u, p.width, p.height}) & ~15u;
     if (side < 64) return 1;
     const uint32_t x0 = ((p.width - side) / 2) & ~15u, y0 = ((p.height - side) / 2) & ~15u;
-    const auto px = decodeRegion(x0, y0, side, side);
+    std::vector<uint16_t> region;
+    const uint16_t* px;
+    size_t stride;
+    if (raster) {
+        px = raster + size_t(y0) * p.width + x0;
+        stride = p.width;
+    } else {
+        region = decodeRegion(x0, y0, side, side);
+        px = region.data();
+        stride = side;
+    }
     const double white = p.raw.white_level_present ? double(p.raw.white_level[0]) : double((1u << p.bits_per_sample) - 1);
     const double black0 = black[0];
     // Means per site of an 8x8 period (covers 2x2, 4x4 and 8x8 cells), clipped samples left out.
     double sum[8][8]{}, count[8][8]{};
     for (uint32_t y = 0; y < side; ++y)
         for (uint32_t x = 0; x < side; ++x) {
-            const double v = double(px[size_t(y) * side + x]);
+            const double v = double(px[size_t(y) * stride + x]);
             if (v >= black0 + 0.9 * (white - black0)) continue;
             sum[y & 7u][x & 7u] += v - black0;
             count[y & 7u][x & 7u] += 1;
