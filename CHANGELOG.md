@@ -78,6 +78,24 @@ first and moves to `xiaomi-17u` once verified.
   3-minute 4K60 take still dropped 7 frames at the start (2-4 before) and
   had 6 one-frame sensor gaps (2-3 before), at a higher GPU clock.
 
+### Renderer
+
+- Sensor CFA (RAW tab): how the DNG's colour filter array is read, saved
+  with that edit only. Layout Auto, Bayer, Quad Bayer 2x2 or 4x4 blocks;
+  order as tagged or RGGB, GRBG, GBRG, BGGR. Some apps write a sensor's
+  block mosaic tagged as 2x2 Bayer, which renders magenta: a 50 MP Xiaomi
+  15 Ultra DNG from Unspektrawesome holds a Quad Bayer (2x2 sites equal,
+  RRGG/RRGG/GGBB/GGBB in 4x4). Auto finds that from the data (Rawr's own
+  DNGs are always Bayer) and remosaics it to Bayer once, into the raw
+  cache, with the remosaic the camera already uses for block sensor modes
+  (CfaRemosaic.h). Checked off-device on that DNG: detection picks 2x2 with
+  a wide margin and the remosaiced raw renders with correct colour; a true
+  Bayer raw stays Bayer.
+- Optional Renderer icon in the app drawer (Renderer › options › Icon in
+  app drawer), for launchers that don't show app shortcuts. Off by default.
+  The Renderer now runs in its own task, so opening it from a launcher
+  doesn't bring up the camera.
+
 ## 0.5.1-17u.3
 
 Goal of this round: 4K60 10-bit recording without dropped frames on the 17U.

@@ -8,4 +8,5 @@
     <string name="renderer_title">Renderer</string>
     <string name="renderer_shortcut_short">Renderer</string>
     <string name="renderer_shortcut_long">Open Renderer</string>
+    <string name="renderer_launcher_label">Rawr Renderer</string>
 </resources>

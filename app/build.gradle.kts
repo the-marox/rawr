@@ -158,11 +158,13 @@ android {
         debug {
             // The id itself is set in androidComponents above (debugApplicationId).
             resValue("string", "app_name", "Rawr 17U Debug")
+            resValue("string", "renderer_launcher_label", "Rawr 17U Debug Renderer")
             // Native EXIF Software tag; must match BuildConfig.VERSION_NAME.
             externalNativeBuild { cmake { arguments += "-DRAWR_VERSION_FILE=${debugNativeVersionFile.absolutePath}" } }
         }
         release {
             resValue("string", "app_name", "Rawr 17U")
+            resValue("string", "renderer_launcher_label", "Rawr 17U Renderer")
             versionNameSuffix = "-17u"
             // Native EXIF Software tag; must match BuildConfig.VERSION_NAME (set in androidComponents above).
             externalNativeBuild { cmake { arguments += "-DRAWR_VERSION_NAME=${forkVersionName(requireNotNull(defaultConfig.versionName))}" } }
@@ -177,6 +179,7 @@ android {
             initWith(getByName("release"))
             applicationIdSuffix = ".benchmark"
             resValue("string", "app_name", "Rawr 17U Benchmark")
+            resValue("string", "renderer_launcher_label", "Rawr 17U Benchmark Renderer")
             signingConfig = signingConfigs.getByName("debug")
             matchingFallbacks += "release"
         }

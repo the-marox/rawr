@@ -176,6 +176,11 @@ internal class RendererViewModel(application: Application) : AndroidViewModel(ap
         store.updateAdaptiveToneMode(job.id, mode)
     }
 
+    fun setSourceCfa(job: RenderJob, cfa: RendererRecipe.SourceCfa) {
+        if (state.value.loading || store.busy.value) return
+        store.updateSourceCfa(job.id, cfa)
+    }
+
     fun setLocalTone(job: RenderJob, shadowsEv: Float) {
         if (state.value.loading || store.busy.value) return
         store.updateLocalTone(job.id, shadowsEv)

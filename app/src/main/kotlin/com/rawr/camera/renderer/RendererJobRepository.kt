@@ -85,6 +85,11 @@ internal class RendererJobRepository(private val context: Context, private val s
         val job = current(id)
         writeDraft(job.copy(draft = RendererRecipe.withAdaptiveToneMode(job.draft, mode)))
     }
+    fun updateSourceCfa(id: String, cfa: RendererRecipe.SourceCfa) {
+        draftWrites.remove(id)?.cancel()
+        val job = current(id)
+        writeDraft(job.copy(draft = RendererRecipe.withSourceCfa(job.draft, cfa)))
+    }
     fun updateLocalTone(id: String, shadowsEv: Float) {
         draftWrites.remove(id)?.cancel()
         val job = current(id)

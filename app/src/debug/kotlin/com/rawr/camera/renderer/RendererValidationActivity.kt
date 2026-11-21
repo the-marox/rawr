@@ -17,7 +17,7 @@ class RendererValidationActivity : Activity() {
             var handle = 0L
             val report = JSONObject()
             try {
-                handle = RendererNative.open(File(dir, "input.dng").absolutePath, filesDir.absolutePath, applicationInfo.nativeLibraryDir, assets)
+                handle = RendererNative.open(File(dir, "input.dng").absolutePath, filesDir.absolutePath, applicationInfo.nativeLibraryDir, assets, 0, -1)
                 report.put("metadata", RendererNative.inspect(handle))
                 val recipe = RendererRecipe.encode(RendererRecipe.neutral(SettingsCatalog.initialState().values))
                 val started = System.currentTimeMillis()
@@ -44,7 +44,7 @@ class RendererValidationActivity : Activity() {
                 RendererNative.close(handle); handle = 0L
                 val rawr = File(dir, "rawr.dng")
                 if (rawr.exists()) {
-                    handle = RendererNative.open(rawr.absolutePath, filesDir.absolutePath, applicationInfo.nativeLibraryDir, assets)
+                    handle = RendererNative.open(rawr.absolutePath, filesDir.absolutePath, applicationInfo.nativeLibraryDir, assets, 0, -1)
                     val metadata = RendererNative.inspect(handle).split('\n', limit = 5)
                     check(metadata[3] == "1")
                     check(RenderResolution.defaultMegapixels(metadata[0].toInt(), metadata[1].toInt(), true) == 0.0)

@@ -26,7 +26,7 @@ std::optional<SceneKey> measureSceneKey(DngSource& source, bool shading, const s
     if (w < 2 || h < 2) return std::nullopt;
     const uint32_t block = std::max(2u, (w / 510u) & ~1u);
     const uint32_t blocksX = w / block, blocksY = h / block;
-    const auto& pattern = source.info().cfa.pattern;
+    const auto pattern = source.pattern();
     const float binsPerEv = float(kSceneKeyBins) / (kSceneKeyMaxEv - kSceneKeyMinEv);
     std::array<std::uint32_t, kSceneKeyBins> bins{};
     for (uint32_t by = 0; by < blocksY; ++by) {

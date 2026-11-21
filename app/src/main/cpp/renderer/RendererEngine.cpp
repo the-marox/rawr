@@ -605,7 +605,7 @@ void RendererEngine::prepareProxy(DngSource& source, const std::string& path, bo
                     float rgb[3]{};
                     for (uint32_t yy = 0; yy < 2; ++yy)
                         for (uint32_t xx = 0; xx < 2; ++xx) {
-                            auto c = source.info().cfa.pattern[yy * 2 + xx];
+                            auto c = source.pattern()[yy * 2 + xx];
                             const float v =
                                 source.normalizedSample(row[size_t(yy) * sw + sx + xx], sx + xx, sy + yy, shading);
                             rgb[c] += v / 255.0f * (c == 1 ? .5f : 1.0f);

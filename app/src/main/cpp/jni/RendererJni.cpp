@@ -60,8 +60,14 @@ struct Session {
     std::atomic<rawrcam::renderer::RendererEngine*> activeEngine{nullptr};
     std::string cache, files, lib;
     jobject assets;
-    Session(JNIEnv* e, const std::string& path, const std::string& dir, const std::string& library, jobject a)
-        : source(path), cache(path + ".linear"), files(dir), lib(library), assets(e->NewGlobalRef(a)) {}
+    // Caches follow the CFA the source is read with: an override, or a block
+    // mosaic found by detection (older caches of such a file hold the raw
+    // read as Bayer).
+    Session(JNIEnv* e, const std::string& path, const std::string& dir, const std::string& library, jobject a,
+            const rawrcam::renderer::CfaOverride& cfa)
+        : source(path, cfa),
+          cache(path + ".linear" + cfa.key() + (source.block > 1 ? "-b" + std::to_string(source.block) : "")),
+          files(dir), lib(library), assets(e->NewGlobalRef(a)) {}
 };
 std::mutex handlesMutex;
 std::unordered_map<jlong, std::shared_ptr<Session>> handles;
@@ -239,9 +245,13 @@ rawrcam::renderer::RenderOptions options(JNIEnv* env, jstring recipe, int workin
 }  // namespace
 extern "C" JNIEXPORT jlong JNICALL Java_com_rawr_camera_renderer_RendererNative_open(JNIEnv* e, jobject, jstring path,
                                                                                      jstring files, jstring lib,
-                                                                                     jobject assets) {
+                                                                                     jobject assets, jint cfaLayout,
+                                                                                     jint cfaOrder) {
     try {
-        auto s = std::make_shared<Session>(e, str(e, path), str(e, files), str(e, lib), assets);
+        rawrcam::renderer::CfaOverride cfa;
+        cfa.layout = uint32_t(std::max<jint>(0, cfaLayout));
+        cfa.order = cfaOrder;
+        auto s = std::make_shared<Session>(e, str(e, path), str(e, files), str(e, lib), assets, cfa);
         jlong id = next++;
         std::lock_guard<std::mutex> lock(handlesMutex);
         handles[id] = s;
@@ -273,6 +283,7 @@ extern "C" JNIEXPORT jstring JNICALL Java_com_rawr_camera_renderer_RendererNativ
              << ",\"aperture\":" << source.aperture().value_or(0)
              << ",\"whiteLevel\":" << source.whiteLevel
              << ",\"cfa\":" << source.cfa
+             << ",\"cfaBlock\":" << source.block << ",\"cfaSource\":\"" << source.cfaSource << '"'
              << ",\"blackLevels\":[" << source.black[0] << ',' << source.black[1] << ','
              << source.black[2] << ',' << source.black[3] << ']'
              // Validated digits/separators only: safe to embed unescaped.

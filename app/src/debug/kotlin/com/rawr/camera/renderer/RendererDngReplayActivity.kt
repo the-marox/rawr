@@ -21,7 +21,7 @@ class RendererDngReplayActivity : Activity() {
                 }
                 val input = File(dir, inputName)
                 check(input.isFile && input.length() > 0L) { "Missing staged $inputName" }
-                handle = RendererNative.open(input.absolutePath, filesDir.absolutePath, applicationInfo.nativeLibraryDir, assets)
+                handle = RendererNative.open(input.absolutePath, filesDir.absolutePath, applicationInfo.nativeLibraryDir, assets, 0, -1)
                 val inspected = RendererNative.inspect(handle).split('\n', limit = 5)
                 check(inspected.size == 5) { "DNG inspection did not return provenance" }
                 val width = inspected[0].toInt()

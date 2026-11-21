@@ -15,6 +15,7 @@
 #include <unistd.h>
 
 #include "BayerBin.h"
+#include "imaging/CfaRemosaic.h"
 #include "NaturalBayerBin.h"
 #include "support/JoinGuard.h"
 #include "color/ColorCalibration.h"
@@ -56,7 +57,16 @@ float gain(const tinydng_gainmap& g, uint32_t x, uint32_t y, uint32_t width, uin
                  (gy - y0) * ((1 - (gx - x0)) * at(x0, y1) + (gx - x0) * at(x1, y1)));
 }
 }  // namespace
-DngSource::DngSource(const std::string& path) : rawCachePath_(path + ".raw16-v1") {
+std::string CfaOverride::key() const {
+    if (layout == 0 && order < 0) return {};
+    return "-cfa" + std::to_string(layout) + "o" + std::to_string(order);
+}
+std::array<uint8_t, 4> DngSource::pattern() const {
+    static constexpr uint8_t kPatterns[4][4] = {{0, 1, 1, 2}, {1, 0, 2, 1}, {1, 2, 0, 1}, {2, 1, 1, 0}};
+    return {kPatterns[cfa & 3u][0], kPatterns[cfa & 3u][1], kPatterns[cfa & 3u][2], kPatterns[cfa & 3u][3]};
+}
+DngSource::DngSource(const std::string& path, const CfaOverride& cfaOverride)
+    : rawCachePath_(path + ".raw16-v1" + cfaOverride.key()) {
     tinydng_error error{};
     tinydng_config config{};
     config.memory_cap_bytes = 128u * 1024u * 1024u;
@@ -98,6 +108,9 @@ DngSource::DngSource(const std::string& path) : rawCachePath_(path + ".raw16-v1"
                 found = true;
             }
         if (!found) throw std::runtime_error("Unsupported Bayer pattern");
+        if (cfaOverride.order >= 0 && cfaOverride.order <= 3) cfa = uint32_t(cfaOverride.order);
+        if (cfaOverride.layout != 0 && cfaOverride.layout != 1 && cfaOverride.layout != 2 && cfaOverride.layout != 4)
+            throw std::runtime_error("Unsupported CFA layout");
         for (size_t i = 0; i < p.raw.opcode_count; ++i) {
             auto& o = p.raw.opcodes[i];
             bool supported = (o.id == 9 && o.list == 2) || (o.id == 1 && o.list == 3);
@@ -241,6 +254,22 @@ DngSource::DngSource(const std::string& path) : rawCachePath_(path + ".raw16-v1"
             cameraToSrgb = resolved.cameraToLinearSrgbRowMajor;
             dcpWeight1 = resolved.calibrationWeight1;
         }
+        // Block mosaic: Rawr's own DNGs are always Bayer; others are checked
+        // unless the editor chose the layout.
+        if (cfaOverride.layout == 0) {
+            block = rawr ? 1u : detectBlock();
+            cfaSource = rawr ? "tagged" : "detected";
+        } else {
+            block = cfaOverride.layout;
+            cfaSource = "override";
+        }
+        if (block > 1) {
+            if ((p.width % (2 * block)) || (p.height % (2 * block)))
+                throw std::runtime_error("DNG size is not a whole number of CFA blocks");
+            // The remosaic needs the whole raster: it runs once into the raw cache.
+            rawCacheRequired_ = true;
+            if (cfaOverride.layout == 0) rawCachePath_ += "-auto" + std::to_string(block);
+        }
     } catch (...) {
         tinydng_document_destroy(context_, document_);
         tinydng_context_destroy(context_);
@@ -294,6 +323,12 @@ void DngSource::ensureRawCache() {
         if (decoded.width != image_->width || decoded.height != image_->height || decoded.bits_per_sample != 16 ||
             decoded.samples_per_pixel != 1)
             throw std::runtime_error("Invalid decoded DNG cache geometry");
+        // A block mosaic becomes Bayer in the same block order here, so
+        // every reader (demosaic, binning, meters) sees Bayer in `cfa`.
+        if (block > 1)
+            imaging::remosaicBlockCfa(static_cast<uint16_t*>(mapped), image_->width, image_->height, block, cfa,
+                                      std::max(1u, std::min(8u, std::thread::hardware_concurrency())),
+                                      imaging::CfaRemosaicQuality::High, 1.0f, float(black[0]));
         if (msync(mapped, bytes, MS_SYNC) != 0 || fsync(fd) != 0)
             throw std::runtime_error("Cannot save decoded DNG cache");
         munmap(mapped, bytes);
@@ -324,6 +359,11 @@ std::vector<uint16_t> DngSource::read(uint32_t x, uint32_t y, uint32_t w, uint32
         return result;
     }
     std::lock_guard<std::mutex> lock(decodeMutex_);
+    return decodeRegion(x, y, w, h);
+}
+// One region straight from the file, as stored (no raw cache, no remosaic).
+// Callers hold decodeMutex_ or run before any worker exists (constructor).
+std::vector<uint16_t> DngSource::decodeRegion(uint32_t x, uint32_t y, uint32_t w, uint32_t h) {
     tinydng_error error{};
     tinydng_pixels pixels{};
     tinydng_decode_options options{};
@@ -348,6 +388,73 @@ std::vector<uint16_t> DngSource::read(uint32_t x, uint32_t y, uint32_t w, uint32
     }
     tinydng_pixels_free(context_, &pixels);
     return result;
+}
+// Bayer or a block mosaic, from a central region of the stored data: in a
+// Bayer raw the four sites of a 2x2 cell are different colours (R, G, G, B),
+// so their means differ; in a block mosaic of side n they are the same colour
+// and the difference appears between n x n blocks instead. 1 = Bayer.
+uint32_t DngSource::detectBlock() {
+    const auto& p = *image_;
+    const uint32_t side = std::min({1024u, p.width, p.height}) & ~15u;
+    if (side < 64) return 1;
+    const uint32_t x0 = ((p.width - side) / 2) & ~15u, y0 = ((p.height - side) / 2) & ~15u;
+    const auto px = decodeRegion(x0, y0, side, side);
+    const double white = p.raw.white_level_present ? double(p.raw.white_level[0]) : double((1u << p.bits_per_sample) - 1);
+    const double black0 = black[0];
+    // Means per site of an 8x8 period (covers 2x2, 4x4 and 8x8 cells), clipped samples left out.
+    double sum[8][8]{}, count[8][8]{};
+    for (uint32_t y = 0; y < side; ++y)
+        for (uint32_t x = 0; x < side; ++x) {
+            const double v = double(px[size_t(y) * side + x]);
+            if (v >= black0 + 0.9 * (white - black0)) continue;
+            sum[y & 7u][x & 7u] += v - black0;
+            count[y & 7u][x & 7u] += 1;
+        }
+    double m[8][8]{};
+    for (int y = 0; y < 8; ++y)
+        for (int x = 0; x < 8; ++x) {
+            if (count[y][x] < 64) return 1;
+            m[y][x] = sum[y][x] / count[y][x];
+        }
+    // Spread of the colour cells of a mosaic with block side n: the four
+    // n x n blocks of its 2n x 2n period (outer), and inside each block (inner).
+    auto spread = [&](uint32_t n, double& inner, double& outer) {
+        double cell[2][2]{}, lo[2][2], hi[2][2];
+        for (int by = 0; by < 2; ++by)
+            for (int bx = 0; bx < 2; ++bx) { lo[by][bx] = 1e300; hi[by][bx] = -1e300; }
+        for (uint32_t y = 0; y < 2 * n; ++y)
+            for (uint32_t x = 0; x < 2 * n; ++x) {
+                double v = 0;
+                int k = 0;
+                for (uint32_t yy = y; yy < 8; yy += 2 * n)
+                    for (uint32_t xx = x; xx < 8; xx += 2 * n) { v += m[yy][xx]; ++k; }
+                v /= k;
+                const uint32_t by = y / n, bx = x / n;
+                cell[by][bx] += v / double(n * n);
+                lo[by][bx] = std::min(lo[by][bx], v);
+                hi[by][bx] = std::max(hi[by][bx], v);
+            }
+        double mean = 0, bmin = 1e300, bmax = -1e300;
+        inner = 0;
+        for (int by = 0; by < 2; ++by)
+            for (int bx = 0; bx < 2; ++bx) {
+                mean += cell[by][bx] / 4;
+                bmin = std::min(bmin, cell[by][bx]);
+                bmax = std::max(bmax, cell[by][bx]);
+            }
+        if (!(mean > 1e-6)) { inner = 1; outer = 0; return; }
+        for (int by = 0; by < 2; ++by)
+            for (int bx = 0; bx < 2; ++bx) inner = std::max(inner, (hi[by][bx] - lo[by][bx]) / mean);
+        outer = (bmax - bmin) / mean;
+    };
+    double inner = 0, outer = 0;
+    spread(1, inner, outer);
+    if (outer > 0.06) return 1;  // the 2x2 sites differ: Bayer
+    for (uint32_t n : {2u, 4u}) {
+        spread(n, inner, outer);
+        if (inner < 0.04 && outer > 0.08) return n;
+    }
+    return 1;
 }
 float DngSource::normalizedSample(uint16_t raw, uint32_t sx, uint32_t sy, bool shading) const {
     const uint32_t site = (sy % 2) * 2 + sx % 2;
@@ -400,9 +507,9 @@ void DngSource::prepareBinned(const std::string& path, bool shading, const std::
             int red = 0;
             const float maxGain = std::max({wb[0],wb[1],wb[2]});
             for (int i=0;i<4;++i) {
-                gains[i] = wb[image_->cfa.pattern[i]] / maxGain;
+                gains[i] = wb[pattern()[i]] / maxGain;
                 if (!(gains[i] > 0) || !std::isfinite(gains[i])) throw std::runtime_error("Invalid binning calibration");
-                if (image_->cfa.pattern[i] == 0) red = i;
+                if (pattern()[i] == 0) red = i;
             }
             const float floor = std::max(1e-20f, std::pow(0.25f * 255.f / float(std::max(1.0, whiteLevel)), 2.f));
             // Bands are independent (each reads its own 20-row halo), so a

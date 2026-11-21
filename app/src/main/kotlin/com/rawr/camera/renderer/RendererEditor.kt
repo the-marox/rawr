@@ -46,7 +46,8 @@ internal fun RendererEditor(job: RenderJob, session: RendererEditorSession, prev
     onSaveResolution: (RenderJob,Double)->Unit, onImportLut: (String?,Uri)->Unit,
     busy: Boolean, onBackToQueue: ()->Unit, onExport: ()->Unit,
     onShadowLift: (RenderJob, com.rawr.camera.settings.model.AutoKeyExposure)->Unit = { _, _ -> },
-    onLocalTone: (RenderJob, Float)->Unit = { _, _ -> }) {
+    onLocalTone: (RenderJob, Float)->Unit = { _, _ -> },
+    onSourceCfa: (RenderJob, RendererRecipe.SourceCfa)->Unit = { _, _ -> }) {
     val controller by session.controller.collectAsStateWithLifecycle()
     val settings by controller.state.collectAsStateWithLifecycle()
     val preview by previewSession.state.collectAsStateWithLifecycle()
@@ -59,7 +60,8 @@ internal fun RendererEditor(job: RenderJob, session: RendererEditorSession, prev
         onImportLut = { lutTarget = it; importer.launchPicker(context, arrayOf("*/*")) },
         metadata = { dismiss -> RendererMetadata(job, previewSession, dismiss) },
         onShadowLift = { if (!busy) onShadowLift(job, it) },
-        onLocalTone = { if (!busy) onLocalTone(job, it) })
+        onLocalTone = { if (!busy) onLocalTone(job, it) },
+        onSourceCfa = { if (!busy) onSourceCfa(job, it) })
 }
 
 /** UI-only editor. Tests drive this exact layout without native rendering or job mutation. */
@@ -71,7 +73,8 @@ internal fun RendererEditorContent(
     onSaveResolution: (Double) -> Unit, onImportLut: (String?) -> Unit,
     metadata: @Composable (() -> Unit) -> Unit,
     onShadowLift: (com.rawr.camera.settings.model.AutoKeyExposure) -> Unit = {},
-    onLocalTone: (Float) -> Unit = {}
+    onLocalTone: (Float) -> Unit = {},
+    onSourceCfa: (RendererRecipe.SourceCfa) -> Unit = {}
 ) {
     var waveformVisible by remember(job.id) { mutableStateOf(false) }
     var metadataVisible by remember(job.id) { mutableStateOf(false) }
@@ -127,7 +130,7 @@ internal fun RendererEditorContent(
                         paneFraction = if (pane == 2) .72f else .45f
                         sideFraction = if (pane == 2) .55f else .38f
                     }) {
-                    RendererControls(selectedStage, values, dispatch, job, onSaveResolution, onImportLut, onShadowLift, onLocalTone)
+                    RendererControls(selectedStage, values, dispatch, job, onSaveResolution, onImportLut, onShadowLift, onLocalTone, onSourceCfa)
                 }
             })
     }

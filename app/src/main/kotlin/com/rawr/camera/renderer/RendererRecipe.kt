@@ -18,6 +18,31 @@ internal object RendererRecipe {
     fun replaysRecipe(capture: String, embeddedRecipe: String?): Boolean =
         capture.isNotBlank() || !embeddedRecipe.isNullOrBlank()
 
+    /**
+     * How the editor reads the DNG's CFA (RAW tab). Some apps write a sensor's block mosaic
+     * (Quad Bayer) tagged as Bayer, which renders magenta; Auto detects it from the data.
+     */
+    enum class CfaLayout(val code: Int, val label: String) {
+        Auto(0, "Auto"), Bayer(1, "Bayer"), Quad(2, "Quad Bayer 2×2"), Block4(4, "4×4 blocks")
+    }
+    val cfaOrders = listOf("As tagged", "RGGB", "GRBG", "GBRG", "BGGR")
+    data class SourceCfa(val layout: CfaLayout = CfaLayout.Auto, val order: Int = -1)
+
+    /** The draft's CFA choice (defaults: auto layout, order as tagged). */
+    fun sourceCfa(draft: String): SourceCfa = runCatching {
+        val json = JSONObject(draft)
+        SourceCfa(CfaLayout.entries.firstOrNull { it.name == json.optString("sourceCfaLayout") } ?: CfaLayout.Auto,
+            json.optInt("sourceCfaOrder", -1).takeIf { it in 0..3 } ?: -1)
+    }.getOrDefault(SourceCfa())
+
+    /** [draft] with the CFA choice; the defaults remove the keys. */
+    fun withSourceCfa(draft: String, cfa: SourceCfa): String {
+        val json = JSONObject(draft)
+        if (cfa.layout == CfaLayout.Auto) json.remove("sourceCfaLayout") else json.put("sourceCfaLayout", cfa.layout.name)
+        if (cfa.order !in 0..3) json.remove("sourceCfaOrder") else json.put("sourceCfaOrder", cfa.order)
+        return json.toString()
+    }
+
     /** Capture metadata every draft carries from its source, whatever the editor settings. */
     private val sourceKeys =
         listOf("aePostGain", "adaptiveTone", "localTone", "capturedAutoKeyExposure", "timestampNs", "resolvedFrame")
@@ -87,7 +112,7 @@ internal object RendererRecipe {
             ?.takeIf { it.isNotBlank() }?.let { draft.put("adaptiveToneMode", it) }
         runCatching { JSONObject(previousDraft).takeIf { it.has("localToneShadowsEv") }?.getDouble("localToneShadowsEv") }
             .getOrNull()?.let { draft.put("localToneShadowsEv", it) }
-        return draft.toString()
+        return withSourceCfa(draft.toString(), sourceCfa(previousDraft))
     }
 
     fun startingDraft(source: String, library: SettingsValues, captured: Boolean): String {

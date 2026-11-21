@@ -4,7 +4,8 @@ import android.content.res.AssetManager
 
 internal object RendererNative {
     init { System.loadLibrary("rawrcam_native") }
-    external fun open(path: String, files: String, library: String, assets: AssetManager): Long
+    /** [cfaLayout]: 0 auto, 1 Bayer, 2 quad 2x2, 4 block 4x4; [cfaOrder]: -1 as tagged, else 0 RGGB..3 BGGR. */
+    external fun open(path: String, files: String, library: String, assets: AssetManager, cfaLayout: Int, cfaOrder: Int): Long
     external fun waveform(id: Long): IntArray?
     external fun metadata(id: Long): String
     external fun inspect(id: Long): String

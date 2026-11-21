@@ -27,6 +27,13 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.Box
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import com.rawr.camera.ui.icons.outlined.Settings
+import com.rawr.camera.ui.icons.rounded.Check
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
@@ -92,6 +99,25 @@ internal fun RendererRoute(viewModel: RendererViewModel, onExit: () -> Unit) {
                     }
                 },
                 actions = {
+                    // Renderer options: its own icon in the app drawer (RendererLauncherIcon).
+                    var menu by remember { mutableStateOf(false) }
+                    var drawerIcon by remember { mutableStateOf(RendererLauncherIcon.isShown(context)) }
+                    Box {
+                        IconButton(onClick = { menu = true }, modifier = Modifier.testTag("renderer_menu")) {
+                            Icon(Icons.Outlined.Settings, contentDescription = "Renderer options")
+                        }
+                        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                            DropdownMenuItem(
+                                text = { Text("Icon in app drawer") },
+                                trailingIcon = { if (drawerIcon) Icon(Icons.Rounded.Check, contentDescription = "On") },
+                                onClick = {
+                                    drawerIcon = !drawerIcon
+                                    RendererLauncherIcon.setShown(context, drawerIcon)
+                                    menu = false
+                                }
+                            )
+                        }
+                    }
                     FilledTonalButton(
                         enabled = !busy && !loading,
                         onClick = { importer.launchPicker(context, arrayOf("image/x-adobe-dng", "image/dng", "application/octet-stream")) },
@@ -115,6 +141,7 @@ internal fun RendererRoute(viewModel: RendererViewModel, onExit: () -> Unit) {
                     onBackToQueue = { if (busy) viewModel.back() else viewModel.backToQueue() },
                     onShadowLift = viewModel::setAdaptiveToneMode,
                     onLocalTone = viewModel::setLocalTone,
+                    onSourceCfa = viewModel::setSourceCfa,
                     onExport = {
                         notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
                         viewModel.export(job.id)

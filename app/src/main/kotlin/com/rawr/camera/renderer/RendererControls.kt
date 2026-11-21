@@ -242,7 +242,8 @@ private fun EditorGroup(title: String, enabled: Boolean? = null, onEnabled: (Boo
 @Composable
 internal fun RendererControls(stage: RendererStage, v: SettingsValues, dispatch: SettingsDispatch,
                               job: RenderJob, resolution: (Double)->Unit, importLut: (String?)->Unit,
-                              shadowLift: (AutoKeyExposure)->Unit = {}, localTone: (Float)->Unit = {}) {
+                              shadowLift: (AutoKeyExposure)->Unit = {}, localTone: (Float)->Unit = {},
+                              sourceCfa: (RendererRecipe.SourceCfa)->Unit = {}) {
     fun send(a: SettingsAction)=dispatch.invoke(a)
     @Composable fun tone(p: ImageToneNumericParameter) {
         val s=p.reviewSpec();val t=v.activeImageTone()
@@ -260,6 +261,17 @@ internal fun RendererControls(stage: RendererStage, v: SettingsValues, dispatch:
     Column(Modifier.fillMaxSize().testTag("renderer_controls_${stage.name}").verticalScroll(scroll).padding(start = 16.dp, end = 64.dp, bottom = 16.dp)) {
         when(stage) {
             RendererStage.RAW -> {
+                // How the DNG's CFA is read: Auto finds Quad Bayer DNGs tagged as Bayer (magenta when read
+                // as Bayer); the order corrects a wrong CFAPattern tag. Saved with this edit only.
+                val cfa = RendererRecipe.sourceCfa(job.draft)
+                EditorSection("Sensor CFA") {
+                    EditorChoice("Layout", cfa.layout.label, RendererRecipe.CfaLayout.entries.map { it.label }) {
+                        sourceCfa(cfa.copy(layout = RendererRecipe.CfaLayout.entries[it]))
+                    }
+                    EditorChoice("Order", RendererRecipe.cfaOrders[cfa.order + 1], RendererRecipe.cfaOrders) {
+                        sourceCfa(cfa.copy(order = it - 1))
+                    }
+                }
                 EditorChoice("Demosaic",v.demosaicAlgorithm.label,DemosaicAlgorithm.entries.map{it.label}){send(SetDemosaicAlgorithm(DemosaicAlgorithm.entries[it]))}
                 if(v.demosaicAlgorithm.name.startsWith("Dual")) EditorNested {
                     EditorToggle("Auto contrast",v.dualAutoContrast){send(SetDualAutoContrast(it))}

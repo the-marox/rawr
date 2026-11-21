@@ -37,6 +37,7 @@
             android:name=".renderer.RendererActivity"
             android:exported="true"
             android:launchMode="singleTop"
+            android:taskAffinity="${applicationId}.renderer"
             android:label="@string/renderer_title">
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
@@ -57,6 +58,21 @@
                 <data android:scheme="file" android:mimeType="image/x-dng" />
             </intent-filter>
         </activity>
+        <!-- The Renderer's own icon in the app drawer. Off by default; the Renderer's menu turns it
+             on (RendererLauncherIcon). Its own task affinity keeps it apart from the camera's task. -->
+        <activity-alias
+            android:name=".renderer.RendererLauncher"
+            android:targetActivity=".renderer.RendererActivity"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:roundIcon="@mipmap/ic_launcher_round"
+            android:label="@string/renderer_launcher_label">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
         <service android:name=".renderer.library.DngConvertService" android:exported="false" android:foregroundServiceType="dataSync|mediaProcessing" />
         <service android:name=".renderer.RendererService" android:exported="false" android:foregroundServiceType="dataSync|mediaProcessing" />
         <service

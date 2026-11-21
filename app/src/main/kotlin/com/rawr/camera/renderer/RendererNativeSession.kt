@@ -12,11 +12,15 @@ internal class RendererNativeSession(private val context: Context, private val s
     private var refinementRunning = false
     private fun open(job: RenderJob): Long {
         check(!StillOutputStore.hasActiveCaptures(context.filesDir)) { "Wait for capture processing to finish" }
-        if (opened == job.id && handle != 0L) return handle
+        // The CFA choice is part of the source: a change reopens it (its caches are separate).
+        val cfa = RendererRecipe.sourceCfa(job.draft)
+        val key = "${job.id}|${cfa.layout.code}|${cfa.order}"
+        if (opened == key && handle != 0L) return handle
         if (handle != 0L) RendererNative.close(handle)
         handle = 0; opened = ""
-        handle = RendererNative.open(source(job).absolutePath, context.filesDir.absolutePath, context.applicationInfo.nativeLibraryDir, context.assets)
-        opened = job.id
+        handle = RendererNative.open(source(job).absolutePath, context.filesDir.absolutePath,
+            context.applicationInfo.nativeLibraryDir, context.assets, cfa.layout.code, cfa.order)
+        opened = key
         return handle
     }
     fun waveform(job: RenderJob) = RendererNative.waveform(open(job))
@@ -35,7 +39,7 @@ internal class RendererNativeSession(private val context: Context, private val s
     fun materialize(capture: String, fd: Int) = RendererNative.materialize(
         File(context.filesDir, "still_jobs/$capture.job").absolutePath, fd,
         context.filesDir.absolutePath, context.applicationInfo.nativeLibraryDir, context.assets)
-    fun closeFor(id: String) { if (opened == id) close() }
+    fun closeFor(id: String) { if (opened.substringBefore('|') == id) close() }
     fun close() {
         if (handle != 0L) RendererNative.close(handle)
         handle = 0; opened = ""

@@ -13,10 +13,22 @@
 #include "color/DcpProfile.h"
 
 namespace rawrcam::renderer {
+// The CFA the editor reads a DNG with (Renderer RAW tab). Some apps write a
+// sensor's block mosaic (Quad Bayer: 2x2 same-colour blocks, or 4x4) while
+// tagging it 2x2 Bayer - read as Bayer it comes out magenta. layout: 0 auto
+// (Rawr DNGs: Bayer; others: detected from the data), 1 Bayer, 2 quad 2x2,
+// 4 block 4x4. order: -1 as tagged, else 0=RGGB 1=GRBG 2=GBRG 3=BGGR (for a
+// block mosaic, the order of the blocks).
+struct CfaOverride {
+    uint32_t layout = 0;
+    int32_t order = -1;
+    // Cache-name suffix; empty for the defaults, so existing caches stay valid.
+    std::string key() const;
+};
 // Pixel coordinates always refer to the uncropped, unrotated sensor raster.
 class DngSource {
    public:
-    explicit DngSource(const std::string& path);
+    explicit DngSource(const std::string& path, const CfaOverride& cfaOverride = {});
     ~DngSource();
     DngSource(const DngSource&) = delete;
     DngSource& operator=(const DngSource&) = delete;
@@ -45,6 +57,14 @@ class DngSource {
     color::DcpProfilePtr dcpProfile;
     float dcpWeight1 = 1.0f;
     uint32_t cfa = 0;
+    // Block side the raw is remosaiced from (1 = Bayer as stored); `cfa` is
+    // then the block order and read() returns Bayer in that order.
+    uint32_t block = 1;
+    // What `block` came from: "tagged", "detected" or "override".
+    std::string cfaSource = "tagged";
+    // Colour (0 R, 1 G, 2 B) at row-major 2x2 site i, from `cfa`: use this,
+    // not info().cfa.pattern, which ignores an override.
+    std::array<uint8_t, 4> pattern() const;
     uint32_t orientation = 1;
     std::string provenance;
     bool rawr = false;
@@ -74,6 +94,8 @@ class DngSource {
     // build and tinydng region decodes.
     std::mutex decodeMutex_;
     void ensureRawCache();
+    std::vector<uint16_t> decodeRegion(uint32_t x, uint32_t y, uint32_t w, uint32_t h);
+    uint32_t detectBlock();
 #ifndef NDEBUG
     std::vector<float> replayCfa_;
 #endif
