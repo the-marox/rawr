@@ -78,6 +78,14 @@ first and moves to `xiaomi-17u` once verified.
   3-minute 4K60 take still dropped 7 frames at the start (2-4 before) and
   had 6 one-frame sensor gaps (2-3 before), at a higher GPU clock.
 
+### Exposure controls
+
+- Manual ISO shows the standard numbers on the third stops: 80, 160, 320,
+  640, 1250, 2500 instead of 79, 159, 317, 635, 1270, 2520 (the exact
+  values rounded). The 1/24 EV fine steps between them stay; full and third
+  stops keep their snapping. Fork change to Ed's scale
+  (NativeCapabilityProjection.kt).
+
 ### Renderer
 
 - Sensor CFA (RAW tab): how the DNG's colour filter array is read, saved

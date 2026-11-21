@@ -182,14 +182,24 @@ internal object NativeCapabilityProjection {
     // continuous while still giving the backend stable integer request values. The UI
     // magnetically snaps to the conventional 1/3-stop subset. Exact Camera2 endpoints
     // are retained even when they do not lie on that grid.
+    // 1/24 EV steps; the third stops take the standard ISO numbers (80, 160, 320, 640, 1250...)
+    // rather than the rounded exact values (79, 159, 317, 635, 1270...). Rawr 17U fork change.
     private fun fineIsoValues(min: Int, max: Int): List<Int> {
         val values = mutableSetOf(min, max)
         for (k in -192..288) {
-            val value = (100.0 * 2.0.pow(k / 24.0)).roundToInt()
+            val value = if (k % 8 == 0) nominalIso(k / 8) else (100.0 * 2.0.pow(k / 24.0)).roundToInt()
             if (value in min..max) values += value
         }
         return values.sorted()
     }
+
+    private val isoThirdsPerDecade = intArrayOf(100, 125, 160, 200, 250, 320, 400, 500, 640, 800)
+
+    // Standard ISO number of the third stop `third` thirds above ISO 100 (10 thirds ~ one decade).
+    private fun nominalIso(third: Int): Int =
+        (isoThirdsPerDecade[Math.floorMod(third, 10)] * 10.0.pow(Math.floorDiv(third, 10))).roundToInt()
+
+    private fun isoThird(iso: Int): Int = (log2(iso / 100.0) * 3.0).roundToInt()
 
     private fun fineShutterValues(min: Long, max: Long): List<Long> {
         val values = mutableSetOf(min, max)
@@ -202,9 +212,9 @@ internal object NativeCapabilityProjection {
 
     private fun isWholeEv(ev: Double): Boolean = abs(ev - ev.roundToInt()) < 0.02
 
-    private fun isFullStopIso(iso: Int): Boolean = isNearEvGrid(log2(iso / 100.0), 1.0)
+    private fun isFullStopIso(iso: Int): Boolean = isThirdStopIso(iso) && Math.floorMod(isoThird(iso), 3) == 0
 
-    private fun isThirdStopIso(iso: Int): Boolean = isNearEvGrid(log2(iso / 100.0), 1.0 / 3.0)
+    private fun isThirdStopIso(iso: Int): Boolean = iso == nominalIso(isoThird(iso))
 
     private fun isFullStopShutter(ns: Long): Boolean = isNearEvGrid(log2(ns / 1_000_000_000.0), 1.0)
 
