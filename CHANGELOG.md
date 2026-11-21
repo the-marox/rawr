@@ -89,6 +89,14 @@ first and moves to `xiaomi-17u` once verified.
   the bridge runs (no probe, no EGL context); the app only links EGL and
   GLESv3. Merge into yuv-probe: the link line conflict resolved by hand.
 
+### Lenses (17U profile)
+
+- New lenses 3.2x 200>25 and 4.3x 200>25, after the 200>50 ones: the same
+  200 MP tele mode with the smaller reduced output (Ed's "reduced25": the
+  50 MP result resampled to half its pixels, 25 MP), for smaller files.
+  To see them: Settings > Lens > Reset to device default (or clear the
+  app's data); it replaces lenses edited by hand.
+
 ### Exposure controls
 
 - Manual ISO shows the standard numbers on the third stops: 80, 160, 320,
