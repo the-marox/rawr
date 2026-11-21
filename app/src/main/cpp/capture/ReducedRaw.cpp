@@ -24,10 +24,11 @@ ReducedRaw::ReducedRaw(const vulkan::VulkanContext& vk, const metadata::CameraCo
     const auto size = reducedRawSize(c, w, h);
     outWidth_ = size.width;
     outHeight_ = size.height;
+    direct3x_ = reducedRawDirect3x(c);
     try {
         initialize(slots);
         if (c.cfaBlock != 1) remosaic_ = rawr::raw_ingress::RawRemosaicker::create(vk_.gpuContext());
-        // The bin, and the 25 MP resample for either mode.
+        // The Bayer bins, and the 4x4 mode's 25 MP resample.
         if (c.cfaBlock == 1 || c.photoReduced25) binner_ = rawr::raw_ingress::BayerBinner::create(vk_.gpuContext());
     } catch (...) {
         destroy();
@@ -84,7 +85,8 @@ void ReducedRaw::initialize(uint32_t count) {
         s.output =
             rawr::vk::createOwnedImage(vk_.physicalDevice(), vk_.device(), outWidth_, outHeight_, VK_FORMAT_R16_UINT,
                                        VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
-        if (outWidth_ != width_ / 2 || outHeight_ != height_ / 2)
+        // The 4x4 mode's 25 MP output is resampled from a half-size image; the Bayer bins write directly.
+        if (!direct3x_ && (outWidth_ != width_ / 2 || outHeight_ != height_ / 2))
             s.half = rawr::vk::createOwnedImage(vk_.physicalDevice(), vk_.device(), width_ / 2, height_ / 2,
                                                 VK_FORMAT_R16_UINT, VK_IMAGE_USAGE_STORAGE_BIT);
         VkCommandBufferAllocateInfo ai{};
@@ -201,7 +203,7 @@ float ReducedRaw::sourceCodeLimit(const Slot& s, const metadata::FrameMetadataSn
     const float limit = fit ? kReducedRawMaxFitCode : kReducedRawMaxCode;
     if (!std::isfinite(m.effectiveWhiteLevel) || m.effectiveWhiteLevel <= 0 || m.effectiveWhiteLevel > limit)
         throw std::runtime_error("reduced_raw_unsupported_white_level");
-    if (bayer == bool(remosaic_) || reducedRawSize(c, width_, height_).width != outWidth_ ||
+    if (bayer == bool(remosaic_) || direct3x_ != reducedRawDirect3x(c) || reducedRawSize(c, width_, height_).width != outWidth_ ||
         reducedRawSize(c, width_, height_).height != outHeight_)
         throw std::runtime_error("reduced_raw_mode_changed");
     return limit;
@@ -258,6 +260,7 @@ void ReducedRaw::record(Slot& s, uint32_t index, const metadata::FrameMetadataSn
         f.white = m.effectiveWhiteLevel;
         f.order = order;
         f.codeGain = 4.0f;   // the x4 code scale applyReducedRawMetadata records
+        f.ratio = direct3x_ ? 3 : 2;
         binner_->bin(s.command, index, f);
     } else {
         rawr::raw_ingress::RawRemosaicker::Frame f;

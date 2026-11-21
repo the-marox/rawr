@@ -99,6 +99,20 @@ first and moves to `xiaomi-17u` once verified.
   icon switch, so it can be found without a launcher shortcut or the long
   press on the gallery thumbnail.
 
+### From upstream Rawr (Ed): #135
+
+- #135 Bayer bin 22 MP: the smaller reduced size ("reduced25") on Bayer
+  lenses now goes through a direct 3x bin (22 MP from 200 MP) instead of
+  the 2x bin then resample; colour kernels refitted; vivo X300 Ultra
+  profile.
+- Rawr AE: a still's gain uses the exposure target in effect when the frame
+  was taken (kept per frame timestamp), not the one when the burst is
+  processed, which for 200 MP can be seconds later.
+- On the 17U: its reduced lenses are 4x4 (block sums, not the Bayer bin),
+  so the bin changes don't touch the default profile; the AE change applies
+  to every photo. Merged without conflicts on top of this fork (#129 to
+  #133 recorded as already merged by hand). Not yet checked on the 17U.
+
 ## 0.5.1-17u.3
 
 Goal of this round: 4K60 10-bit recording without dropped frames on the 17U.
