@@ -53,11 +53,21 @@ std::optional<VideoFastPath::Warp> stabilizerWarp(const VideoDemosaic& demosaic,
     // Turning needs the turned shader variant (sub-pixel resampling, about twice the GPU work of the regular pass on
     // the 17U), so only horizon levelling turns; plain stabilisation moves the crop in even steps for free.
     const bool levelling = stabilizerLevelHorizon().load(std::memory_order_relaxed) && turnAvailable;
+    // Chosen on a take's first frame and kept for the take, so a sensor mode change mid-take can't jump the zoom
+    // (maxTurn below still follows the current margins, so the corners stay covered).
+    static float levelScale = 1.0f / kMinLevelZoom;
+    static int64_t levelScaleNs = 0;
     float scale = 1.0f;
     if (levelling) {
-        const float c = std::cos(kLevelTurn), sn = std::sin(kLevelTurn);
-        const float fit = std::min((halfW + marginX) / (halfW * c + halfH * sn), (halfH + marginY) / (halfW * sn + halfH * c));
-        scale = std::clamp(fit, 1.0f / kMaxLevelZoom, 1.0f / kMinLevelZoom);
+        const int64_t nowNs = stabilizerFrameTimeNs().load(std::memory_order_relaxed);
+        if (nowNs - levelScaleNs > 500'000'000 || nowNs < levelScaleNs) {
+            const float c = std::cos(kLevelTurn), sn = std::sin(kLevelTurn);
+            const float fit =
+                std::min((halfW + marginX) / (halfW * c + halfH * sn), (halfH + marginY) / (halfW * sn + halfH * c));
+            levelScale = std::clamp(fit, 1.0f / kMaxLevelZoom, 1.0f / kMinLevelZoom);
+        }
+        levelScaleNs = nowNs;
+        scale = levelScale;
     }
     // Room for the window's corners: half the frame plus the margin, against the scaled, turned half frame.
     const auto fits = [&](float angle, float sx, float sy) {

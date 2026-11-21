@@ -75,7 +75,12 @@ first and moves to `xiaomi-17u` once verified.
   margins: the smallest of 1.1x and what a 9 degree turn needs, up to 1.25x
   (about 1.2x from 2304 rows, 1.1x from 2560 or more). More zoom upscales
   more (4K from ~3200 px wide at 1.2x). The STAB log line
-  (`adb logcat -s RawrStab`) now shows the zoom and the turn room.
+  (`adb logcat -s RawrStab`) now shows the zoom and the turn room. The zoom
+  is chosen on a take's first frame and kept for the take.
+  Checked on the 17U with this build: that take ran 2560 rows (margins
+  112/192 px, zoom 1.1x, turn room 9.7 degrees): tilts up to ~9 came out
+  level, an 11 degree tilt was turned 9.7 (the horizon kept ~1-3). The 1.2x
+  path (2304 rows) is not yet checked on a take.
 - Tried and reverted: holding the viewfinder on a lens switch until the
   new lens's first frames settle. It hid the HAL's default-exposure flash,
   but AE still searched at 800 ms on every switch, and in video mode Rawr
