@@ -6,6 +6,13 @@ first and moves to `xiaomi-17u` once verified.
 
 ## Unreleased (`yuv-probe`, test builds)
 
+Nothing yet.
+
+## 0.5.1-17u.6
+
+Galaxy S23 Ultra lens switching and launch (tested by two S23 Ultra users),
+and the focus jump after a 1x 50 MP single-frame photo on the 17U.
+
 ### Lens switching on the Galaxy S23 Ultra (test)
 
 - Two S23 Ultra users (SM-S918B, Android 17) on 0.5.1-17u.5: about half the
@@ -55,8 +62,10 @@ first and moves to `xiaomi-17u` once verified.
   drops the camera id for a moment, so the restart was rejected at
   selection (characteristics -10001) and only the stall watchdog brought
   the camera back. The retry now repeats the start every 150 ms for up to
-  3.5 s (CAMERA_NDK_DEVICE_REUSE_RECOVERED / _RETRY_GAVE_UP). Not yet
-  checked on an S23 Ultra.
+  3.5 s (CAMERA_NDK_DEVICE_REUSE_RECOVERED / _RETRY_GAVE_UP). With this
+  build both S23 Ultra users report it as much better, including with
+  HDR+Q on (by feel; no bundle of that build yet). Taking a photo and
+  switching right away still waits for the HDR+Q processing, as before.
 
 ### Focus after a 1x 50 MP single-frame photo (test)
 
@@ -80,7 +89,7 @@ first and moves to `xiaomi-17u` once verified.
   the countdown and "Restoring preview...", so the lens has settled before
   live frames return. The single-frame path now also keeps the first 4
   preview frames of the hold off the viewfinder, which hides the one frame
-  with the reset lens. Not yet checked on the 17U.
+  with the reset lens. Checked on the 17U.
 
 ## 0.5.1-17u.5
 
