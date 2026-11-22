@@ -58,16 +58,6 @@ Open work on this fork. Results of what is done are in [CHANGELOG.md](CHANGELOG.
 
 ## Photo
 
-- 1x 50 MP close up: after a remosaic still ("Restoring preview..."), the
-  lens restarts from infinity and AF hunts back (FOC 0.17 m -> 20 m -> 1.0
-  -> 0.29 m), so the viewfinder visibly jumps (focus breathing). Same on
-  0.5.1-17u.5. Single frame only: with Rexture (multiframe) on 1x 50 MP it
-  doesn't happen: Rexture 50 MP merges the live 4096x3072 frames, no
-  sensor mode switch. Single frame shoots remosaic 8192x6144 and the HAL
-  resets the lens when the preview mode comes back. With manual focus it
-  doesn't jump either (the distance is sent every frame). Idea: after a
-  remosaic still, hold the viewfinder at the pre-still distance for a few
-  frames, then hand back to continuous AF.
 
 - Tele photos looked darker than the viewfinder before upstream #135; one
   dark shot (RAWR_20261121_152853) was not explained (no log). Re-check

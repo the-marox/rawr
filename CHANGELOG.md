@@ -51,6 +51,21 @@ first and moves to `xiaomi-17u` once verified.
   fresh open, without the RAW-only penalty (CAMERA_NDK_DEVICE_REUSE_FAILED).
   Not yet seen on the S23 Ultra.
 
+### Focus after a 1x 50 MP single-frame photo (test)
+
+- Close up, the viewfinder jumped after a 1x 50 MP single-frame photo
+  ("Restoring preview..."): FOC went 0.17 m -> 20 m -> 1.0 -> 0.29 m, the
+  lens restarting from infinity and continuous AF hunting back (focus
+  breathing makes it look like a framing jump). Also on 0.5.1-17u.5; not
+  with Rexture (it merges the live frames, no sensor mode switch) nor with
+  manual focus. The remosaic still switches the sensor mode and the HAL
+  resets the lens when the preview mode comes back.
+- Now, after a single full-size still in continuous AF, the viewfinder
+  holds the lens at the pre-still distance for 20 frames, then hands back
+  to continuous AF (CAMERA_FOCUS_HOLD / CAMERA_FOCUS_HOLD_RELEASED in the
+  log). A tap to focus or manual focus take over as before.
+- Not yet checked on the 17U.
+
 ## 0.5.1-17u.5
 
 Ed's upstream #137 and #138, then the white balance work. Checks are on a

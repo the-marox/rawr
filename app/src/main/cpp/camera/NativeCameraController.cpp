@@ -133,6 +133,9 @@ struct NativeCameraController::Impl final : CameraEventSink {
     bool preparingFocus = false;
     std::optional<float> fullSizeFocusDistance;
     bool retainFullSizeFocus = false;
+    // Rawr 17U fork: preview frames left with the lens held after a single full-size still.
+    int focusHoldFramesLeft = 0;
+    static constexpr int kFocusHoldFrames = 20;
     // The decision frame submitted before a full-size still, until its result
     // (or failure) arrives.
     enum class FullSizeDecision : uint8_t { None, Waiting, Seen, Failed };
@@ -490,6 +493,7 @@ struct NativeCameraController::Impl final : CameraEventSink {
         }
         // This copy belongs only to the still; preview controls remain untouched.
         auto stillControl = control;
+        stillControl.viewfinderFocusHold.reset();  // the still uses its own focus plan
         stillControl.stillFocusDistance = fullSizeFocusDistance;
         diag("CAMERA_STILL_FOCUS tag=" + std::to_string(requestId) + " epoch=" + std::to_string(control.focusEpoch) +
              " mode=" + std::to_string(int(control.focusMode)) +
@@ -1142,6 +1146,8 @@ struct NativeCameraController::Impl final : CameraEventSink {
         pendingFocus = {};
         pendingFocusMode = {};
         fullSizeFocusDistance.reset();
+        control.viewfinderFocusHold.reset();
+        focusHoldFramesLeft = 0;
         invalidateFocus(control);
         captureChanged.notify_all();
         focusControls.reset(control);
@@ -1332,6 +1338,18 @@ struct NativeCameraController::Impl final : CameraEventSink {
                 }
             }
             restoreViewfinderLocked();
+            // Rawr 17U fork: a remosaic still (1x 50 MP single frame) switches the sensor mode and the HAL
+            // resets the lens when the preview mode comes back; continuous AF then hunted from infinity.
+            // Hold the preview at the pre-still distance for a few frames, then hand back to continuous AF.
+            if (!aborted && !retainFullSizeFocus && fullSizeFocusDistance && std::isfinite(*fullSizeFocusDistance) &&
+                control.focusMode == FocusControlMode::Continuous && !control.tapAfActive &&
+                control.capabilities.manualFocusSupported) {
+                control.viewfinderFocusHold = *fullSizeFocusDistance;
+                focusHoldFramesLeft = kFocusHoldFrames;
+                diag("CAMERA_FOCUS_HOLD diopters=" + std::to_string(*fullSizeFocusDistance) +
+                     " frames=" + std::to_string(kFocusHoldFrames) +
+                     " sent=" + (submitRepeatingLocked() ? "1" : "0"));
+            }
             if (!retainFullSizeFocus || aborted) {
                 fullSizeFocusDistance.reset();
                 retainFullSizeFocus = false;
@@ -1367,6 +1385,11 @@ struct NativeCameraController::Impl final : CameraEventSink {
             if (fullSizeDecision == FullSizeDecision::Waiting) fullSizeDecision = FullSizeDecision::Seen;
             captureChanged.notify_all();
             return;
+        }
+        if (control.viewfinderFocusHold && !actions.optimizedStill && --focusHoldFramesLeft <= 0) {
+            control.viewfinderFocusHold.reset();
+            focusHoldFramesLeft = 0;
+            diag(std::string("CAMERA_FOCUS_HOLD_RELEASED sent=") + (submitRepeatingLocked() ? "1" : "0"));
         }
         if (actions.optimizedStill && deviceSession.hasCaptureStream()) {
             // What the HAL reports it did with a full-size still: some vendors
