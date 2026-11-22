@@ -146,7 +146,7 @@ internal fun CaptureViewfinder(
         ScopeLayer(state, dispatch, preview)
         if (state.whiteBalancePickArmed) {
             androidx.compose.material3.Text(
-                text = "Tap a white or grey area to set the white balance",
+                text = "Tap something truly white or grey (not a cream wall)",
                 color = Color.White,
                 modifier = Modifier
                     .align(Alignment.TopCenter)

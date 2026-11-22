@@ -114,12 +114,24 @@ bool requestWhiteBalancePick(CameraControlState& state, float ratioR, float rati
         baseTemp = estimate->temperatureK;
         baseTint = estimate->tint;
     }
+    // Keep some of the light's warmth: when the picked area is warm (the pick
+    // would cool the picture), correct only kWarmPickStrength of the way, in
+    // log space, as stock cameras leave tungsten slightly warm. A fully
+    // neutral warm-lit scene looked too cold on the 17U. A second pick moves
+    // closer to neutral. Cool or green/magenta-only corrections stay full.
+    constexpr float kWarmPickStrength = 0.75f;
+    ratioR = std::clamp(ratioR, 0.33f, 3.0f);
+    ratioB = std::clamp(ratioB, 0.33f, 3.0f);
+    if (ratioR < 1.0f && ratioB > 1.0f) {
+        ratioR = std::pow(ratioR, kWarmPickStrength);
+        ratioB = std::pow(ratioB, kWarmPickStrength);
+    }
     // Manual renders entry x forward(new) / forward(entry): asking forward(new)
     // = forward(current) x ratio moves the rendered gains by the ratio.
     const auto fwd = whiteBalanceGainsForTempTint(baseTemp, baseTint);
-    float r = fwd[0] * std::clamp(ratioR, 0.33f, 3.0f);
+    float r = fwd[0] * ratioR;
     float g = fwd[1];
-    float b = fwd[3] * std::clamp(ratioB, 0.33f, 3.0f);
+    float b = fwd[3] * ratioB;
     const float lowest = std::min({r, g, b});
     if (!(lowest > 0.0f)) return false;
     r /= lowest;

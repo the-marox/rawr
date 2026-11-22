@@ -48,6 +48,15 @@ first and moves to `xiaomi-17u` once verified.
   1.13 / 0.90 -> 1.00 / 0.98. In mixed light the rest of the wall follows
   its own light: a part lit from elsewhere read 0.92 / 1.02 after the pick,
   so it can look slightly blue.
+- Picking a cream/beige wall made the picture too cool (the pick makes the
+  tapped area grey; a white shelf in the same scene went 0.79 / 1.12). The
+  hint now says to tap something truly white or grey. Picking the white
+  shelf instead: 1.19 / 0.79 in Auto -> 0.95 / 1.00, still felt too cold
+  under warm lamps.
+- So a warm pick (one that cools the picture) now corrects 75% of the way
+  (in log space), keeping some of the light's warmth like stock cameras do;
+  a second pick moves closer to neutral. Cool and tint-only picks stay
+  full. Not yet checked on the 17U.
 
 ## 0.5.1-17u.4
 
