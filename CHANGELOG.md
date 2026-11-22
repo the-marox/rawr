@@ -6,6 +6,15 @@ first and moves to `xiaomi-17u` once verified.
 
 ## Unreleased (`yuv-probe`, test builds)
 
+### From upstream Rawr (Ed): #137, #138
+
+- #137 OPPO Find X8 Ultra (PKJ110) built-in profile, by Ed. Not used on the
+  17U. Its refreshed route snapshot is merged into the fork's.
+- #138 debug builds signed with a shared key from a GitHub secret, by Ed:
+  not taken. The fork already signs debug builds with its own fixed key
+  (debug.keystore), so debug.yml, build.gradle.kts and docs/build.md keep
+  the fork's version.
+
 ### White balance
 
 - WB sampler: WB panel > PICK NEUTRAL, then tap a white or grey area in the
