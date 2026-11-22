@@ -43,6 +43,11 @@ first and moves to `xiaomi-17u` once verified.
 - Checked on the 17U with the fix (white wall, daylight, Auto then pick):
   the wall read R/G 1.07 / B/G 0.97 in the Auto JPEG and 1.00 / 0.97 after
   the pick (linear, centre of the frame); DNG 0.99 / 0.99. No magenta.
+- Warm indoor light (17U, lamps, white wall): Auto JPEG R/G 1.34 / B/G 0.78
+  on the picked spot (the yellow cast), after the pick 1.01 / 0.96; DNG
+  1.13 / 0.90 -> 1.00 / 0.98. In mixed light the rest of the wall follows
+  its own light: a part lit from elsewhere read 0.92 / 1.02 after the pick,
+  so it can look slightly blue.
 
 ## 0.5.1-17u.4
 
