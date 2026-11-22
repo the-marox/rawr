@@ -1261,7 +1261,10 @@
           ],
           "white": 0
         },
-        "mirror": "vertical"
+        "mirror": "vertical",
+        "cropEdgesHighFps": {
+          "bottom": 768
+        }
       }
     },
     {

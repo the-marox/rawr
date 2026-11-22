@@ -24,8 +24,20 @@ on a Xiaomi 15 (dada).
   those sensors.
 - #5 1080p from the full width of a RAW 1.25x-2x its size (Lanczos-2
   resample), on only for "dada" (debug.rawr.video_resample).
-- Not yet checked on the 17U (what to check: lens switching, 4K60 and the
-  front camera, and whether the TOF / SENSOR controls appear).
+- Checked on the 17U: the TOF cell shows (17U sensor: ST L8, value [0]
+  read 1.73 m for a helmet at about 1.70 m, 34 cm for a screen at about
+  the same distance as AF's 0.36 m) and the SENSOR WB button shows (rear
+  tcs3448 CCT stream). The TOF cell opens with a long press on the AF
+  target.
+
+### 17U front camera at 60 fps
+
+- The front 60 fps mode fills only rows 0..2303 of the 4096x3072 RAW10
+  (16:9), so the centred UHD window read 312 rows the camera never writes:
+  a band on the left of the recording (magenta before #3, black after, with
+  stale image in the first second). The Front Normal profile now drops the
+  768 rows below at high fps (image.cropEdgesHighFps, the same mechanism
+  as #3), so the UHD window sits inside the written rows.
 
 ## 0.5.1-17u.6
 
