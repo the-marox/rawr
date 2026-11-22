@@ -6,7 +6,26 @@ first and moves to `xiaomi-17u` once verified.
 
 ## Unreleased (`yuv-probe`, test builds)
 
-Nothing yet.
+### Xiaomi 15 PRs by the-marox (#3, #4, #5)
+
+Merged as is from the-marox's PRs to this fork; his work, checked by him
+on a Xiaomi 15 (dada).
+
+- #3 Xiaomi 15 60 fps only where a sensor mode delivers the RAW stream
+  (sensor-mode table ceiling, on only for ro.product.device "dada",
+  debug.rawr.sensor_mode_fps), and the preview framing of a mirrored lens
+  whose crop window is off the frame centre (centred windows and
+  unmirrored lenses unchanged).
+- #4 Xiaomi 15 auxiliary sensors into capture: sensed PWM/mains flicker for
+  rawr AE (dada only, debug.rawr.sensed_flicker), a TOF cell in the focus
+  bar that sets manual focus to the laser distance, and a SENSOR button in
+  the WB panel that sets manual WB to the light sensor's colour
+  temperature. The TOF and SENSOR controls show on any phone that exposes
+  those sensors.
+- #5 1080p from the full width of a RAW 1.25x-2x its size (Lanczos-2
+  resample), on only for "dada" (debug.rawr.video_resample).
+- Not yet checked on the 17U (what to check: lens switching, 4K60 and the
+  front camera, and whether the TOF / SENSOR controls appear).
 
 ## 0.5.1-17u.6
 
