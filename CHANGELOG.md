@@ -19,7 +19,13 @@ first and moves to `xiaomi-17u` once verified.
   (CAMERA_NDK_DEVICE_KEPT / CAMERA_NDK_DEVICE_REUSED in the log). Other
   phones, the 17U included, close and reopen as before.
   `debug.rawr.keep_device=1` opts another device in, `=0` opts out.
-- Not yet checked on an S23 Ultra (no device here; testers needed).
+- Checked on an S23 Ultra by @NaveenRayala (diagnostics bundles, same
+  phone, same kind of back-and-forth switching across 0.6x/1x/3x/10x):
+  before 33 switches, median 2.6 s (0.9-4.5 s), 22 with refused reopens;
+  with this build 38 switches, median 0.7 s (0.5-1.3 s), no refused reopen,
+  every switch logged DEVICE_KEPT/DEVICE_REUSED, photos saved, no device
+  errors. (Measured from the switch to the first RAW frame.) The capture
+  failures at app launch, retried by the start ladder, were there before.
 
 ## 0.5.1-17u.5
 
