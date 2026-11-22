@@ -31,7 +31,9 @@ first and moves to `xiaomi-17u` once verified.
   neutral then rendered with the gap between the two as a cast. Manual WB
   now takes its white from the gains, the same rule the DNG's AsShotNeutral
   already follows (color/ColorCalibration.cpp; native test added).
-- Fix not yet checked on the 17U.
+- Checked on the 17U with the fix (white wall, daylight, Auto then pick):
+  the wall read R/G 1.07 / B/G 0.97 in the Auto JPEG and 1.00 / 0.97 after
+  the pick (linear, centre of the frame); DNG 0.99 / 0.99. No magenta.
 
 ## 0.5.1-17u.4
 
