@@ -50,6 +50,7 @@ class CameraControlSurface final {
     void setInternalTraceCaptureEnabled(bool enabled);
     void setOisEnabled(bool enabled);
     void setAntibandingMode(uint8_t mode);
+    void setSensedFlickerPeriodNs(int64_t periodNs);
     void setRawrAeConfig(const RawrAeConfig& config);
     void setAutoMinFps(int fps);
     void setAePriorityDisabled(bool disabled);

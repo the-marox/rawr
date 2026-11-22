@@ -55,6 +55,9 @@ void setOisEnabled(EngineHandle h, bool v) noexcept {
 void setAntibandingMode(EngineHandle h, uint8_t mode) noexcept {
     if (h) engine(h)->cameraControls().setAntibandingMode(mode);
 }
+void setSensedFlickerPeriodNs(EngineHandle h, int64_t periodNs) noexcept {
+    if (h) engine(h)->cameraControls().setSensedFlickerPeriodNs(periodNs);
+}
 void setRawrAutoExposure(EngineHandle h, bool enabled, int nightLook, int isoMin, int isoMax, int64_t shutterStartNs,
                          int64_t shutterMaxNs, float balanceEv, float maxDigitalGainEv, int speed,
                          int metering) noexcept {

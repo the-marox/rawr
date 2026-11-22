@@ -31,6 +31,11 @@ data class AuxSensorReading(
     val flickerRawHz: Float? = null,
     /** True when the phone has a flicker sensor, so a null [flicker] means "no flicker seen". */
     val flickerSensor: Boolean = false,
+    /**
+     * Flicker that is not mains, once confirmed (LED lights dimmed by PWM flicker at a few hundred
+     * hertz), Hz; null = none confirmed. Only when [flicker] is null.
+     */
+    val flickerPwmHz: Float? = null,
     /** Distance to what the laser AF time-of-flight sensor sees, millimetres. */
     val tofDistanceMm: Float? = null,
     /** Barometric pressure, hectopascals. */
@@ -43,6 +48,10 @@ data class AuxSensorReading(
      * calibration C = 250, so EV100 = log2(lux / 2.5).
      */
     val ev100: Float? get() = lux?.takeIf { it > 0f }?.let { log2(it / 2.5f) }
+
+    /** Period of the confirmed flicker, mains or PWM, nanoseconds; null = none. */
+    val flickerPeriodNs: Long?
+        get() = flicker?.periodNs ?: flickerPwmHz?.takeIf { it > 0f }?.let { (1e9 / it).roundToLong() }
 
     /**
      * JNI form for capture metadata: {lux, cctK, flickerHz, flickerRawHz, tofDistanceMm, pressureHpa}.
@@ -59,8 +68,8 @@ data class AuxSensorReading(
     )
 
     val isEmpty: Boolean
-        get() = lux == null && cctK == null && flicker == null && flickerRawHz == null && tofDistanceMm == null &&
-            pressureHpa == null && headingMagneticDeg == null
+        get() = lux == null && cctK == null && flicker == null && flickerRawHz == null && flickerPwmHz == null &&
+            tofDistanceMm == null && pressureHpa == null && headingMagneticDeg == null
 }
 
 /**
@@ -74,16 +83,73 @@ data class AuxSensorReading(
  */
 class FlickerClassifier(
     private val confirmCount: Int = 3,
-    private val releaseCount: Int = 5,
-    private val toleranceHz: Float = DEFAULT_TOLERANCE_HZ
+    /**
+     * Misses in a row that drop a confirmed mains frequency: about two seconds, like PWM, so a frame
+     * that briefly loses the lit surface does not flip rawr AE's shutter between snapped and free.
+     */
+    private val releaseCount: Int = 16,
+    private val toleranceHz: Float = DEFAULT_TOLERANCE_HZ,
+    /** Readings in a row a non-mains frequency needs: it has no expected value, so it must hold longer. */
+    private val pwmConfirmCount: Int = 6,
+    /** Odd readings in a row that drop a confirmed PWM frequency: about two seconds, as for mains. */
+    private val pwmReleaseCount: Int = 16
 ) {
     var detected: FlickerFrequency? = null
+        private set
+
+    /**
+     * A steady non-mains flicker (PWM-dimmed LEDs), Hz, while no mains flicker is detected: the mean of
+     * the readings since it settled, so it is finer than one bin. Confirmed after [pwmConfirmCount]
+     * readings in a row within a bin and a half of their mean, dropped after [pwmReleaseCount] that are not.
+     */
+    var pwmHz: Float? = null
         private set
     private var candidate: FlickerFrequency? = null
     private var candidateRun = 0
     private var missRun = 0
+    private var pwmSum = 0.0
+    private var pwmCount = 0
+    private var pwmMissRun = 0
 
     fun update(hz: Float): FlickerFrequency? {
+        val mains = updateMains(hz)
+        updatePwm(hz, mains)
+        return mains
+    }
+
+    private fun updatePwm(hz: Float, mains: FlickerFrequency?) {
+        if (mains != null) {
+            clearPwm()
+            return
+        }
+        val usable = hz.isFinite() && hz >= MIN_PWM_HZ && hz <= MAX_PWM_HZ && classify(hz) == null
+        val mean = if (pwmCount > 0) (pwmSum / pwmCount).toFloat() else Float.NaN
+        // A frequency between two bins reads on both, and noise adds a third: one and a half bins
+        // around the running mean keeps all three while a wandering reading still leaves.
+        if (usable && pwmCount > 0 && abs(hz - mean) <= 1.5f * toleranceHz) {
+            pwmSum += hz
+            pwmCount++
+            pwmMissRun = 0
+        } else if (pwmHz != null && ++pwmMissRun < pwmReleaseCount) {
+            return  // A confirmed PWM survives a few odd readings, as mains does.
+        } else {
+            clearPwm()
+            if (usable) {
+                pwmSum = hz.toDouble()
+                pwmCount = 1
+            }
+        }
+        if (pwmCount >= pwmConfirmCount) pwmHz = (pwmSum / pwmCount).toFloat()
+    }
+
+    private fun clearPwm() {
+        pwmHz = null
+        pwmSum = 0.0
+        pwmCount = 0
+        pwmMissRun = 0
+    }
+
+    private fun updateMains(hz: Float): FlickerFrequency? {
         val match = classify(hz)
         if (match != null && match == candidate) candidateRun++ else {
             candidate = match
@@ -109,6 +175,7 @@ class FlickerClassifier(
         candidate = null
         candidateRun = 0
         missRun = 0
+        clearPwm()
     }
 
     private fun classify(hz: Float): FlickerFrequency? {
@@ -119,6 +186,13 @@ class FlickerClassifier(
     companion object {
         /** One analysis bin of the TCS3408 (1000 Hz / 128). */
         const val DEFAULT_TOLERANCE_HZ = 7.8125f
+
+        /**
+         * Non-mains flicker considered: below, the readings under steady light wander (15-55 Hz seen
+         * in daylight); above, the period is too short to matter for a shutter.
+         */
+        const val MIN_PWM_HZ = 60f
+        const val MAX_PWM_HZ = 1_000f
     }
 }
 
@@ -134,17 +208,24 @@ object FlickerBanding {
      * True when [exposureNs] is short enough to show bands and is not a whole number of flicker
      * periods (1/100, 1/50, 1/33 s... at 100 Hz).
      */
-    fun bands(exposureNs: Long, flicker: FlickerFrequency): Boolean {
-        if (exposureNs <= 0L) return false
-        val periods = exposureNs.toDouble() / flicker.periodNs
+    fun bands(exposureNs: Long, flicker: FlickerFrequency): Boolean = bands(exposureNs, flicker.periodNs)
+
+    /** [bands] for any flicker period (PWM as well as mains), nanoseconds. */
+    fun bands(exposureNs: Long, periodNs: Long): Boolean {
+        if (exposureNs <= 0L || periodNs <= 0L) return false
+        val periods = exposureNs.toDouble() / periodNs
         if (periods >= SAFE_PERIODS) return false
         if (periods < 1.0 - TOLERANCE) return true
         return abs(periods - kotlin.math.round(periods)) > TOLERANCE
     }
 
     /** The nearest banding-free shutter time: a whole number of periods, at least one. */
-    fun nearestSafeExposureNs(exposureNs: Long, flicker: FlickerFrequency): Long {
-        val periods = (exposureNs.toDouble() / flicker.periodNs).roundToLong().coerceAtLeast(1L)
-        return periods * flicker.periodNs
+    fun nearestSafeExposureNs(exposureNs: Long, flicker: FlickerFrequency): Long =
+        nearestSafeExposureNs(exposureNs, flicker.periodNs)
+
+    /** [nearestSafeExposureNs] for any flicker period, nanoseconds. */
+    fun nearestSafeExposureNs(exposureNs: Long, periodNs: Long): Long {
+        val periods = (exposureNs.toDouble() / periodNs).roundToLong().coerceAtLeast(1L)
+        return periods * periodNs
     }
 }

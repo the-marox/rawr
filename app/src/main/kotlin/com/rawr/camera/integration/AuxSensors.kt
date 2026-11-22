@@ -28,7 +28,9 @@ import kotlin.math.abs
  * - `xiaomi.sensor.back_cct` (on change): [0] CCT K, [1] lux.
  * - `xiaomi.sensor.back_lux_strm` / `back_lux`: [0] lux.
  * - `xiaomi.sensor.flicker` (~8 Hz): [0] dominant frequency in 7.8125 Hz steps; 7.8125 = no flicker.
- * - `xiaomi.sensor.tof` (continuous, 10 Hz): [0] distance mm (about -5 when covered, up to 4000).
+ * - `xiaomi.sensor.tof` (Visionics VI5300, continuous, 10 Hz): [0] distance mm (about -5 when covered,
+ *   up to 4000), [1] status: 0 for a real target, 255 for none. Aimed at an overcast sky it still gives
+ *   1.7-2.8 m, with status 255, so only status 0 counts as a distance.
  * - `TYPE_PRESSURE`: [0] hPa. `TYPE_ROTATION_VECTOR`: quaternion, heading from magnetic north.
  * - Front, beside the display (ams TCS3720): `xiaomi.sensor.front_cct_strm` (continuous) [0] CCT K, [8] lux;
  *   `xiaomi.sensor.front_cct` (on change) [0] CCT K, [3] lux; any phone's `TYPE_LIGHT` [0] lux.
@@ -91,6 +93,7 @@ class AuxSensors(
 
     @Volatile private var flickerRawHz: Float? = null
     @Volatile private var flicker: FlickerFrequency? = null
+    @Volatile private var flickerPwmHz: Float? = null
     @Volatile private var flickerAtNanos = 0L
     @Volatile private var tofDistanceMm: Float? = null
     @Volatile private var tofAtNanos = 0L
@@ -107,11 +110,15 @@ class AuxSensors(
     /** The confirmed mains flicker, or null (none seen, no sensor, or inactive). */
     val flickerFrequency: Flow<FlickerFrequency?> = reading.map { it?.flicker }.distinctUntilChanged()
 
+    /** Period of the confirmed flicker, mains or PWM, nanoseconds; 0 = none (or no sensor, or inactive). */
+    val flickerPeriodNs: Flow<Long> = reading.map { it?.flickerPeriodNs ?: 0L }.distinctUntilChanged()
+
     private var listeners: List<SensorEventListener> = emptyList()
 
     private val flickerTimeout = Runnable {
         flickerRawHz = null
         flicker = null
+        flickerPwmHz = null
         classifier.reset()
         publish()
     }
@@ -127,6 +134,7 @@ class AuxSensors(
             frontLight?.clear()
             flickerRawHz = null
             flicker = null
+            flickerPwmHz = null
             flickerAtNanos = 0L
             tofDistanceMm = null
             tofAtNanos = 0L
@@ -185,6 +193,7 @@ class AuxSensors(
             flicker = flicker.takeIf { flickerFresh },
             flickerRawHz = flickerRawHz.takeIf { flickerFresh },
             flickerSensor = flickerFresh,
+            flickerPwmHz = flickerPwmHz.takeIf { flickerFresh },
             tofDistanceMm = tofDistanceMm.takeIf { tofFresh && !frontCamera },
             pressureHpa = pressureHpa.takeIf { pressureFresh },
             headingMagneticDeg = headingDeg.takeIf { headingFresh }
@@ -213,6 +222,7 @@ class AuxSensors(
             val hz = event.values.getOrNull(0)?.takeIf { it.isFinite() && it > 0f && it < MAX_FLICKER_HZ }
             flickerRawHz = hz
             flicker = classifier.update(hz ?: Float.NaN)
+            flickerPwmHz = classifier.pwmHz
             flickerAtNanos = nowNanos()
             handler.removeCallbacks(flickerTimeout)
             handler.postDelayed(flickerTimeout, FLICKER_TIMEOUT_MS)
@@ -224,7 +234,7 @@ class AuxSensors(
 
     private fun tofListener() = object : SensorEventListener {
         override fun onSensorChanged(event: SensorEvent) {
-            tofDistanceMm = event.values.getOrNull(0)?.takeIf { it.isFinite() && it in MIN_TOF_MM..MAX_TOF_MM }
+            tofDistanceMm = tofDistanceMm(event.values)
             tofAtNanos = nowNanos()
             publish()
         }
@@ -264,22 +274,25 @@ class AuxSensors(
             flicker = flicker,
             flickerRawHz = flickerRawHz,
             flickerSensor = flickerSensor != null,
+            flickerPwmHz = flickerPwmHz,
             tofDistanceMm = tofDistanceMm.takeUnless { frontCamera }
         )
         val shown = mutableReading.value
         if (force || shown == null || shown.flicker != next.flicker || shown.flickerSensor != next.flickerSensor ||
+            (shown.flickerPwmHz == null) != (next.flickerPwmHz == null) ||
+            movedEnough(shown.flickerPwmHz, next.flickerPwmHz, PWM_STEP_HZ) ||
             movedEnough(shown.lux, next.lux, LUX_STEP) || movedEnough(shown.cctK, next.cctK, CCT_STEP) ||
             movedEnough(shown.tofDistanceMm, next.tofDistanceMm, TOF_STEP)
         ) mutableReading.value = next
     }
 
-    private companion object {
-        val FRONT_LIGHT_SOURCES = listOf(
+    internal companion object {
+        private val FRONT_LIGHT_SOURCES = listOf(
             LightSource("xiaomi.sensor.front_cct_strm", luxIndex = 8, cctIndex = 0),
             LightSource("xiaomi.sensor.front_cct", luxIndex = 3, cctIndex = 0),
             LightSource(null, luxIndex = 0, cctIndex = null)
         )
-        val REAR_LIGHT_SOURCES = listOf(
+        private val REAR_LIGHT_SOURCES = listOf(
             LightSource("xiaomi.sensor.back_cct_strm", luxIndex = 0, cctIndex = 1),
             LightSource("xiaomi.sensor.back_cct", luxIndex = 1, cctIndex = 0),
             LightSource("xiaomi.sensor.back_lux_strm", luxIndex = 0, cctIndex = null),
@@ -305,6 +318,18 @@ class AuxSensors(
         /** The VI5300 reads about -5 mm when covered and reports up to 4 m. */
         const val MIN_TOF_MM = 10f
         const val MAX_TOF_MM = 4_000f
+        /** The VI5300's range status for a real target; with no target it reads 255 and a made-up distance. */
+        const val TOF_STATUS_VALID = 0f
+
+        /**
+         * The distance of a ToF event, or null when there is no real target: out of range, or a status
+         * other than valid. An event without a status (one value) is taken at its distance.
+         */
+        internal fun tofDistanceMm(values: FloatArray): Float? {
+            val status = values.getOrNull(1)
+            if (status != null && status != TOF_STATUS_VALID) return null
+            return values.getOrNull(0)?.takeIf { it.isFinite() && it in MIN_TOF_MM..MAX_TOF_MM }
+        }
         const val MAX_CCT_K = 25_000f
 
         /** Below this the colour channels are mostly noise and the CCT is not worth showing. */
@@ -314,6 +339,8 @@ class AuxSensors(
         const val LUX_STEP = 0.03f
         const val CCT_STEP = 25f
         const val TOF_STEP = 0.03f
+        /** A PWM frequency is re-shown (and re-sent to rawr AE) when it moves by half a sensor bin. */
+        const val PWM_STEP_HZ = 3.9f
 
         fun movedEnough(old: Float?, new: Float?, step: Float): Boolean {
             if (old == null || new == null) return (old == null) != (new == null)

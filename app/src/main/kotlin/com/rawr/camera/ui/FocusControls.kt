@@ -30,6 +30,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rawr.camera.architecture.CancelSpotAe
 import com.rawr.camera.architecture.CaptureDispatch
 import com.rawr.camera.architecture.ClearAutofocus
@@ -40,6 +41,7 @@ import com.rawr.camera.architecture.Refocus
 import com.rawr.camera.architecture.SetFocusMode
 import com.rawr.camera.architecture.SetManualFocus
 import com.rawr.camera.model.*
+import kotlin.math.roundToInt
 
 @Composable
 internal fun AfTarget(state: CaptureUiState, dispatch: CaptureDispatch) {
@@ -279,17 +281,43 @@ private fun pulsingAlpha(status: TargetStatus): Float {
 
 @Composable
 internal fun FocusBottomControls(state: CaptureUiState, dispatch: CaptureDispatch, modifier: Modifier = Modifier) {
+    // The laser ToF distance, where the phone has one (rear cameras): a cell that focuses there.
+    val aux = LocalAuxSensors.current?.collectAsStateWithLifecycle()?.value
+    val tof = aux?.tofDistanceMm?.let { mm ->
+        tofFocusNormalized(mm, state.capabilities.manualFocus)?.let { TofFocus(mm, it) }
+    }
     Column(modifier, verticalArrangement = Arrangement.spacedBy(CaptureDimens.ControlGap)) {
         FocusModeSelector(
             selected = state.focus.mode,
             mfSupported = state.capabilities.manualFocus.supported,
             orientation = state.orientation,
             dispatch = dispatch,
+            tof = tof,
             modifier = Modifier.fillMaxWidth().height(CaptureDimens.QuickRowHeight)
         )
         MfExposureScrub(state, dispatch, Modifier.fillMaxWidth())
     }
 }
+
+/** Where the laser ToF sees the subject, and the MF position that focuses there. */
+internal data class TofFocus(val distanceMm: Float, val normalized: Float)
+
+/**
+ * The MF position (native scale: 0 = closest, 1 = ∞) for a laser ToF distance, or null when it cannot
+ * be used: no distance, or a lens whose focus distance is not calibrated in diopters. Closer than the
+ * lens can focus lands on its closest position.
+ */
+internal fun tofFocusNormalized(distanceMm: Float?, capability: ManualFocusCapability): Float? {
+    if (distanceMm == null || !distanceMm.isFinite() || distanceMm <= 0f) return null
+    if (!capability.supported || !capability.distanceReadoutTrustworthy) return null
+    val normalized = mfNormalizedFromDiopters(1000f / distanceMm, capability.minimumFocusDistance) ?: return null
+    return normalized.coerceIn(capability.minNormalized, capability.maxNormalized)
+}
+
+/** Short label for the ToF cell: centimetres under a metre, then one decimal. */
+internal fun tofFocusLabel(distanceMm: Float): String =
+    if (distanceMm < 1000f) "TOF ${(distanceMm / 10f).roundToInt()}cm"
+    else "TOF %.1fm".format(java.util.Locale.ROOT, distanceMm / 1000f)
 
 /**
  * Segmented focus-mode bar using the exact same material treatment as the
@@ -302,6 +330,7 @@ private fun FocusModeSelector(
     mfSupported: Boolean,
     orientation: Orientation,
     dispatch: CaptureDispatch,
+    tof: TofFocus? = null,
     modifier: Modifier = Modifier
 ) {
     val haptics = LocalCaptureHaptics.current
@@ -367,12 +396,49 @@ private fun FocusModeSelector(
                     modifier = Modifier.uprightInLandscape(orientation)
                 )
             }
-            if (i != FocusMode.entries.lastIndex) {
+            if (i != FocusMode.entries.lastIndex || tof != null) {
                 Box(
                     Modifier
                         .width(.5.dp)
                         .fillMaxHeight(.48f)
                         .background(Color.White.copy(alpha = .055f))
+                )
+            }
+        }
+        // Not a mode: a one-shot MF move to the laser ToF distance (SetManualFocus enters MF).
+        if (tof != null) {
+            val label = tofFocusLabel(tof.distanceMm)
+            // The distance updates ten times a second: the tap reads the latest without restarting the gesture.
+            val latestTof by rememberUpdatedState(tof)
+            Box(
+                Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .testTag(CaptureTestTags.FOCUS_TOF)
+                    .pointerInput(Unit) {
+                        detectTapGestures {
+                            haptics.selection()
+                            dispatch(SetManualFocus(latestTof.normalized))
+                        }
+                    }
+                    .semantics {
+                        contentDescription = "Focus at the laser distance, $label"
+                        role = Role.Button
+                        onClick {
+                            haptics.selection()
+                            dispatch(SetManualFocus(latestTof.normalized))
+                            true
+                        }
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    label,
+                    color = Color.White.copy(alpha = .72f),
+                    fontFamily = CaptureMono,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 10.sp,
+                    modifier = Modifier.uprightInLandscape(orientation)
                 )
             }
         }

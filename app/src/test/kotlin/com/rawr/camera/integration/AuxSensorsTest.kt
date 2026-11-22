@@ -14,6 +14,19 @@ class AuxSensorsTest {
         return last
     }
 
+    // ToF events the Xiaomi 15 reported: a wall at 90 cm, and an overcast sky with no target.
+    private val tofWall = floatArrayOf(901.67f, 0f, 885.67f, 918.33f, 63179.67f, -1f, 0.40f, -1f, 0f, -1f, -1f, -1f, 5218f, -1f, -1f, 0f)
+    private val tofSky = floatArrayOf(2515.67f, 255f, 2427.67f, 2620.67f, 31528.33f, -1f, 4.56f, -1f, 0f, -1f, -1f, -1f, 3300f, -1f, -1f, 0f)
+
+    @Test fun tofDistanceNeedsAValidStatus() {
+        assertEquals(901.67f, AuxSensors.tofDistanceMm(tofWall))
+        assertNull(AuxSensors.tofDistanceMm(tofSky))
+        assertNull(AuxSensors.tofDistanceMm(floatArrayOf(-5f, 0f)))
+        assertNull(AuxSensors.tofDistanceMm(floatArrayOf(4500f, 0f)))
+        assertEquals(1200f, AuxSensors.tofDistanceMm(floatArrayOf(1200f)))
+        assertNull(AuxSensors.tofDistanceMm(floatArrayOf()))
+    }
+
     @Test fun mainsFlickerIsConfirmedAfterThreeReadings() {
         val c = FlickerClassifier()
         assertNull(c.feed(led50HzMains, led50HzMains))
@@ -43,10 +56,10 @@ class AuxSensorsTest {
         assertEquals(FlickerFrequency.Hz100, c.feed(125f, led50HzMains))
     }
 
-    @Test fun flickerIsReleasedAfterFiveMissesInARow() {
+    @Test fun flickerIsReleasedAfterSixteenMissesInARow() {
         val c = FlickerClassifier()
         c.feed(led50HzMains, led50HzMains, led50HzMains)
-        assertEquals(FlickerFrequency.Hz100, c.feed(noFlicker, noFlicker, noFlicker, noFlicker))
+        assertEquals(FlickerFrequency.Hz100, c.feed(*FloatArray(15) { noFlicker }))
         assertNull(c.update(noFlicker))
     }
 
@@ -60,9 +73,76 @@ class AuxSensorsTest {
     @Test fun invalidReadingsCountAsMisses() {
         val c = FlickerClassifier()
         c.feed(led50HzMains, led50HzMains, led50HzMains)
-        assertNull(c.feed(Float.NaN, Float.NaN, Float.NaN, Float.NaN, Float.NaN))
+        assertNull(c.feed(*FloatArray(16) { Float.NaN }))
         c.reset()
         assertNull(c.detected)
+    }
+
+    // A PWM-dimmed LED: the sensor settles on one bin (here 250 Hz falls between 246.09 and 253.91).
+    private val pwm250 = floatArrayOf(250f, 253.90625f, 246.09375f, 250f, 253.90625f, 246.09375f)
+
+    @Test fun steadyNonMainsFlickerIsConfirmedAfterSixReadings() {
+        val c = FlickerClassifier()
+        c.feed(*pwm250.copyOfRange(0, 5))
+        assertNull(c.pwmHz)
+        assertNull(c.update(pwm250[5]))  // Not mains...
+        assertEquals(250f, c.pwmHz!!, 1f)  // ...but a steady 250 Hz.
+        assertNull(c.detected)
+    }
+
+    @Test fun wanderingDaylightAndDarknessAreNotPwm() {
+        val c = FlickerClassifier()
+        repeat(4) { c.feed(*daylight.toFloatArray()) }
+        assertNull(c.pwmHz)
+        repeat(20) { c.update(noFlicker) }
+        assertNull(c.pwmHz)
+        // Low bins wander under steady light; they never count, however steady.
+        repeat(10) { c.update(54.6875f) }
+        assertNull(c.pwmHz)
+    }
+
+    @Test fun pwmSurvivesOddReadingsAndIsReleasedAfterSixteenMisses() {
+        val c = FlickerClassifier()
+        c.feed(*pwm250)
+        c.feed(585.9375f, 23.4375f)
+        assertNotNull(c.pwmHz)
+        c.update(250f)
+        repeat(15) { c.update(noFlicker) }
+        assertNotNull(c.pwmHz)
+        c.update(noFlicker)
+        assertNull(c.pwmHz)
+    }
+
+    @Test fun pwmNearTheTopOfTheRangeIsKept() {
+        // Xiaomi 15 on a desktop monitor dimmed to 28 %: ~961 Hz.
+        val c = FlickerClassifier()
+        c.feed(960.9375f, 968.75f, 953.125f, 960.9375f, 960.9375f, 968.75f)
+        assertEquals(962f, c.pwmHz!!, 4f)
+    }
+
+    @Test fun mainsFlickerWinsOverPwm() {
+        val c = FlickerClassifier()
+        c.feed(*pwm250)
+        assertNotNull(c.pwmHz)
+        assertEquals(FlickerFrequency.Hz100, c.feed(led50HzMains, led50HzMains, led50HzMains))
+        assertNull(c.pwmHz)
+        c.reset()
+        assertNull(c.pwmHz)
+    }
+
+    @Test fun flickerPeriodCoversMainsAndPwm() {
+        assertEquals(10_000_000L, AuxSensorReading(flicker = FlickerFrequency.Hz100).flickerPeriodNs)
+        assertEquals(4_000_000L, AuxSensorReading(flickerPwmHz = 250f).flickerPeriodNs)
+        assertNull(AuxSensorReading(flickerSensor = true).flickerPeriodNs)
+        assertFalse(AuxSensorReading(flickerPwmHz = 250f).isEmpty)
+    }
+
+    @Test fun pwmShuttersBandUnlessWholePeriods() {
+        assertTrue(FlickerBanding.bands(3_000_000L, 4_000_000L))     // 1/333 s at 250 Hz
+        assertFalse(FlickerBanding.bands(8_000_000L, 4_000_000L))    // 1/125 s: two periods
+        assertFalse(FlickerBanding.bands(40_000_000L, 4_000_000L))   // ten periods average out
+        assertEquals(12_000_000L, FlickerBanding.nearestSafeExposureNs(10_000_000L, 4_000_000L))
+        assertFalse(FlickerBanding.bands(10_000_000L, 0L))
     }
 
     @Test fun shuttersOutOfStepWithTheFlickerBand() {

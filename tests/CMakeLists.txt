@@ -287,6 +287,8 @@ rawr_test(session_recipe_test
   "${APP}/color/DcpProfile.cpp"
   "${APP}/color/ColorMath.cpp"
   "${APP}/geometry/LensDistortion.cpp")
+rawr_test(flicker_period_test
+  "${RAWR_ROOT}/tests/native/flicker_period_test.cpp")
 rawr_test(camera_key_scope_test
   "${RAWR_ROOT}/tests/native/camera_key_scope_test.cpp"
   "${APP}/camera/CameraRouting.cpp"

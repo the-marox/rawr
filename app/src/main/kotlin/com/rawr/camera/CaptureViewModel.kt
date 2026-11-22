@@ -158,7 +158,8 @@ class CaptureViewModel(application: Application) : AndroidViewModel(application)
     private val settingsSync by lazy {
         com.rawr.camera.integration.CaptureSettingsSync(
             viewModelScope, settingsEditor.values, { latestSettings }, previewCoordinator, controller,
-            sensedFlicker = auxSensors.flickerFrequency
+            sensedFlicker = auxSensors.flickerFrequency,
+            sensedFlickerPeriodNs = auxSensors.flickerPeriodNs
         )
     }
 

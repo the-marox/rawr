@@ -13,6 +13,14 @@ class LightMeterTextTest {
         assertEquals("1/125 will band · try 1/100", text.warning)
     }
 
+    @Test fun pwmFlickerIsShownWithItsOwnWarning() {
+        val reading = AuxSensorReading(lux = 120f, flickerPwmHz = 250.4f, flickerSensor = true)
+        val text = lightMeterText(reading, exposureTimeNs = 3_000_000L)
+        assertEquals("~250 Hz PWM", text.detail)
+        assertEquals("1/333 will band · try 1/250", text.warning)
+        assertNull(lightMeterText(reading, exposureTimeNs = 8_000_000L).warning)
+    }
+
     @Test fun noWarningWhenTheShutterIsInStep() {
         val reading = AuxSensorReading(lux = 51.1f, flicker = FlickerFrequency.Hz100, flickerSensor = true)
         assertNull(lightMeterText(reading, exposureTimeNs = 20_000_000L).warning)

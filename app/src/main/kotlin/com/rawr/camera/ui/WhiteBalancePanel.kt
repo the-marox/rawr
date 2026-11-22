@@ -33,13 +33,16 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rawr.camera.architecture.CaptureDispatch
+import com.rawr.camera.architecture.LockWhiteBalance
 import com.rawr.camera.architecture.SetWhiteBalanceMode
 import com.rawr.camera.architecture.SetWhiteBalanceTempTint
 import com.rawr.camera.architecture.ToggleWhiteBalancePick
 import com.rawr.camera.model.CaptureUiState
 import com.rawr.camera.model.Orientation
 import com.rawr.camera.model.WhiteBalanceMode
+import kotlin.math.roundToInt
 
 private val WbBodyHeight = 88.dp
 
@@ -59,6 +62,9 @@ internal fun WhiteBalancePanel(state: CaptureUiState, dispatch: CaptureDispatch,
         listOf(WhiteBalanceMode.Auto, WhiteBalanceMode.ManualTempTint) + otherPresets
 
     val inManual = state.whiteBalanceMode == WhiteBalanceMode.ManualTempTint
+    // The colour temperature the phone's light sensor measures, where it has one: one tap sets manual WB to it.
+    val sensorK = sensorWhiteBalanceK(LocalAuxSensors.current?.collectAsStateWithLifecycle()?.value?.cctK)
+        ?.takeIf { state.capabilities.manualWhiteBalanceSupported }
     // Live neutral readout on the header line while in Auto/preset. Mirrors
     // the rails' display state (the single live source fed by the snapshot
     // follow), so header, rails, compact strip and monitor can never drift
@@ -101,7 +107,7 @@ internal fun WhiteBalancePanel(state: CaptureUiState, dispatch: CaptureDispatch,
                     haptics.selection()
                     dispatch(ToggleWhiteBalancePick)
                 }
-                orderedModes.chunked(2).forEach { row ->
+                orderedModes.chunked(2).forEachIndexed { rowIndex, row ->
                     Row(
                         Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(CaptureDimens.TopBarPaletteInnerGap)
@@ -156,6 +162,26 @@ internal fun WhiteBalancePanel(state: CaptureUiState, dispatch: CaptureDispatch,
                         }
                         if (row.size == 1) {
                             Spacer(Modifier.weight(1f))
+                        }
+                    }
+                    // Right under AUTO / MANUAL, so it is in view without scrolling. Not a mode: locks
+                    // manual WB at the sensor's reading (tint 0); the rails fine-tune it.
+                    if (rowIndex == 0 && sensorK != null) {
+                        SmallChoice(
+                            label = if (landscape) "SNS" else "SENSOR ${sensorK}K",
+                            active = false,
+                            enabled = true,
+                            testTag = CaptureTestTags.WB_SENSOR,
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .height(CaptureDimens.TopBarPaletteMinorChoiceHeight)
+                                    .semantics {
+                                        contentDescription = "White balance from the light sensor, $sensorK kelvin"
+                                    }
+                        ) {
+                            haptics.selection()
+                            dispatch(LockWhiteBalance(sensorK, 0))
                         }
                     }
                 }
@@ -214,6 +240,16 @@ internal fun WhiteBalancePanel(state: CaptureUiState, dispatch: CaptureDispatch,
 }
 
 private fun formatTint(tint: Int): String = if (tint >= 0) "+$tint" else "$tint"
+
+/**
+ * Manual WB temperature for the light sensor's colour temperature: on the TEMP rail's 25 K steps and
+ * inside its range; null without a reading.
+ */
+internal fun sensorWhiteBalanceK(cctK: Float?): Int? {
+    if (cctK == null || !cctK.isFinite() || cctK <= 0f) return null
+    val stepped = (cctK / 25f).roundToInt() * 25
+    return stepped.coerceIn(WhiteBalanceMode.TEMP_MIN_K, WhiteBalanceMode.TEMP_MAX_K)
+}
 
 private fun previousTempText(tempK: Int): String =
     (tempK - 500).takeIf { it >= WhiteBalanceMode.TEMP_MIN_K }?.let { "${it}K" } ?: ""

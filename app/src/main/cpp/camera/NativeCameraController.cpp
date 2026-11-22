@@ -27,6 +27,7 @@
 #include "camera/CameraControlCapabilities.h"
 #include "camera/CameraDeviceSession.h"
 #include "camera/CameraFocusControls.h"
+#include "camera/FlickerPeriod.h"
 #include "camera/CameraProfileJson.h"
 #include "camera/CameraRequestPipeline.h"
 #include "camera/CameraResultProcessor.h"
@@ -196,6 +197,8 @@ struct NativeCameraController::Impl final : CameraEventSink {
     // Last mains flicker Camera2 detected (1 = 50 Hz, 2 = 60 Hz); sticky,
     // AE OFF frames may stop reporting it.
     std::atomic<int32_t> lastSceneFlicker{0};
+    // Flicker period the phone's flicker sensor confirmed (FlickerPeriod.h); 0 = none or not allowed here.
+    std::atomic<int64_t> sensedFlickerPeriodNs{0};
     mutable std::mutex rawrAeContextMutex;  // never held across camera calls
     NativeCameraController::RawrAeContext rawrAePublished;
     int autoMinFpsPreference = 15;
@@ -1848,6 +1851,21 @@ struct NativeCameraController::Impl final : CameraEventSink {
         submitRepeatingLocked();
     }
 
+    void setSensedFlickerPeriodValue(int64_t periodNs) {
+        static const bool allowed = [] {
+            char device[PROP_VALUE_MAX]{};
+            char setting[PROP_VALUE_MAX]{};
+            __system_property_get("ro.product.device", device);
+            __system_property_get("debug.rawr.sensed_flicker", setting);
+            return sensedFlickerAllowed(device, setting[0]);
+        }();
+        const int64_t next = allowed && periodNs >= kMinSensedFlickerPeriodNs && periodNs <= kMaxSensedFlickerPeriodNs
+                                 ? periodNs
+                                 : 0;
+        if (sensedFlickerPeriodNs.exchange(next, std::memory_order_relaxed) == next) return;
+        diag("CAMERA_SENSED_FLICKER periodNs=" + std::to_string(next) + " requestedNs=" + std::to_string(periodNs) +
+             " allowed=" + (allowed ? "true" : "false"));
+    }
     void setAntibandingModeValue(uint8_t mode) {
         std::lock_guard<std::mutex> lock(mutex);
         if (mode > 3) mode = ACAMERA_CONTROL_AE_ANTIBANDING_MODE_AUTO;
@@ -2052,13 +2070,8 @@ struct NativeCameraController::Impl final : CameraEventSink {
                               : rawrAeConfig.shutterStartNs > 0 ? rawrAeConfig.shutterStartNs
                                                                 : 33'333'333;
         c.shutterStartNs = std::clamp<int64_t>(start, c.shutterMinNs, c.shutterMaxNs);
-        const uint8_t banding = antibandingPreference;
-        const int32_t mains = banding == ACAMERA_CONTROL_AE_ANTIBANDING_MODE_50HZ   ? 1
-                              : banding == ACAMERA_CONTROL_AE_ANTIBANDING_MODE_60HZ ? 2
-                              : banding == ACAMERA_CONTROL_AE_ANTIBANDING_MODE_AUTO
-                                  ? lastSceneFlicker.load(std::memory_order_relaxed)
-                                  : 0;
-        c.flickerPeriodNs = mains == 1 ? 10'000'000 : mains == 2 ? 8'333'333 : 0;
+        c.flickerPeriodNs = rawrAeFlickerPeriodNs(antibandingPreference, lastSceneFlicker.load(std::memory_order_relaxed),
+                                                  sensedFlickerPeriodNs.load(std::memory_order_relaxed));
         c.userEv = float(std::clamp(control.requestedEvSteps, caps.evMinSteps, caps.evMaxSteps)) * evStepEvLocked();
         c.reportedPerRequest = results.sensitivityReportedPerRequest().value_or(0.0);
         c.manualActive = control.exposureMode == ExposureControlMode::Manual;
@@ -2332,6 +2345,7 @@ void NativeCameraController::setWhiteBalanceLocked(int32_t temperatureK, int32_t
 }
 void NativeCameraController::setOisEnabled(bool enabled) { impl_->setOisEnabledValue(enabled); }
 void NativeCameraController::setAntibandingMode(uint8_t mode) { impl_->setAntibandingModeValue(mode); }
+void NativeCameraController::setSensedFlickerPeriodNs(int64_t periodNs) { impl_->setSensedFlickerPeriodValue(periodNs); }
 void NativeCameraController::setAutoMinFps(int fps) { impl_->setAutoMinFpsValue(fps); }
 void NativeCameraController::setAePriorityDisabled(bool disabled) { impl_->setAePriorityDisabledValue(disabled); }
 void NativeCameraController::setVideoMode(bool video, int fps) { impl_->setVideoModeValue(video, fps); }

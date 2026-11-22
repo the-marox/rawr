@@ -318,6 +318,9 @@ class RawPreviewCoordinator(application: Application) : AutoCloseable {
     fun setAntibandingMode(mode: Int) =
         postNative { native.setAntibandingMode(nativeHandle, mode) }
 
+    fun setSensedFlickerPeriodNs(periodNs: Long) =
+        postNative { native.setSensedFlickerPeriodNs(nativeHandle, periodNs) }
+
     fun setMaxAePostGain(gain: Float) =
         postNative { native.setMaxAePostGain(nativeHandle, gain) }
 

@@ -32,6 +32,7 @@ void setScopeDeviceRotationDegrees(EngineHandle handle, int rotation) noexcept;
 void setCameraActive(EngineHandle handle, bool active) noexcept;
 void setOisEnabled(EngineHandle handle, bool enabled) noexcept;
 void setAntibandingMode(EngineHandle handle, uint8_t mode) noexcept;
+void setSensedFlickerPeriodNs(EngineHandle handle, int64_t periodNs) noexcept;
 // rawr auto exposure: opt-in app-owned AE (NativeCameraController::RawrAeConfig).
 void setRawrAutoExposure(EngineHandle handle, bool enabled, int nightLook, int isoMin, int isoMax,
                          int64_t shutterStartNs, int64_t shutterMaxNs, float balanceEv, float maxDigitalGainEv,
