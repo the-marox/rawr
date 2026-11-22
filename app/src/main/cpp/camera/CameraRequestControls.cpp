@@ -115,8 +115,8 @@ CameraControlApplyResult applyCameraControlState(CameraRequest* request, const C
 
     // rawr AE in video mode holds the video preview cadence, as recording does.
     const int64_t framePeriodNs = state.recordingFps > 0 ? 1'000'000'000LL / state.recordingFps
-                                  : rawrAe && state.videoMode && state.videoPreviewFps > 0
-                                      ? 1'000'000'000LL / state.videoPreviewFps
+                                  : rawrAe && state.videoMode && cameraVideoPreviewFps(state) > 0
+                                      ? 1'000'000'000LL / cameraVideoPreviewFps(state)
                                       : 0;
     const int64_t exposureMaximum = framePeriodNs > 0
         ? std::min(state.capabilities.exposureTimeMaxNs, framePeriodNs)

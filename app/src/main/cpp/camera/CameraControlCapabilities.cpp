@@ -10,6 +10,8 @@
 
 #include "camera/Camera2PriorityCompat.h"
 #include "camera/CameraAePriority.h"
+#include "camera/CameraMetadataTags.h"
+#include "camera/SensorModeFpsPolicy.h"
 
 namespace rawrcam::camera {
 namespace {
@@ -114,6 +116,34 @@ CameraControlState readInitialCameraControlState(const ACameraMetadata* characte
         caps.sensitivityMax = route.exposure.isoMax;
     }
 
+    // Fixed rates above 30 fps need a sensor mode at the RAW stream's own size (SensorModeFpsPolicy.h).
+    // The ranges past the ceiling are left out, so neither the viewfinder nor a recording asks for them.
+    {
+        char device[PROP_VALUE_MAX]{};
+        char setting[PROP_VALUE_MAX]{};
+        __system_property_get("ro.product.device", device);
+        __system_property_get("debug.rawr.sensor_mode_fps", setting);
+        if (sensorModeFpsCeilingAllowed(device, setting[0])) {
+            const auto tag =
+                resolveMetadataTagByNameCompat(characteristics, route.cameraId.c_str(), kQuicSensorModeTableKey, nullptr);
+            const auto table = tag ? entry(characteristics, *tag) : std::nullopt;
+            if (table && table->type == ACAMERA_TYPE_INT32 && table->data.i32) {
+                // A profile key that holds the sensor in one mode on the session or every request.
+                std::optional<int32_t> forcedMode;
+                for (const auto& key : route.vendorKeys) {
+                    if (key.enabled && key.tag == kQuicCurrentModeKey && !key.values.empty() &&
+                        key.scope != CameraKeySetting::Scope::Still && key.scope != CameraKeySetting::Scope::Decision)
+                        forcedMode = static_cast<int32_t>(key.values.front());
+                }
+                const auto keptRowsEnd = static_cast<int32_t>(
+                    route.stream.height - std::min(route.stream.height, std::max(route.cropBottom, route.highFpsCropBottom)));
+                caps.sensorModeFpsCeiling =
+                    sensorModeFpsCeiling(parseQuicSensorModeTable(table->data.i32, table->count), caps.rawWidth,
+                                         caps.rawHeight, keptRowsEnd, forcedMode);
+            }
+        }
+    }
+
     // Pick the broadest advertised normal-AE FPS range for Camera2 priority
     // modes. TEMPLATE_PREVIEW commonly defaults to 30/30; that silently caps
     // shutter-priority exposure near 1/30 even though the new priority mode
@@ -131,6 +161,7 @@ CameraControlState readInitialCameraControlState(const ACameraMetadata* characte
             const int32_t lo = e->data.i32[i];
             const int32_t hi = e->data.i32[i + 1];
             if (lo <= 0 || hi < lo) continue;
+            if (caps.sensorModeFpsCeiling > 0 && hi > caps.sensorModeFpsCeiling) continue;
             state.capabilities.aeTargetFpsRanges.push_back({lo, hi});
             const bool preferred = hi <= 30;
             if (bestMin == 0 || (preferred && !havePreferred) ||
@@ -285,7 +316,7 @@ std::string describeCameraControlCapabilities(const CameraControlState& state) {
     out << "CAMERA_CONTROL_CAPS cameraId=" << c.cameraId << " generation=" << c.generation
         << " isoRange=" << c.sensitivityMin << ".." << c.sensitivityMax << " exposureNsRange=" << c.exposureTimeMinNs
         << ".." << c.exposureTimeMaxNs << " priorityAeFps=" << c.priorityAeTargetFpsMin << ".."
-        << c.priorityAeTargetFpsMax << " evSteps=" << c.evMinSteps << ".." << c.evMaxSteps
+        << c.priorityAeTargetFpsMax << " sensorModeFpsCeiling=" << c.sensorModeFpsCeiling << " evSteps=" << c.evMinSteps << ".." << c.evMaxSteps
         << " evStep=" << c.evStepNumerator << '/' << c.evStepDenominator
          << " manualExposure=" << c.manualExposureSupported << " shutterPriority=" << c.shutterPrioritySupported
          << " isoPriority=" << c.isoPrioritySupported << " tapAf=" << c.tapAfSupported

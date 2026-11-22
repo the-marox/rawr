@@ -2,7 +2,7 @@
   "id": "xiaomi_15",
   "schema": 2,
   "name": "Xiaomi 15",
-  "version": 5,
+  "version": 6,
   "match": {
     "models": [
       "24129PN74G",
@@ -125,7 +125,7 @@
           "values": [
             1
           ],
-          "enabled": true
+          "enabled": false
         },
         {
           "tag": "org.codeaurora.qcamera3.sensor_meta_data.current_mode",
@@ -152,6 +152,9 @@
           "extended": false,
           "isoMax": 0,
           "shutterMaxNs": 33333333
+        },
+        "cropEdgesHighFps": {
+          "bottom": 512
         }
       }
     },
@@ -286,7 +289,7 @@
           "values": [
             1
           ],
-          "enabled": true
+          "enabled": false
         },
         {
           "tag": "org.codeaurora.qcamera3.sensor_meta_data.current_mode",
@@ -313,6 +316,9 @@
           "extended": false,
           "isoMax": 0,
           "shutterMaxNs": 0
+        },
+        "cropEdgesHighFps": {
+          "bottom": 512
         }
       }
     },
@@ -464,7 +470,10 @@
           "isoMax": 0,
           "shutterMaxNs": 0
         },
-        "mirror": "vertical"
+        "mirror": "vertical",
+        "cropEdgesHighFps": {
+          "bottom": 612
+        }
       }
     },
     {
