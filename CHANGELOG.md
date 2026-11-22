@@ -22,7 +22,16 @@ first and moves to `xiaomi-17u` once verified.
 - How: the scene meter (image_scopes scene_exposure shaders) also sums the
   RGB inside a sample rectangle; the session turns the measured ratios into
   a Manual temp/tint request on the camera controller.
-- Not yet checked on the 17U.
+- First check on the 17U (daylight and shade, 3 picks): the pick lands
+  right in camera space - the DNGs read R/G 1.04 / B/G 1.00 and 1.00 / 1.01
+  on the picked wall - but the JPEGs came out magenta (a white wall turned
+  lilac). Cause, in the render (also in upstream): with AWB off the colour
+  matrix took its white from the HAL's neutral point, which in Manual is
+  the HAL's own guess, not the requested gains. A raw the Manual gains make
+  neutral then rendered with the gap between the two as a cast. Manual WB
+  now takes its white from the gains, the same rule the DNG's AsShotNeutral
+  already follows (color/ColorCalibration.cpp; native test added).
+- Fix not yet checked on the 17U.
 
 ## 0.5.1-17u.4
 
