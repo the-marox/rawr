@@ -44,6 +44,8 @@ Open work on this fork. Results of what is done are in [CHANGELOG.md](CHANGELOG.
 - Auto WB under warm indoor light comes out warm/yellow: the HAL's AWB for
   third-party apps (17U DNG: HAL neutral R 0.567 B 0.601 vs the wall's
   R 0.634 B 0.531; vivo X300 Ultra 100-300 K warmer than stock per Matt).
+- WB picker: keep the pick's exact gains (temp/tint only as the shown
+  values). The temp/tint round trip lands a 50% warm pick at ~65-75%.
 - Auto WB bias (quick): a fixed offset on the HAL's Auto (e.g. -200 K) for
   its systematic warm lean, no tap needed. Pick the value from Auto photos
   under warm light (today's shelf/wall set and a couple of evenings).

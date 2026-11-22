@@ -58,7 +58,12 @@ first and moves to `xiaomi-17u` once verified.
   a second pick moves closer to neutral. Cool and tint-only picks stay
   full. Checked on the 17U, same scene: shelf 1.22 / 0.78 in Auto -> 1.01 /
   0.93 at 75%; still read too cold by eye, so now 50% (halfway, in log
-  space, between Auto and neutral). 50% not yet checked on the 17U.
+  space, between Auto and neutral). Checked on the 17U: the shelf went from
+  1.07 / 0.88 in Auto to 1.00 / 0.99; the gains moved about 65-75% of the
+  way, not 50%, because Manual keeps only temperature and tint, which can't
+  hold the pick's exact red/blue gains. Left as is for now (temporary);
+  exact gains are in the TODO. A pick on a napkin changed little: with the
+  napkin in frame the HAL's Auto already had it near neutral (1.01 / 0.96).
 
 ## 0.5.1-17u.4
 
