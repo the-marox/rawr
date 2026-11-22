@@ -4,7 +4,10 @@ Fork of [Rawr](https://github.com/adityawarmanfw/rawr) for the Xiaomi 17 Ultra.
 Releases follow Ed's version: `0.5.1-17u.N`. Test work lands on `yuv-probe`
 first and moves to `xiaomi-17u` once verified.
 
-## Unreleased (`yuv-probe`, test builds)
+## 0.5.1-17u.7
+
+the-marox's Xiaomi 15 work (PRs #3-#5), checked on the 17U, and the 17U
+front camera at 60 fps.
 
 ### Xiaomi 15 PRs by the-marox (#3, #4, #5)
 
@@ -25,10 +28,11 @@ on a Xiaomi 15 (dada).
 - #5 1080p from the full width of a RAW 1.25x-2x its size (Lanczos-2
   resample), on only for "dada" (debug.rawr.video_resample).
 - Checked on the 17U: the TOF cell shows (17U sensor: ST L8, value [0]
-  read 1.73 m for a helmet at about 1.70 m, 34 cm for a screen at about
-  the same distance as AF's 0.36 m) and the SENSOR WB button shows (rear
-  tcs3448 CCT stream). The TOF cell opens with a long press on the AF
-  target.
+  read 1.73 m for a helmet at about 1.70 m, 34 cm for a screen where AF
+  read 0.36 m) and the SENSOR WB button shows (rear tcs3448 CCT stream).
+  The TOF cell opens with a long press on the AF target. Lens switching
+  across 0.6x/1x/3.2x/4.3x/front in the same test session: no failed open,
+  no errors in the log.
 
 ### 17U front camera at 60 fps
 
@@ -38,6 +42,8 @@ on a Xiaomi 15 (dada).
   stale image in the first second). The Front Normal profile now drops the
   768 rows below at high fps (image.cropEdgesHighFps, the same mechanism
   as #3), so the UHD window sits inside the written rows.
+- Checked on the 17U (front, 4K60 HEVC): no band, real image to the left
+  edge from the first frame, no stale image at start.
 
 ## 0.5.1-17u.6
 
