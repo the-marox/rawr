@@ -25,7 +25,9 @@ internal class CaptureSettingsSync(
     private val previewCoordinator: RawPreviewCoordinator,
     private val controller: CaptureScreenController,
     /** Mains flicker confirmed by the phone's flicker sensor; must emit at once (null = none). */
-    private val sensedFlicker: Flow<FlickerFrequency?> = flowOf(null)
+    private val sensedFlicker: Flow<FlickerFrequency?> = flowOf(null),
+    /** Period of any flicker the sensor confirmed, mains or PWM, ns; must emit at once (0 = none). */
+    private val sensedFlickerPeriodNs: Flow<Long> = flowOf(0L)
 ) {
     private val bindings = mutableListOf<suspend () -> Unit>()
     private var firstApplies = 0
@@ -58,6 +60,8 @@ internal class CaptureSettingsSync(
                 com.rawr.camera.settings.model.antibandingModeFor(setting, flicker?.hz)
             }.distinctUntilChanged()
         ) { previewCoordinator.setAntibandingMode(it) }
+        // rawr AE keeps its shutter in step with it under Auto, PWM LEDs included (native FlickerPeriod.h).
+        syncStream(sensedFlickerPeriodNs) { previewCoordinator.setSensedFlickerPeriodNs(it) }
         syncSetting({ it.highlightProtection }) {
             previewCoordinator.setPostGainKneeWidthEv(com.rawr.camera.settings.model.postGainKneeWidthEvFor(it))
         }

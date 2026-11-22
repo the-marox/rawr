@@ -62,6 +62,9 @@ class NativePreviewEngine {
 
     external fun setAntibandingMode(handle: Long, mode: Int)
 
+    /** Period of the flicker the phone's flicker sensor confirmed, 0 = none; rawr AE keeps its shutter in step. */
+    external fun setSensedFlickerPeriodNs(handle: Long, periodNs: Long)
+
     external fun selectLens(handle: Long, lensId: String)
 
     /** Lens profile JSON (native CameraProfileJson); false when malformed or pinned by a debug setprop. */

@@ -257,6 +257,11 @@ internal fun CaptureViewfinder(
                 LightMeterOverlay(
                     exposureTimeNs = state.appliedExposureTimeNs,
                     orientation = state.orientation,
+                    focusAtDistance = { mm ->
+                        tofFocusNormalized(mm, state.capabilities.manualFocus)?.let {
+                            dispatch(com.rawr.camera.architecture.SetManualFocus(it))
+                        } != null
+                    },
                     modifier = if (state.orientation == Orientation.Landscape) {
                         Modifier.align(Alignment.CenterEnd).padding(end = 8.dp)
                     } else {

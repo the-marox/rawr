@@ -117,6 +117,9 @@ void CameraControlSurface::setOisEnabled(bool enabled) {
 void CameraControlSurface::setAntibandingMode(uint8_t mode) {
     if (cameraController_) cameraController_->setAntibandingMode(mode);
 }
+void CameraControlSurface::setSensedFlickerPeriodNs(int64_t periodNs) {
+    if (cameraController_) cameraController_->setSensedFlickerPeriodNs(periodNs);
+}
 void CameraControlSurface::setRawrAeConfig(const RawrAeConfig& config) {
     if (cameraController_) cameraController_->setRawrAeConfig(config);
 }
