@@ -30,9 +30,10 @@ on a Xiaomi 15 (dada).
 - Checked on the 17U: the TOF cell shows (17U sensor: ST L8, value [0]
   read 1.73 m for a helmet at about 1.70 m, 34 cm for a screen where AF
   read 0.36 m) and the SENSOR WB button shows (rear tcs3448 CCT stream).
-  The TOF cell opens with a long press on the AF target. Lens switching
-  across 0.6x/1x/3.2x/4.3x/front in the same test session: no failed open,
-  no errors in the log.
+  The TOF cell: tap to focus, then long press on the AF target (a long
+  press elsewhere starts the AE target). Lens switching across
+  0.6x/1x/3.2x/4.3x/front in the same test session: no failed open, no
+  errors in the log.
 
 ### 17U front camera at 60 fps
 
