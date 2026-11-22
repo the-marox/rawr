@@ -39,7 +39,17 @@ first and moves to `xiaomi-17u` once verified.
   allocated (RAW_READER_CPU_ONLY_USAGE format=RAW10
   reason=gpu_usage_unallocatable). Same end state as the ladder's, without
   the failed start. Phones that can allocate it are unchanged.
-- Not yet checked on an S23 Ultra.
+- Checked on the S23 Ultra by @NaveenRayala: from engine start to the
+  first RAW frame 2.8-3.6 s before, 0.7-0.9 s now (5 launches, no failed
+  first start); "opening in about 2 s, earlier 4 s" by feel. Lens switches
+  in the same bundle: 45, median 0.6 s.
+- Seen once in that bundle: right after a launch on 0.6x, the first switch
+  to 1x on the kept device got a device error and its configure failed
+  ("Broken pipe"). Rawr took it for the HAL rejecting the 1x companion
+  stream and ran 1x RAW-only for the rest of that launch. Now a failed
+  session on a reused device closes it and starts the lens again with a
+  fresh open, without the RAW-only penalty (CAMERA_NDK_DEVICE_REUSE_FAILED).
+  Not yet seen on the S23 Ultra.
 
 ## 0.5.1-17u.5
 
