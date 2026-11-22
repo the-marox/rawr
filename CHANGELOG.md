@@ -49,7 +49,14 @@ first and moves to `xiaomi-17u` once verified.
   stream and ran 1x RAW-only for the rest of that launch. Now a failed
   session on a reused device closes it and starts the lens again with a
   fresh open, without the RAW-only penalty (CAMERA_NDK_DEVICE_REUSE_FAILED).
-  Not yet seen on the S23 Ultra.
+  Seen by a second S23 Ultra user on this build: 3 of 27 reuses failed the
+  same way (device error, "Broken pipe"), each time the first reuse after
+  a fresh open, and the fresh-open retry then cost ~8 s: the dead device
+  drops the camera id for a moment, so the restart was rejected at
+  selection (characteristics -10001) and only the stall watchdog brought
+  the camera back. The retry now repeats the start every 150 ms for up to
+  3.5 s (CAMERA_NDK_DEVICE_REUSE_RECOVERED / _RETRY_GAVE_UP). Not yet
+  checked on an S23 Ultra.
 
 ### Focus after a 1x 50 MP single-frame photo (test)
 
