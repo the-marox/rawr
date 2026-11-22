@@ -27,6 +27,20 @@ first and moves to `xiaomi-17u` once verified.
   errors. (Measured from the switch to the first RAW frame.) The capture
   failures at app launch, retried by the start ladder, were there before.
 
+### App launch on the Galaxy S23 Ultra (test)
+
+- Same bundle: every launch lost ~1.6 s. The RAW10 reader asked for GPU
+  buffer usage, which the S23 Ultra's gralloc (before 4.1) can't allocate
+  on RAW10, so the first requests failed, the usage ladder demoted to a
+  CPU-read reader and the session restarted (first RAW frame 2.6 s after
+  the camera start instead of ~0.9 s).
+- The RAW10 reader now asks the allocator up front, as Ed's code already
+  does for RAW16, and starts CPU-read when the GPU usage can't be
+  allocated (RAW_READER_CPU_ONLY_USAGE format=RAW10
+  reason=gpu_usage_unallocatable). Same end state as the ladder's, without
+  the failed start. Phones that can allocate it are unchanged.
+- Not yet checked on an S23 Ultra.
+
 ## 0.5.1-17u.5
 
 Ed's upstream #137 and #138, then the white balance work. Checks are on a
