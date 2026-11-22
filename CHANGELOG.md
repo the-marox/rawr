@@ -53,10 +53,12 @@ first and moves to `xiaomi-17u` once verified.
   hint now says to tap something truly white or grey. Picking the white
   shelf instead: 1.19 / 0.79 in Auto -> 0.95 / 1.00, still felt too cold
   under warm lamps.
-- So a warm pick (one that cools the picture) now corrects 75% of the way
+- So a warm pick (one that cools the picture) corrects part of the way
   (in log space), keeping some of the light's warmth like stock cameras do;
   a second pick moves closer to neutral. Cool and tint-only picks stay
-  full. Not yet checked on the 17U.
+  full. Checked on the 17U, same scene: shelf 1.22 / 0.78 in Auto -> 1.01 /
+  0.93 at 75%; still read too cold by eye, so now 50% (halfway, in log
+  space, between Auto and neutral). 50% not yet checked on the 17U.
 
 ## 0.5.1-17u.4
 
