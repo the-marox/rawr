@@ -269,6 +269,8 @@ rawr_test(full_res_recipe_test
   "${APP}/geometry/LensDistortion.cpp")
 rawr_test(gles_bridge_policy_test
   "${RAWR_ROOT}/tests/native/gles_bridge_policy_test.cpp")
+rawr_test(video_resample_rect_test
+  "${RAWR_ROOT}/tests/native/video_resample_rect_test.cpp")
 rawr_test(camera_workarounds_test
   "${RAWR_ROOT}/tests/native/camera_workarounds_test.cpp"
   "${APP}/camera/CameraRouting.cpp"

@@ -29,7 +29,9 @@ std::optional<VideoFastPath::Warp> stabilizerWarp(const VideoDemosaic& demosaic,
                                                   bool turnAvailable) {
     using namespace rawrcam::geometry;
     const float focal = stabilizerFocalPx().load(std::memory_order_relaxed);
-    if (!stabilizerEnabled().load(std::memory_order_relaxed) || !(focal > 0.0f) || demosaic.sensorScale() != 1u) {
+    // The fractional reduction records the whole area: no margin to move the frame in.
+    if (!stabilizerEnabled().load(std::memory_order_relaxed) || !(focal > 0.0f) || demosaic.sensorScale() != 1u ||
+        demosaic.resampled()) {
         stabilizerRoomX().store(0.0f, std::memory_order_relaxed);
         stabilizerRoomY().store(0.0f, std::memory_order_relaxed);
         stabilizerRoomRoll().store(0.0f, std::memory_order_relaxed);
@@ -142,9 +144,10 @@ std::optional<VideoFastPath::Warp> stabilizerWarp(const VideoDemosaic& demosaic,
 rawr::post::StillDistortionCorrection VideoRecorder::distortionFor(const rawrcam::geometry::LensDistortionModel& lens,
                                                                   uint32_t rawWidth, uint32_t rawHeight) {
     const auto& demosaic = *resources_.demosaic_;
-    const uint32_t scale = demosaic.sensorScale();
+    // RAW pixels per output pixel: 1, 2 or the fractional reduction's scale.
+    const float scale = demosaic.sourceScale();
     const uint32_t cropX = demosaic.cropX(), cropY = demosaic.cropY();
-    const uint32_t cropW = output_.extent_.width * scale, cropH = output_.extent_.height * scale;
+    const uint32_t cropW = demosaic.sourceWidth(), cropH = demosaic.sourceHeight();
     auto& c = distortionCache_;
     const bool same = c.valid && c.rawWidth == rawWidth && c.rawHeight == rawHeight && c.cropX == cropX &&
                       c.cropY == cropY && c.cropW == cropW && c.cropH == cropH && c.lens.k == lens.k &&
@@ -170,9 +173,9 @@ rawr::post::StillDistortionCorrection VideoRecorder::distortionFor(const rawrcam
     d.rationalDenominator = {float(model->k[5]), float(model->k[6]), float(model->k[7])};
     d.outputFocal = {float(model->fx * outputScale), float(model->fy * outputScale)};
     d.frameOrigin = {float(cropX), float(cropY)};
-    d.frameScale = float(scale);
+    d.frameScale = scale;
     __android_log_print(ANDROID_LOG_INFO, "RawrNativeVideo",
-                        "VIDEO_DISTORTION_CORRECTION raw=%ux%u crop=%u,%u %ux%u scale=%u outputScale=%.5f", rawWidth,
+                        "VIDEO_DISTORTION_CORRECTION raw=%ux%u crop=%u,%u %ux%u scale=%.4f outputScale=%.5f", rawWidth,
                         rawHeight, cropX, cropY, cropW, cropH, scale, outputScale);
     return c.correction;
 }
@@ -317,9 +320,13 @@ void VideoRecorder::record(VkCommandBuffer command, uint32_t frameSlot, uint32_t
         shading = {developedFrame.lensShadingWidth, developedFrame.lensShadingHeight, developedFrame.lensShading,
                    developedFrame.lensShadingCount};
     }
-    const rawr::highlight::ColoroppSensorGeometry geometry{rawWidth, rawHeight, resources_.demosaic_->cropX(),
-                                                           resources_.demosaic_->cropY(),
-                                                           resources_.demosaic_->sensorScale()};
+    // A fractional scale goes as 8.8 fixed point (ColoroppSensorGeometry::scale).
+    const auto& demosaicGeometry = *resources_.demosaic_;
+    const uint32_t coloroppScale = demosaicGeometry.resampled()
+                                       ? uint32_t(std::lround(demosaicGeometry.sourceScale() * 256.0f))
+                                       : demosaicGeometry.sensorScale();
+    const rawr::highlight::ColoroppSensorGeometry geometry{rawWidth, rawHeight, demosaicGeometry.cropX(),
+                                                           demosaicGeometry.cropY(), coloroppScale};
     auto lensCorrection =
         lensDistortion ? distortionFor(*lensDistortion, rawWidth, rawHeight) : rawr::post::StillDistortionCorrection{};
     lensCorrection.mirror = lensMirror;

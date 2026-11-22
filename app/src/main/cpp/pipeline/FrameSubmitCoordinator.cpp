@@ -3,6 +3,7 @@
 #include <chrono>
 
 #include "video/ContextKeptArea.h"
+#include "video/VideoResamplePolicy.h"
 
 #include <android/log.h>
 #include <sys/system_properties.h>
@@ -681,8 +682,9 @@ void FrameSubmitCoordinator::submitSplitVideoAndMonitor(const SubmitParams& para
                                      cc ? rawrcam::video::contextKeptArea(config_.rawWidth, config_.rawHeight, *cc,
                                                                           videoHighFps_.load(std::memory_order_relaxed))
                                         : rawrcam::video::VideoKeptArea{};
-                                 const auto crop = rawrcam::video::videoSourceRect(config_.rawWidth, config_.rawHeight,
-                                                                                   width, height, kept);
+                                 const auto crop = rawrcam::video::videoSourceRect(
+                                     config_.rawWidth, config_.rawHeight, width, height, kept,
+                                     rawrcam::video::videoResampleEnabled());
                                  const auto toCrop = [&](const std::array<float, 4>& source) {
                                      std::array<float, 4> out{};
                                      if (!(source[2] > source[0]) || crop.width <= 0 || crop.height <= 0) return out;

@@ -1,6 +1,7 @@
 #include "pipeline/RawDevelopRecorder.h"
 
 #include "video/ContextKeptArea.h"
+#include "video/VideoResamplePolicy.h"
 
 #include <vulkan/vulkan.h>
 
@@ -655,7 +656,8 @@ RawDevelopRecordResult RawDevelopRecorder::record(const RawDevelopRecordInput& i
         const auto kept = context ? rawrcam::video::contextKeptArea(in.rawWidth, in.rawHeight, *context, in.videoHighFps)
                                   : rawrcam::video::VideoKeptArea{};
         const auto full = rawrcam::video::videoSourceRect(in.rawWidth, in.rawHeight, in.videoCropOutWidth,
-                                                          in.videoCropOutHeight, kept);
+                                                          in.videoCropOutHeight, kept,
+                                                          rawrcam::video::videoResampleEnabled());
         if (full.width != 0) {
             previewCrop = rawrcam::video::scaleVideoSourceRect(full, in.rawWidth, in.rawHeight, in.previewWidth,
                                                                in.previewHeight);

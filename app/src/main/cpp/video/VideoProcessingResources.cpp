@@ -1,4 +1,5 @@
 #include "video/VideoProcessingResources.h"
+#include "video/VideoResamplePolicy.h"
 
 #include <android/log.h>
 #include <android/native_window_jni.h>
@@ -179,7 +180,7 @@ VideoProcessingResources::Prepared VideoProcessingResources::prepare(rawrcam::vu
         check(vkCreateQueryPool(context.device(), &queryInfo, nullptr, &pool), "video monitor query pool");
     out.demosaic =
         std::make_unique<VideoDemosaic>(context.gpuContext(), key.rawWidth, key.rawHeight, key.width, key.height,
-                                        key.kept);
+                                        key.kept, videoResampleEnabled());
     for (auto& stage : out.post) {
         stage = std::make_unique<rawr::post::PostDemosaicProcessor>(
             context.physicalDevice(), context.device(), context.queueFamily(), key.width, key.height, key.fccSteps,

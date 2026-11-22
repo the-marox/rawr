@@ -25,6 +25,7 @@
 #include "diagnostics/logging/RuntimeTraceRecorder.h"
 #include "diagnostics/timing/CaptureStageTimer.h"
 #include "geometry/CfaPattern.h"
+#include "video/VideoResamplePolicy.h"
 #include "capture/FullSizeFallbacks.h"
 #include "capture/BurstLimits.h"
 #include "imaging/BinnedCorner.h"
@@ -390,7 +391,8 @@ rawrcam::geometry::SourceCropRect SessionEngine::previewVideoCropRectLocked() co
     const uint32_t previewH = realtime_.previewHeight();
     if (rawW < 2 || rawH < 2 || previewW == 0 || previewH == 0) return crop;
     const auto kept = lastCameraContext_ ? videoKeptAreaLocked(*lastCameraContext_) : rawrcam::video::VideoKeptArea{};
-    const auto full = rawrcam::video::videoSourceRect(rawW, rawH, videoCropOutWidth_, videoCropOutHeight_, kept);
+    const auto full = rawrcam::video::videoSourceRect(rawW, rawH, videoCropOutWidth_, videoCropOutHeight_, kept,
+                                                      rawrcam::video::videoResampleEnabled());
     if (full.width == 0) return crop;
     const auto scaled = rawrcam::video::scaleVideoSourceRect(full, rawW, rawH, previewW, previewH);
     if (scaled.width == 0) return crop;

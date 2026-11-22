@@ -1,0 +1,72 @@
+#version 450
+#extension GL_EXT_control_flow_attributes : require
+// Fractional reduction, pass 2 of 2: the rows of video_resample_h.comp's output filtered down to the
+// output height with the same widened Lanczos-2 and anti-ringing hold. Also folds the 1:1 clip state
+// (one texel per 2x2 source cell, a bit per clipped channel) into the output's (one texel per 2x2
+// output block): any clipped cell under the block's footprint.
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+layout(binding = 0, rgba16f) uniform readonly image2D sourceImage;  // dstWidth x srcHeight
+layout(binding = 1, r16ui) uniform readonly uimage2D clipSource;    // clipWidth x clipHeight
+layout(binding = 2, rgba16f) uniform writeonly image2D targetImage; // dstWidth x dstHeight
+layout(binding = 3, r16ui) uniform writeonly uimage2D clipTarget;   // dstWidth / 2 x dstHeight / 2
+layout(push_constant) uniform Push {
+    uint srcWidth, srcHeight, dstWidth, dstHeight;
+    float scaleX, scaleY;
+    uint clipWidth, clipHeight;
+} pc;
+
+const float PI = 3.14159265358979;
+float lanczos2(float x) {
+    x = abs(x);
+    if (x < 1e-4) return 1.0;
+    if (x >= 2.0) return 0.0;
+    float px = PI * x;
+    return 2.0 * sin(px) * sin(0.5 * px) / (px * px);
+}
+
+const int MAX_TAPS = 9;
+
+void main() {
+    ivec2 o = ivec2(gl_GlobalInvocationID.xy);
+    if (o.x >= int(pc.dstWidth) || o.y >= int(pc.dstHeight)) return;
+    float scale = pc.scaleY;
+    float centre = (float(o.y) + 0.5) * scale - 0.5;
+    int first = int(floor(centre - 2.0 * scale)) + 1;
+    vec3 sum = vec3(0.0);
+    float weights = 0.0;
+    vec3 low = vec3(65504.0), high = vec3(-65504.0);
+    [[unroll]] for (int t = 0; t < MAX_TAPS; ++t) {
+        int i = first + t;
+        float distance = float(i) - centre;
+        if (abs(distance) >= 2.0 * scale) continue;
+        float w = lanczos2(distance / scale);
+        vec3 value = imageLoad(sourceImage, ivec2(o.x, clamp(i, 0, int(pc.srcHeight) - 1))).rgb;
+        sum += w * value;
+        weights += w;
+        if (abs(distance) <= 0.5 * scale + 0.5) {
+            low = min(low, value);
+            high = max(high, value);
+        }
+    }
+    vec3 value = clamp(sum / max(weights, 1e-6), low, high);
+    imageStore(targetImage, o, vec4(value, 1.0));
+
+    if ((o.x & 1) == 0 && (o.y & 1) == 0) {
+        // Output block (bx, by) spans source cells [b * scale, (b + 1) * scale): a cell is 2 source
+        // pixels and a block 2 output pixels.
+        ivec2 block = o / 2;
+        ivec2 c0 = ivec2(floor(vec2(block) * vec2(pc.scaleX, pc.scaleY)));
+        ivec2 c1 = ivec2(ceil(vec2(block + 1) * vec2(pc.scaleX, pc.scaleY))) - 1;
+        c0 = clamp(c0, ivec2(0), ivec2(int(pc.clipWidth) - 1, int(pc.clipHeight) - 1));
+        c1 = clamp(c1, c0, ivec2(int(pc.clipWidth) - 1, int(pc.clipHeight) - 1));
+        uint state = 0u;
+        // A block spans under 2 cells plus a partial one per axis below 2x: at most 3 x 3.
+        [[unroll]] for (int dy = 0; dy < 3; ++dy) {
+            [[unroll]] for (int dx = 0; dx < 3; ++dx) {
+                ivec2 c = c0 + ivec2(dx, dy);
+                if (c.x <= c1.x && c.y <= c1.y) state |= imageLoad(clipSource, c).r;
+            }
+        }
+        imageStore(clipTarget, block, uvec4(state, 0u, 0u, 0u));
+    }
+}

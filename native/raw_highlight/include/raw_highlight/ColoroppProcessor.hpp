@@ -8,6 +8,8 @@
 #include "rawr/vk/OwnedImage.h"
 
 namespace rawr::highlight {
+// scale: sensor pixels per image pixel, 1 or 2; from 256 up it is 8.8 fixed point (a recording's
+// fractional reduction, VideoCrop.h videoResampleRect: 1.7 -> 435).
 struct ColoroppSensorGeometry {
     uint32_t width = 0, height = 0, cropX = 0, cropY = 0, scale = 1;
 };
