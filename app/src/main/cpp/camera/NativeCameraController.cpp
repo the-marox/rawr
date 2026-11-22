@@ -136,6 +136,7 @@ struct NativeCameraController::Impl final : CameraEventSink {
     // Rawr 17U fork: preview frames left with the lens held after a single full-size still.
     int focusHoldFramesLeft = 0;
     static constexpr int kFocusHoldFrames = 20;
+    static constexpr int kFocusHoldHiddenFrames = 4;
     // The decision frame submitted before a full-size still, until its result
     // (or failure) arrives.
     enum class FullSizeDecision : uint8_t { None, Waiting, Seen, Failed };
@@ -1403,6 +1404,11 @@ struct NativeCameraController::Impl final : CameraEventSink {
             captureChanged.notify_all();
             return;
         }
+        // The first preview frames after the still still show the HAL's reset lens (one frame on the 17U):
+        // keep them off the viewfinder, as Rexture's frozen preview already does for its burst.
+        if (control.viewfinderFocusHold && !actions.optimizedStill &&
+            focusHoldFramesLeft > kFocusHoldFrames - kFocusHoldHiddenFrames)
+            actions.frame->hidePreview = true;
         if (control.viewfinderFocusHold && !actions.optimizedStill && --focusHoldFramesLeft <= 0) {
             control.viewfinderFocusHold.reset();
             focusHoldFramesLeft = 0;

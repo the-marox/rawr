@@ -75,6 +75,12 @@ first and moves to `xiaomi-17u` once verified.
   still shows the reset lens (FOC 20 m, ~0.1 s) right as the preview comes
   back, then it is back at 0.20 m and stays there after the hold ends, no
   hunt. Before: ~1 s of hunting (20 m -> 1.0 -> 0.51 -> 0.31 -> 0.29 m).
+- Why Rexture never showed it: its 50 MP burst is the same remosaic still
+  (same request keys, 17 frames), but the viewfinder stays frozen through
+  the countdown and "Restoring preview...", so the lens has settled before
+  live frames return. The single-frame path now also keeps the first 4
+  preview frames of the hold off the viewfinder, which hides the one frame
+  with the reset lens. Not yet checked on the 17U.
 
 ## 0.5.1-17u.5
 
