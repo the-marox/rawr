@@ -271,6 +271,8 @@ rawr_test(gles_bridge_policy_test
   "${RAWR_ROOT}/tests/native/gles_bridge_policy_test.cpp")
 rawr_test(sensor_mode_fps_policy_test
   "${RAWR_ROOT}/tests/native/sensor_mode_fps_policy_test.cpp")
+rawr_test(video_crop_mirror_test
+  "${RAWR_ROOT}/tests/native/video_crop_mirror_test.cpp")
 rawr_test(camera_workarounds_test
   "${RAWR_ROOT}/tests/native/camera_workarounds_test.cpp"
   "${APP}/camera/CameraRouting.cpp"
