@@ -64,7 +64,10 @@ first and moves to `xiaomi-17u` once verified.
   holds the lens at the pre-still distance for 20 frames, then hands back
   to continuous AF (CAMERA_FOCUS_HOLD / CAMERA_FOCUS_HOLD_RELEASED in the
   log). A tap to focus or manual focus take over as before.
-- Not yet checked on the 17U.
+- Checked on the 17U (1x 50 MP, ~0.2 m, screen recording): one preview frame
+  still shows the reset lens (FOC 20 m, ~0.1 s) right as the preview comes
+  back, then it is back at 0.20 m and stays there after the hold ends, no
+  hunt. Before: ~1 s of hunting (20 m -> 1.0 -> 0.51 -> 0.31 -> 0.29 m).
 
 ## 0.5.1-17u.5
 
