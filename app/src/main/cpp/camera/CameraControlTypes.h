@@ -110,6 +110,9 @@ struct CameraControlCapabilities {
     int32_t priorityAeTargetFpsMin = 0;
     int32_t priorityAeTargetFpsMax = 0;
     std::vector<std::array<int32_t, 2>> aeTargetFpsRanges;
+    // Highest rate above 30 fps the RAW stream's size has a sensor mode for (SensorModeFpsPolicy.h);
+    // aeTargetFpsRanges then holds no range past it. 0 = no limit.
+    int32_t sensorModeFpsCeiling = 0;
 
     int32_t evMinSteps = 0;
     int32_t evMaxSteps = 0;

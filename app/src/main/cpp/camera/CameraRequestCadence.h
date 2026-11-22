@@ -17,6 +17,13 @@ inline int64_t cameraBracketFrameDuration(const CameraControlState& state, int64
                ? std::min(duration, state.capabilities.maxFrameDurationNs) : duration;
 }
 
+// The idle video cadence the camera is asked for: the chosen rate, held under the RAW stream's
+// sensor-mode ceiling (SensorModeFpsPolicy.h). The chosen rate itself stays in the state.
+inline int32_t cameraVideoPreviewFps(const CameraControlState& state) {
+    const auto ceiling = state.capabilities.sensorModeFpsCeiling;
+    return ceiling > 0 ? std::min(state.videoPreviewFps, ceiling) : state.videoPreviewFps;
+}
+
 // Shared by session parameters, repeating requests and frozen provenance.
 inline std::optional<std::array<int32_t, 2>> cameraTargetFpsRange(const CameraControlState& state,
                                                                   bool priorityRequested) {
@@ -28,11 +35,12 @@ inline std::optional<std::array<int32_t, 2>> cameraTargetFpsRange(const CameraCo
     // Idle video mode above 30 fps runs the viewfinder at the recording rate:
     // the sensor then stays in the same readout mode when recording starts
     // (no reframe, no restart drops). 30 fps and below keep the AE range.
-    if (state.videoMode && state.videoPreviewFps > 30 &&
+    const auto previewFps = cameraVideoPreviewFps(state);
+    if (state.videoMode && previewFps > 30 &&
         std::any_of(caps.aeTargetFpsRanges.begin(), caps.aeTargetFpsRanges.end(), [&](const auto& range) {
-            return range[0] == state.videoPreviewFps && range[1] == state.videoPreviewFps;
+            return range[0] == previewFps && range[1] == previewFps;
         }))
-        return std::array<int32_t, 2>{state.videoPreviewFps, state.videoPreviewFps};
+        return std::array<int32_t, 2>{previewFps, previewFps};
     if (priorityRequested && caps.priorityAeTargetFpsMin > 0 &&
         caps.priorityAeTargetFpsMax >= caps.priorityAeTargetFpsMin) {
         int32_t floor = caps.priorityAeTargetFpsMin;

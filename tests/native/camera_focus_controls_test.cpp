@@ -354,6 +354,27 @@ void sharedRequestCadence() {
     assert(cameraTargetFpsRange(state, false) == (std::array<int32_t, 2>{15, 30}));
 }
 
+// A RAW size with no 60 fps sensor mode (SensorModeFpsPolicy.h) keeps the idle video cadence at the
+// ceiling, even with a fixed 60 fps range advertised. The chosen rate stays in the state.
+void sensorModeFpsCeilingHoldsVideoCadence() {
+    auto state = controls();
+    state.videoMode = true;
+    state.videoPreviewFps = 60;
+    state.capabilities.aeTargetFpsRanges = {{15, 30}, {30, 30}, {60, 60}};
+    assert(cameraVideoPreviewFps(state) == 60);
+    assert(cameraTargetFpsRange(state, false) == (std::array<int32_t, 2>{60, 60}));
+    state.capabilities.sensorModeFpsCeiling = 30;
+    assert(cameraVideoPreviewFps(state) == 30);
+    assert(state.videoPreviewFps == 60);
+    assert(cameraTargetFpsRange(state, false) == (std::array<int32_t, 2>{15, 30}));
+    state.videoPreviewFps = 24;
+    assert(cameraVideoPreviewFps(state) == 24);
+    state.capabilities.sensorModeFpsCeiling = 120;
+    state.videoPreviewFps = 60;
+    assert(cameraVideoPreviewFps(state) == 60);
+    assert(cameraTargetFpsRange(state, false) == (std::array<int32_t, 2>{60, 60}));
+}
+
 int main() {
     regionGeometry();
     modeAndManualFocus();
@@ -366,5 +387,6 @@ int main() {
     smallEyeMotionAndSwitch();
     spotMeteringOwnership();
     sharedRequestCadence();
+    sensorModeFpsCeilingHoldsVideoCadence();
     std::cout << "CAMERA_FOCUS_CONTROLS_PASS\n";
 }
