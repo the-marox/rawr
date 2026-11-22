@@ -10,10 +10,10 @@ first and moves to `xiaomi-17u` once verified.
 
 - #137 OPPO Find X8 Ultra (PKJ110) built-in profile, by Ed. Not used on the
   17U. Its refreshed route snapshot is merged into the fork's.
-- #138 debug builds signed with a shared key from a GitHub secret, by Ed:
-  not taken. The fork already signs debug builds with its own fixed key
-  (debug.keystore), so debug.yml, build.gradle.kts and docs/build.md keep
-  the fork's version.
+- #138 optional shared debug signing key, by Ed: the Gradle part and
+  docs/build.md taken as is (no effect without the key). The fork keeps
+  signing debug builds with its own fixed debug.keystore, applied after
+  Ed's option, and its own debug.yml (no GitHub secret needed).
 
 ### White balance
 
