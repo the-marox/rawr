@@ -25,7 +25,6 @@
 #include "diagnostics/logging/RuntimeTraceRecorder.h"
 #include "diagnostics/timing/CaptureStageTimer.h"
 #include "geometry/CfaPattern.h"
-#include "video/VideoResamplePolicy.h"
 #include "capture/FullSizeFallbacks.h"
 #include "capture/BurstLimits.h"
 #include "imaging/BinnedCorner.h"
@@ -36,6 +35,7 @@
 #include "imaging/RawFrameLease.h"
 #include "metadata/MetadataDiagnostics.h"
 #include "session/SessionEngine.h"
+#include "video/VideoResamplePolicy.h"
 #include "video_pipeline/VideoCrop.h"
 #include "vulkan/VulkanDispatch.h"
 
