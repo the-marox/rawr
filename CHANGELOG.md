@@ -6,6 +6,13 @@ first and moves to `xiaomi-17u` once verified.
 
 ## Unreleased (`yuv-probe`, test builds)
 
+Nothing yet.
+
+## 0.5.1-17u.5
+
+Ed's upstream #137 and #138, then the white balance work. Checks are on a
+Xiaomi 17 Ultra.
+
 ### From upstream Rawr (Ed): #137, #138
 
 - #137 OPPO Find X8 Ultra (PKJ110) built-in profile, by Ed. Not used on the
