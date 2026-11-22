@@ -58,6 +58,12 @@ Open work on this fork. Results of what is done are in [CHANGELOG.md](CHANGELOG.
 
 ## Photo
 
+- 1x 50 MP close up: after a remosaic still ("Restoring preview..."), the
+  lens restarts from infinity and AF hunts back (FOC 0.17 m -> 20 m -> 1.0
+  -> 0.29 m), so the viewfinder visibly jumps (focus breathing). Same on
+  0.5.1-17u.5. Idea: after the still, send the pre-still focus distance
+  back instead of letting continuous AF start over.
+
 - Tele photos looked darker than the viewfinder before upstream #135; one
   dark shot (RAWR_20261121_152853) was not explained (no log). Re-check
   with the filtered log running if it happens again.
