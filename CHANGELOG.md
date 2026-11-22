@@ -6,7 +6,20 @@ first and moves to `xiaomi-17u` once verified.
 
 ## Unreleased (`yuv-probe`, test builds)
 
-Nothing yet.
+### Lens switching on the Galaxy S23 Ultra (test)
+
+- Two S23 Ultra users (SM-S918B, Android 17) on 0.5.1-17u.5: about half the
+  lens switches took 2.3-4.5 s, the rest ~0.9 s (34 switches in one
+  diagnostics bundle). Every rear lens there is logical camera 0; Rawr
+  closed and reopened it on each switch, and the HAL refused the reopen
+  (-10001) 13-30 times before letting it through. The open retry (#121)
+  recovers every time, so no more 10 s switches, but the wait stays.
+- Now, on the SM-S918B only, a switch between lenses of the same logical
+  camera keeps the device open and only rebuilds the capture session
+  (CAMERA_NDK_DEVICE_KEPT / CAMERA_NDK_DEVICE_REUSED in the log). Other
+  phones, the 17U included, close and reopen as before.
+  `debug.rawr.keep_device=1` opts another device in, `=0` opts out.
+- Not yet checked on an S23 Ultra (no device here; testers needed).
 
 ## 0.5.1-17u.5
 
