@@ -68,7 +68,11 @@ void storeWhiteBalanced(ivec2 xy, vec3 preWb, float alpha) {
 #endif
 
 float shadingAt(ivec2 xy) {
-    ivec2 sensorXY = ivec2(p.cropX, p.cropY) + xy * int(p.sensorScale);
+    // 8.8 fixed point from 256 up (a fractional reduction): the even site of the 2x2 cell keeps
+    // one CFA channel per pixel, as the 2x reduction's even sites do.
+    ivec2 sensorXY = p.sensorScale >= 256u
+                         ? (ivec2(p.cropX, p.cropY) + ((xy * int(p.sensorScale)) >> 8)) & ~1
+                         : ivec2(p.cropX, p.cropY) + xy * int(p.sensorScale);
     int c = rawrCfaChannelAt(p.cfaPattern, sensorXY);
     return lensShadingGain(sensorXY, c == 2 ? 1 : c);
 }

@@ -21,8 +21,9 @@ class VideoDemosaic final {
     // frames-in-flight contract.
     static constexpr uint32_t kFramesInFlight = 3;
 
+    // allowResample: the fractional reduction (VideoCrop.h videoResampleRect) may replace the 1:1 crop.
     VideoDemosaic(const rawr::vk::GpuContext& context, uint32_t rawWidth, uint32_t rawHeight, uint32_t outputWidth,
-                  uint32_t outputHeight, const VideoKeptArea& kept = {});
+                  uint32_t outputHeight, const VideoKeptArea& kept = {}, bool allowResample = false);
     ~VideoDemosaic();
     VideoDemosaic(const VideoDemosaic&) = delete;
     VideoDemosaic& operator=(const VideoDemosaic&) = delete;
@@ -57,13 +58,22 @@ class VideoDemosaic final {
     uint32_t rawHeight() const noexcept { return rawHeight_; }
     uint32_t cropX() const noexcept { return cropX_; }
     uint32_t cropY() const noexcept { return cropY_; }
+    // Integer scale of the 1:1 and 2x paths; 1 under the fractional reduction too, so check resampled().
     uint32_t sensorScale() const noexcept { return reduceCfa_ ? 2u : 1u; }
+    // Fractional reduction: the record area (sourceWidth x sourceHeight RAW pixels from cropX, cropY) is
+    // demosaiced 1:1 and resampled down by sourceScale() to the output.
+    bool resampled() const noexcept { return resample_; }
+    uint32_t sourceWidth() const noexcept { return sourceWidth_; }
+    uint32_t sourceHeight() const noexcept { return sourceHeight_; }
+    // RAW pixels per output pixel across: 1, 2 or the fractional scale.
+    float sourceScale() const noexcept { return float(sourceWidth_) / float(outputWidth_); }
     // Re-reads the 2x reduction filter at recording start. Debug A/B:
     // `adb shell setprop debug.rawr.video_downscale box` restores the former
     // 2x2 box average; anything else uses the anti-aliasing filter.
     void selectDownscaleFilter();
     void setAntiAlias(bool enabled) noexcept { antiAlias_ = enabled; }
     const char* method() const noexcept {
+        if (resample_) return quad_ ? "quad_guided_chroma+lanczos2_resample" : "tiled_mhc_5x5+lanczos2_resample";
         if (!reduceCfa_) return quad_ ? "quad_guided_chroma" : "tiled_mhc_5x5";
         return antiAlias_ ? "strip_mhc_lanczos3_2x+chroma420" : "tiled_mhc_fused_2x_area";
     }
@@ -79,12 +89,16 @@ class VideoDemosaic final {
     void destroy() noexcept;
     void createDownscale();
     void recordVertical(VkCommandBuffer command, uint32_t frameSlot, const Frame& frame);
+    void createResample();
+    void recordResample(VkCommandBuffer command, uint32_t frameSlot);
 
     rawr::vk::GpuContext context_;
     uint32_t rawWidth_ = 0, rawHeight_ = 0;
     uint32_t outputWidth_ = 0, outputHeight_ = 0;
     uint32_t cropX_ = 0, cropY_ = 0;
     bool reduceCfa_ = false;
+    bool resample_ = false;
+    uint32_t sourceWidth_ = 0, sourceHeight_ = 0;
     bool quad_ = false;  // 1:1 recording runs the quad-per-thread shader
     VkDescriptorSetLayout descriptorLayout_ = VK_NULL_HANDLE;
     VkPipelineLayout pipelineLayout_ = VK_NULL_HANDLE;
@@ -118,5 +132,22 @@ class VideoDemosaic final {
     VkPipeline verticalPipeline_ = VK_NULL_HANDLE;
     VkDescriptorPool verticalPool_ = VK_NULL_HANDLE;
     std::array<VkDescriptorSet, kFramesInFlight> verticalSets_{};
+    // Fractional reduction: the 1:1 demosaic of the record area and its clip state, the column pass's
+    // output, and the two resample passes. The intermediates are shared by all slots, like the strip
+    // images above.
+    rawr::vk::OwnedImage fullRgb_{};
+    rawr::vk::OwnedImage fullClip_{};
+    rawr::vk::OwnedImage columnsRgb_{};
+    bool resampleImagesInitialized_ = false;
+    VkDescriptorSetLayout resampleHLayout_ = VK_NULL_HANDLE;
+    VkPipelineLayout resampleHPipelineLayout_ = VK_NULL_HANDLE;
+    VkPipeline resampleHPipeline_ = VK_NULL_HANDLE;
+    VkDescriptorPool resampleHPool_ = VK_NULL_HANDLE;
+    VkDescriptorSet resampleHSet_ = VK_NULL_HANDLE;
+    VkDescriptorSetLayout resampleVLayout_ = VK_NULL_HANDLE;
+    VkPipelineLayout resampleVPipelineLayout_ = VK_NULL_HANDLE;
+    VkPipeline resampleVPipeline_ = VK_NULL_HANDLE;
+    VkDescriptorPool resampleVPool_ = VK_NULL_HANDLE;
+    std::array<VkDescriptorSet, kFramesInFlight> resampleVSets_{};
 };
 }  // namespace rawrcam::video

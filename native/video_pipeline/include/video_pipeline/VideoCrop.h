@@ -15,6 +15,9 @@ struct VideoSourceRect {
     uint32_t width = 0;
     uint32_t height = 0;
     bool reduceCfa = false;
+    // Demosaiced 1:1 over the whole rect, then resampled down to the output size
+    // (videoResampleRect): neither 1:1 nor the 2x Bayer reduction.
+    bool resample = false;
 };
 
 // Source rect in full-RAW pixels for a recording output size. Returns an
@@ -58,17 +61,52 @@ struct VideoKeptArea {
     return {left, top, rawWidth - left - right, rawHeight - top - bottom};
 }
 
+// Fractional reduction. Between 1:1 and 2x the rule above crops the output's
+// own size out of the middle: a 3264-wide front camera records 1080p from its
+// central 1920 columns, about 1.7x narrower than its image. Instead, the
+// largest centred area of the output's aspect is demosaiced 1:1 and resampled
+// down by width / outWidth. Only for scales from kVideoMinResampleScale up to
+// 2x (where the 2x reduction takes over): just under 1x+ (4K from a 4096-wide
+// RAW) the 1:1 crop loses little and stays the sharpest. Empty when the rule
+// above applies.
+inline constexpr double kVideoMinResampleScale = 1.25;
+
+[[nodiscard]] inline VideoSourceRect videoResampleRect(uint32_t width, uint32_t height, uint32_t outWidth,
+                                                       uint32_t outHeight) noexcept {
+    VideoSourceRect rect{};
+    if (outWidth == 0 || outHeight == 0 || width == 0 || height == 0) return rect;
+    const double sx = double(width) / outWidth, sy = double(height) / outHeight;
+    const double scale = sx < sy ? sx : sy;
+    if (scale < kVideoMinResampleScale || scale >= 2.0) return rect;
+    const uint32_t sourceWidth = uint32_t(double(outWidth) * scale) & ~1u;
+    const uint32_t sourceHeight = uint32_t(double(outHeight) * scale) & ~1u;
+    if (sourceWidth > width || sourceHeight > height || sourceWidth <= outWidth || sourceHeight <= outHeight)
+        return rect;
+    rect.x = ((width - sourceWidth) / 2u) & ~1u;
+    rect.y = ((height - sourceHeight) / 2u) & ~1u;
+    rect.width = sourceWidth;
+    rect.height = sourceHeight;
+    rect.resample = true;
+    return rect;
+}
+
 // Same rule, centred on the kept area instead of the whole RAW, so padded
 // edges never reach a recording or its preview. An empty kept area is the
-// whole RAW (the rule above, unchanged).
+// whole RAW (the rule above, unchanged). allowResample enables the fractional
+// reduction (videoResampleRect); every user of one recording passes the same.
 [[nodiscard]] inline VideoSourceRect videoSourceRect(uint32_t rawWidth, uint32_t rawHeight, uint32_t outWidth,
-                                                     uint32_t outHeight, const VideoKeptArea& kept) noexcept {
-    if (!kept.valid() || uint64_t(kept.x) + kept.width > rawWidth || uint64_t(kept.y) + kept.height > rawHeight)
-        return videoSourceRect(rawWidth, rawHeight, outWidth, outHeight);
-    VideoSourceRect rect = videoSourceRect(kept.width, kept.height, outWidth, outHeight);
+                                                     uint32_t outHeight, const VideoKeptArea& kept,
+                                                     bool allowResample = false) noexcept {
+    const bool useKept =
+        kept.valid() && uint64_t(kept.x) + kept.width <= rawWidth && uint64_t(kept.y) + kept.height <= rawHeight;
+    const uint32_t baseX = useKept ? kept.x : 0u, baseY = useKept ? kept.y : 0u;
+    const uint32_t baseWidth = useKept ? kept.width : rawWidth, baseHeight = useKept ? kept.height : rawHeight;
+    VideoSourceRect rect = allowResample ? videoResampleRect(baseWidth, baseHeight, outWidth, outHeight)
+                                         : VideoSourceRect{};
+    if (rect.width == 0) rect = videoSourceRect(baseWidth, baseHeight, outWidth, outHeight);
     if (rect.width == 0) return rect;
-    rect.x += kept.x;
-    rect.y += kept.y;
+    rect.x += baseX;
+    rect.y += baseY;
     return rect;
 }
 
@@ -109,6 +147,7 @@ inline void videoAspectFit(uint32_t& width, uint32_t& height, uint32_t num, uint
                                                           uint32_t toHeight) noexcept {
     VideoSourceRect out{};
     out.reduceCfa = rect.reduceCfa;
+    out.resample = rect.resample;
     if (fromWidth == 0 || fromHeight == 0 || toWidth == 0 || toHeight == 0 || rect.width == 0 ||
         rect.height == 0)
         return VideoSourceRect{};

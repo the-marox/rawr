@@ -229,6 +229,8 @@ add_test(NAME hevc_frame_types COMMAND "${UV_EXECUTABLE}" run --no-project --cac
 add_test(NAME mov_muxer COMMAND "${UV_EXECUTABLE}" run --no-project --cache-dir "${RAWR_ROOT}/tmp/uv-cache" "${CMAKE_CURRENT_SOURCE_DIR}/mov_muxer.py" "$<TARGET_FILE:mov_muxer_helper>" "$<TARGET_FILE:mp4_metadata_helper>" "${FFMPEG}" "${FFPROBE}" "${CMAKE_CURRENT_BINARY_DIR}")
 add_test(NAME video_containers COMMAND "${UV_EXECUTABLE}" run --no-project --cache-dir "${RAWR_ROOT}/tmp/uv-cache" "${CMAKE_CURRENT_SOURCE_DIR}/video_containers.py" "$<TARGET_FILE:hevc_metadata_helper>" "$<TARGET_FILE:mp4_metadata_helper>" "${FFMPEG}" "${FFPROBE}" "${CMAKE_CURRENT_BINARY_DIR}")
 
+rawr_test(video_resample_rect_test
+  "${RAWR_ROOT}/tests/native/video_resample_rect_test.cpp")
 rawr_test(raw_pixel_source_test
   "${RAWR_ROOT}/tests/native/raw_pixel_source_test.cpp"
   "${APP}/imaging/RawPixelSource.cpp")

@@ -53,10 +53,19 @@ foreach(PASS h v)
             ${SC}/lens_shading.glsl ${SC}/cfa_common.glsl)
 endforeach()
 
+# Fractional reduction (VideoCrop.h videoResampleRect): separable Lanczos-2 over the 1:1 demosaic.
+foreach(PASS h v)
+  embed_spirv(video_resample_${PASS} ${VIDEO_PIPELINE_SHADER_DIR}/video_resample_${PASS}.comp
+    video_resample_${PASS}_spv OUTPUT_DIR ${VP_GEN}
+    FLAGS --target-env=vulkan1.1 -O)
+endforeach()
+
 add_library(video_pipeline STATIC src/VideoDemosaic.cpp ${video_demosaic_HDR} ${video_demosaic_1x_HDR}
   ${video_demosaic_quad_HDR}
   ${video_downscale_h_HDR}
-  ${video_downscale_v_HDR})
+  ${video_downscale_v_HDR}
+  ${video_resample_h_HDR}
+  ${video_resample_v_HDR})
 add_library(rawr::video_pipeline ALIAS video_pipeline)
 target_include_directories(video_pipeline PUBLIC include PRIVATE ${VP_GEN})
 target_link_libraries(video_pipeline PUBLIC rawr::vk_common ${VULKAN_LIB} PRIVATE ${LOG_LIB})

@@ -1,0 +1,53 @@
+#version 450
+#extension GL_EXT_control_flow_attributes : require
+// Fractional reduction, pass 1 of 2 (video_pipeline/VideoCrop.h videoResampleRect): the 1:1 demosaic
+// of the whole record area is filtered horizontally down to the output width, all rows kept; pass 2
+// (video_resample_v.comp) does the columns. Lanczos-2 widened by the scale, so it also low-passes
+// below the output's Nyquist (no moire), then held to the range of the source pixels under the
+// output pixel's own footprint (no ringing around highlights). Camera RGB in, camera RGB out.
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+layout(binding = 0, rgba16f) uniform readonly image2D sourceImage;   // srcWidth x srcHeight
+layout(binding = 1, rgba16f) uniform writeonly image2D targetImage;  // dstWidth x srcHeight
+layout(push_constant) uniform Push {
+    uint srcWidth, srcHeight, dstWidth, dstHeight;
+    float scaleX, scaleY;
+    uint clipWidth, clipHeight;
+} pc;
+
+const float PI = 3.14159265358979;
+float lanczos2(float x) {
+    x = abs(x);
+    if (x < 1e-4) return 1.0;
+    if (x >= 2.0) return 0.0;
+    float px = PI * x;
+    return 2.0 * sin(px) * sin(0.5 * px) / (px * px);
+}
+
+// Scales stay under 2 (2x takes the Bayer reduction), so 2 * 2 * scale + 1 taps fit.
+const int MAX_TAPS = 9;
+
+void main() {
+    ivec2 o = ivec2(gl_GlobalInvocationID.xy);
+    if (o.x >= int(pc.dstWidth) || o.y >= int(pc.srcHeight)) return;
+    float scale = pc.scaleX;
+    float centre = (float(o.x) + 0.5) * scale - 0.5;
+    int first = int(floor(centre - 2.0 * scale)) + 1;
+    vec3 sum = vec3(0.0);
+    float weights = 0.0;
+    vec3 low = vec3(65504.0), high = vec3(-65504.0);
+    [[unroll]] for (int t = 0; t < MAX_TAPS; ++t) {
+        int i = first + t;
+        float distance = float(i) - centre;
+        if (abs(distance) >= 2.0 * scale) continue;
+        float w = lanczos2(distance / scale);
+        vec3 value = imageLoad(sourceImage, ivec2(clamp(i, 0, int(pc.srcWidth) - 1), o.y)).rgb;
+        sum += w * value;
+        weights += w;
+        if (abs(distance) <= 0.5 * scale + 0.5) {
+            low = min(low, value);
+            high = max(high, value);
+        }
+    }
+    vec3 value = clamp(sum / max(weights, 1e-6), low, high);
+    imageStore(targetImage, o, vec4(value, 1.0));
+}
