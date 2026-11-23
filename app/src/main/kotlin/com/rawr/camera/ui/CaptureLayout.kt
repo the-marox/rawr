@@ -68,6 +68,15 @@ internal fun PhysicalCaptureLayout(
     // 16:9 viewfinders run past the photo frame and behind the shutter
     // cluster; Open Gate is exactly the photo box, so nothing bleeds.
     val videoBleed = isVideo && state.videoResolution != VideoResolutionMode.OPEN_GATE
+    // Photo 3:2 and 16:9 frames are taller than the 3:4 box held upright: they take the full width and bleed
+    // behind the shutter cluster like 16:9 video, instead of a narrow box inside the photo frame. 1:1 and 5:4
+    // fit the photo box; 2.39 and XPan would run past the screen and stay inside it.
+    val photoBleedRatio: Float? = if (isVideo) null else when (state.photoAspect) {
+        com.rawr.camera.model.PhotoAspect.ThreeTwo -> 2f / 3f
+        com.rawr.camera.model.PhotoAspect.SixteenNine -> 9f / 16f
+        else -> null
+    }
+    val bleedRatio: Float? = if (videoBleed) 9f / 16f else photoBleedRatio
     // 17U: while recording, controls that cannot change mid-record (and the
     // exposure/look overlays) step aside so the frame is clear. A tap anywhere
     // on the viewfinder brings them back for 3 s; it still reaches tap-to-focus.
@@ -153,7 +162,7 @@ internal fun PhysicalCaptureLayout(
                     preview = preview,
                     renderProfiles = renderProfiles.copy(locked = isVideo && videoLocked),
                     onSelectRenderProfile = onSelectRenderProfile,
-                    modifier = Modifier.viewfinderFrame(videoBleed, viewfinderWidth)
+                    modifier = Modifier.viewfinderFrame(bleedRatio, viewfinderWidth)
                         .align(Alignment.TopCenter),
                     slotFrame = photoFrame,
                     forceCompact = isVideo,
@@ -194,7 +203,7 @@ internal fun PhysicalCaptureLayout(
                         onSelectDcp = { file -> onQuickEvent(CaptureQuickEvent.SelectDcp(state.selectedLensId, file)) },
                         videoControls = videoControls,
                         onToggleVideoRecording = onToggleVideoRecording,
-                        overlay = videoBleed,
+                        overlay = bleedRatio != null,
                         selectorsAlpha = cleanAlpha,
                         modifier = if (compactControls) {
                             Modifier.fillMaxWidth().weight(1f)
@@ -230,10 +239,10 @@ internal fun PhysicalCaptureLayout(
  * to the exact record rect, so the box fills with no bars and framing never
  * jumps at record start. No image work happens here — only box sizing.
  */
-private fun Modifier.viewfinderFrame(videoBleed: Boolean, photoWidth: Dp): Modifier = if (videoBleed) {
+private fun Modifier.viewfinderFrame(bleedRatio: Float?, photoWidth: Dp): Modifier = if (bleedRatio != null) {
     this.fillMaxWidth()
         .wrapContentHeight(Alignment.Top, unbounded = true)
-        .aspectRatio(9f / 16f)
+        .aspectRatio(bleedRatio)
 } else {
     this.width(photoWidth).aspectRatio(3f / 4f)
 }

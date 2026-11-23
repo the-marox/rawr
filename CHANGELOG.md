@@ -18,6 +18,13 @@ first and moves to `xiaomi-17u` once verified.
   17U this is the 50 MP multiframe (17 frames by default, up to 30). Merged
   without conflicts; capture_job_test passes here.
 
+### Photo aspect ratio
+
+- 3:2 and 16:9 photos fill the screen width in the viewfinder, running
+  behind the shutter cluster like 16:9 video, instead of a narrow box inside
+  the 3:4 photo frame. 1:1 and 5:4 still fit the photo frame; 2.39 and XPan
+  stay inside it (full width would run past the screen).
+
 ## 0.5.1-17u.8
 
 Sync with Ed's main up to #150, checked on the Xiaomi 17 Ultra, and the
