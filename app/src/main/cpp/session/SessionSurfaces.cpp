@@ -1,4 +1,5 @@
 #include <android/hardware_buffer.h>
+#include <sys/system_properties.h>
 
 #include <sstream>
 #include <stdexcept>
@@ -90,8 +91,14 @@ ANativeWindow* SessionEngine::createRawReader(uint64_t generation, uint32_t widt
                                               rawrcam::geometry::RawPixelFormat format, uint64_t usage) {
     // Small readers get the deeper realtime reader and ingress queue (imaging/FrameLimits.h); the queue follows the
     // reader, so a reader of the usual 6 keeps the usual single waiting frame.
-    const std::size_t maxImages =
+    std::size_t maxImages =
         imaging::realtimeRawReaderMaxImages(profileMaxImages_, std::uint64_t(width) * height * 2u);
+    // Rawr 17U fork, for an A/B on the 17U: `adb shell setprop debug.rawr.deep_ingress 0` keeps the usual reader
+    // (6 images, one waiting frame) where Ed's #149 would deepen it. Read when the reader is created (lens switch or
+    // app start). A lens profile's own buffer count still wins.
+    char deep[PROP_VALUE_MAX] = {};
+    if (!profileMaxImages_ && __system_property_get("debug.rawr.deep_ingress", deep) > 0 && deep[0] == '0')
+        maxImages = imaging::kRawReaderMaxImages;
     ingressQueue_.setMaxImages(imaging::ingressImageCapacity(maxImages));
     return rawFrameIngress_.create(generation, width, height, format, usage, uint32_t(maxImages));
 }

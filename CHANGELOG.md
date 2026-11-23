@@ -31,7 +31,25 @@ the fork, with Ed's own work since #138:
   images with 3 waiting frames: this fork tried the same in 0.5.1-17u.4 and
   reverted it (more drops at the start of a 4K60 take on the 17U), so it is
   checked again in this round.
+  First take on the 17U (4K60 10-bit, 1x, ~3 min): 9 RAW frames evicted in
+  the first 0.3 s, none later, no encoder drops. Two takes with the fork's
+  reader (6 images) before: 4 and 2 at the start, 3 and 2 later. Same total,
+  moved to the start. `adb shell setprop debug.rawr.deep_ingress 0` keeps the
+  usual reader (6 images, one waiting frame) for an A/B in one build;
+  RAW_READER_CREATED_NATIVE shows maxImages=6 or 8.
 - #147 the host test suite builds again.
+
+Checked on the 17U with the first sync build: 50 MP single and 17-frame
+multiframe on 1x, 200>50 on 3.2x (the lost companion buffer ignored, photo
+saved), 15 lens switches with no failed open, front 60 fps inside its
+4096x2304 area. Seen once: 1x DCG lost 4 frames in a row (HAL ERROR_BUFFER)
+about 1 s after opening; the session went on.
+
+### CI
+
+- The shader SPIR-V upload (for the AOC analysis) no longer fails the
+  build: in the private test repository the account's artifact quota was
+  full, after the APK had already gone to the test-build prerelease.
 
 Kept from the fork where it does more: Open Gate high-fps sizes and the
 recording aspect ratios, the-marox's 1.25x-2x video resample (#5), the
