@@ -25,7 +25,9 @@ void reportFailure(CameraSessionCallbackContext* callback, const char* kind, int
                    int sequenceId, const CameraRequest* request, const char* target = nullptr) {
     // ignoreLostCompanion lenses: a lost companion buffer does not fail the frame. Xiaomi's HAL drops the small
     // companion output on full-size stills (17 Ultra 50/200 MP) while the RAW outputs still arrive.
-    if (callback->ignoreLostCompanion && sequenceId < 0 && target && std::strcmp(target, "companion") == 0) {
+    // Rawr 17U fork: applied to every lens, as before the per-lens workaround, so lens profiles saved or edited
+    // before it (without the workaround named) keep their full-size stills.
+    if (sequenceId < 0 && target && std::strcmp(target, "companion") == 0) {
         if (!takeFailureLine(callback->generation)) return;
         CameraCallbackGuard<CameraEventSink> guard(callback->lifetime);
         if (guard.owner)

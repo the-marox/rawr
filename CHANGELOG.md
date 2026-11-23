@@ -36,10 +36,12 @@ the fork, with Ed's own work since #138:
 Kept from the fork where it does more: Open Gate high-fps sizes and the
 recording aspect ratios, the-marox's 1.25x-2x video resample (#5), the
 200 MP fast remosaic and JPEG from the blocks, two-plane gain maps, and the
-viewfinder/scope throttles while recording. The lost-companion workaround
-is now per lens (ignoreLostCompanion), named on every photo-stream lens of
-the 17U profile, which is now Ed's (the fork's plus those workarounds and
-Detail).
+viewfinder/scope throttles while recording. The 17U profile is now Ed's
+(the fork's, plus ignoreLostCompanion on every photo-stream lens and Detail
+on the ISZ lenses). Ed made the lost-companion rule a per-lens workaround
+(ignoreLostCompanion); the fork keeps applying it to every lens, as before,
+so lens profiles saved or edited before (without the workaround named) keep
+their full-size stills.
 
 Host tests here: everything builds; the merge's own tests pass (crop,
 kept area, colour, start ladder, reader ladder, route fixture). The
