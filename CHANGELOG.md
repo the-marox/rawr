@@ -37,6 +37,12 @@ the fork, with Ed's own work since #138:
   moved to the start. `adb shell setprop debug.rawr.deep_ingress 0` keeps the
   usual reader (6 images, one waiting frame) for an A/B in one build;
   RAW_READER_CREATED_NATIVE shows maxImages=6 or 8.
+  A/B on the 17U (4K60 10-bit, 1x, 2 takes of 2 min each, same scene):
+  Ed's reader (8) lost no frames in either take; the usual reader (6) lost
+  3 at the start, then 2 at the start and 1 later. No encoder drops in any.
+  The 6-image takes ran second, about 2 °C warmer (41-43 against 40-41 °C);
+  their drops were in the first 0.15 s, as in the fork's earlier takes. Ed's
+  deeper reader stays (the default); the property stays for comparisons.
 - #147 the host test suite builds again.
 
 Checked on the 17U with the first sync build: 50 MP single and 17-frame
