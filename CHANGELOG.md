@@ -4,6 +4,20 @@ Fork of [Rawr](https://github.com/adityawarmanfw/rawr) for the Xiaomi 17 Ultra.
 Releases follow Ed's version: `0.5.1-17u.N`. Test work lands on `yuv-probe`
 first and moves to `xiaomi-17u` once verified.
 
+## Unreleased (`yuv-probe`, test builds)
+
+### From upstream Rawr (Ed): #151
+
+- Full-size bursts no longer lose the whole photo when the camera falls
+  behind: frame N-1 is written to the journal while frame N is copied and
+  remosaiced (two alternating buffers, about 100 MB more for a 50 MP burst;
+  200 MP frames keep the one-buffer order). A burst that is flushed, fails or
+  times out keeps the frames already delivered and merges them when there
+  are two or more (FULL_SIZE_BURST_SALVAGED requested= kept=). Ed's check: a
+  vivo where 28 and 30 frame 50 MP quad bursts failed now gets 30/30. On the
+  17U this is the 50 MP multiframe (17 frames by default, up to 30). Merged
+  without conflicts; capture_job_test passes here.
+
 ## 0.5.1-17u.8
 
 Sync with Ed's main up to #150, checked on the Xiaomi 17 Ultra, and the
