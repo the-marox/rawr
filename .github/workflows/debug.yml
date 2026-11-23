@@ -118,7 +118,9 @@ jobs:
           done
           ls shaders-spv | wc -l
 
+      # Only for the AOC analysis: a full artifact quota (private repository) must not fail the build.
       - uses: actions/upload-artifact@v4
+        continue-on-error: true
         with:
           name: shaders-spv-${{ github.sha }}
           path: shaders-spv/
