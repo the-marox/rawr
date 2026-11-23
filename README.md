@@ -54,8 +54,9 @@ Rawr: Ed's #N)*, with the pull request it came in. Entry by entry, with how each
   ignoreLostCompanion workaround.)*
 - **Focus after a 1x 50 MP single frame:** the lens is held at its distance for a few frames after the
   still, so the viewfinder no longer jumps. *(Already in Rawr: Ed's #141.)*
-- **Photo aspect ratio** crop of the JPEG (the DNG stays full), picker in the top bar; 3:2 and 16:9 fill
-  the screen width in the viewfinder, like 16:9 video.
+- **Photo aspect ratios:** 3:2 (35 mm), 5:4, 1:1, 16:9, 2.39:1 Scope and XPan 65:24, from the picker in
+  the top bar. The JPEG and its gain map are cropped, the DNG stays full; 3:2 and 16:9 fill the screen width
+  in the viewfinder, like 16:9 video.
 - **Padded raw edges** dropped per lens (`image.cropEdges`), for stills and the viewfinder. *(Already in
   Rawr: Ed's #150.)*
 
@@ -88,12 +89,17 @@ Rawr: Ed's #N)*, with the pull request it came in. Entry by entry, with how each
 - **60 fps sensor modes:** the blank rows they pad are left out of the viewfinder, metering and recording
   (`image.cropEdgesHighFps`), on the rear lenses and the front camera. *(Already in Rawr: Ed's #150.)*
 - **Open Gate** at 60 fps records 3408x2560 (4:3), the same box as the viewfinder; 4096x3072 at 30 fps.
-- **Recording aspect ratios** (1.43 IMAX to 2.76 Ultra Panavision, XPan).
+- **Recording aspect ratios (cinema formats):** 1.43:1 IMAX 70mm, 1.66:1 European, 1.85:1 Flat, 1.90:1 DCI /
+  IMAX digital, 2:1 Univisium, 2.20:1 Todd-AO 70mm, 2.39:1 Scope, 2.76:1 Ultra Panavision 70 and XPan
+  65:24.
 - **Gyro stabilisation** (Standard, Strong) and **Level horizon**, built on apos-fandango's gyro integrator
   from the Rawr X14U fork.
-- **Clean recording view** (controls fade out, a swipe shows them) and **Do not disturb while recording**.
+- **Clean recording view** (controls fade out, a swipe shows them) and **Do not disturb while recording**;
+  the scopes refresh about 10 times a second while recording, to leave the GPU to the video.
 - Light meter (lux, EV, colour temperature, flicker, laser distance), antibanding from the flicker sensor
-  and a Gyroflow gyro log (.gcsv beside the video), from the-marox's PR #1.
+  and a Gyroflow gyro log (.gcsv beside the video), from the-marox's PR #1. The same PR saves the readings
+  with each photo: lux, colour temperature, flicker and laser distance in the DNG's metadata, the barometer's
+  pressure in the EXIF, and, with location tagging on, the lens direction from the compass (GPSImgDirection).
 
 **Galaxy S23 Ultra**
 - Faster lens switching (median 2.6 s to 0.6-0.7 s) and app launch: the camera stays open across lens
