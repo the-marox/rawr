@@ -54,7 +54,8 @@ rawr_test(cfa_remosaic_test
 rawr_test(phase_fit_test
   "${RAWR_ROOT}/tests/native/phase_fit_test.cpp")
 rawr_test(still_binned_fallback_test
-  "${RAWR_ROOT}/tests/native/still_binned_fallback_test.cpp")
+  "${RAWR_ROOT}/tests/native/still_binned_fallback_test.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/native/capture_stubs/BlockRemosaicGpuStub.cpp")
 target_include_directories(still_binned_fallback_test BEFORE PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/native/reader_stubs")
 rawr_test(lens_metadata_test
   "${RAWR_ROOT}/tests/native/lens_metadata_test.cpp")
@@ -70,6 +71,11 @@ rawr_test(renderer_dng_source_test
   "${APP}/color/DcpProfile.cpp"
   "${APP}/color/ColorMath.cpp")
 target_link_libraries(renderer_dng_source_test PRIVATE rawr_tinydng)
+rawr_test(color_calibration_test
+  "${RAWR_ROOT}/tests/native/color_calibration_test.cpp"
+  "${APP}/color/ColorCalibration.cpp"
+  "${APP}/color/DcpProfile.cpp"
+  "${APP}/color/ColorMath.cpp")
 rawr_test(renderer_resample_test
   "${RAWR_ROOT}/tests/native/renderer_resample_test.cpp"
   "${APP}/renderer/LinearResample.cpp")
@@ -184,6 +190,8 @@ rawr_test(public_description_test
 rawr_test(multiframe_exif_test
   "${RAWR_ROOT}/tests/native/multiframe_exif_test.cpp"
   "${RAWR_ROOT}/app/src/main/cpp/capture/multiframe/MultiframeDescription.cpp")
+rawr_test(frame_limits_test
+  "${RAWR_ROOT}/tests/native/frame_limits_test.cpp")
 rawr_test(native_ownership_test
   "${RAWR_ROOT}/tests/native/native_ownership_test.cpp"
   "${RAWR_ROOT}/app/src/main/cpp/imaging/FrameIngressQueue.cpp"
@@ -193,7 +201,8 @@ rawr_test(raw_still_capture_manager_test
   "${RAWR_ROOT}/tests/native/raw_still_capture_manager_test.cpp"
   "${RAWR_ROOT}/app/src/main/cpp/imaging/Raw16CpuSnapshot.cpp"
   "${RAWR_ROOT}/app/src/main/cpp/imaging/RawPixelSource.cpp"
-  "${RAWR_ROOT}/app/src/main/cpp/capture/single/SingleShotSlot.cpp")
+  "${RAWR_ROOT}/app/src/main/cpp/capture/single/SingleShotSlot.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/native/capture_stubs/BlockRemosaicGpuStub.cpp")
 target_compile_options(raw_still_capture_manager_test PRIVATE -DNDEBUG)
 target_include_directories(raw_still_capture_manager_test BEFORE PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/native/capture_stubs")
 rawr_test(exif_transpose_test
@@ -273,6 +282,11 @@ rawr_test(gles_bridge_policy_test
   "${RAWR_ROOT}/tests/native/gles_bridge_policy_test.cpp")
 rawr_test(sensor_mode_fps_policy_test
   "${RAWR_ROOT}/tests/native/sensor_mode_fps_policy_test.cpp")
+rawr_test(edge_crop_test
+  "${RAWR_ROOT}/tests/native/edge_crop_test.cpp")
+target_include_directories(edge_crop_test BEFORE PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/native/capture_stubs")
+rawr_test(crop_window_fractions_test
+  "${RAWR_ROOT}/tests/native/crop_window_fractions_test.cpp")
 rawr_test(video_crop_mirror_test
   "${RAWR_ROOT}/tests/native/video_crop_mirror_test.cpp")
 rawr_test(camera_workarounds_test

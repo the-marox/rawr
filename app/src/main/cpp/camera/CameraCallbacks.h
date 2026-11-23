@@ -20,7 +20,7 @@ class CameraEventSink {
     // The sensor started exposing a request. Runs on a camera thread.
     virtual void cameraCaptureStarted(uint64_t /*generation*/, const CameraRequest* /*request*/, int64_t /*timestamp*/) {}
     // Every failed capture or lost buffer, unthrottled. Runs on a camera thread.
-    virtual void cameraCaptureFailed(uint64_t /*generation*/) {}
+    virtual void cameraCaptureFailed(uint64_t /*generation*/, int64_t /*frameNumber*/) {}
     // A failed capture or lost buffer of any request; the sink decides whether it was a still. kind is
     // CAMERA_CAPTURE_FAILED or CAMERA_BUFFER_LOST.
     virtual void cameraStillFailed(uint64_t /*generation*/, const CameraRequest* /*request*/, const char* /*kind*/,
@@ -40,6 +40,8 @@ struct CameraSessionCallbackContext {
     // "aux_jpeg", "capture"), so a lost buffer can say which stream it belonged to.
     std::vector<const void*> outputWindows = {};
     std::vector<std::string> outputLabels = {};
+    // CameraWorkarounds::ignoreLostCompanion: a lost companion buffer is logged, not a failed frame.
+    bool ignoreLostCompanion = false;
     const char* outputLabel(size_t index) const {
         return index < outputLabels.size() ? outputLabels[index].c_str() : nullptr;
     }
@@ -51,7 +53,7 @@ struct CameraSessionCallbackContext {
 };
 struct CameraDeviceCallbackContext {
     std::shared_ptr<CameraEventLifetime> lifetime;
-    // Atomic: a device kept open across a lens switch (Rawr 17U fork, S23 Ultra)
+    // Atomic: a device kept open across a lens switch (Galaxy S23 Ultra)
     // is moved to the new generation while its HAL callbacks may run.
     std::atomic<uint64_t> generation;
 };

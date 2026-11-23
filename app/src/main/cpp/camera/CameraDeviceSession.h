@@ -7,6 +7,8 @@
 #include <functional>
 #include <map>
 #include <optional>
+#include <set>
+#include <string>
 
 #include "camera/CameraBackend.h"
 #include "camera/CameraCallbacks.h"
@@ -29,7 +31,12 @@ class CameraDeviceSession final {
     CameraDeviceSession& operator=(const CameraDeviceSession&) = delete;
     // Reads characteristics and negotiates the RAW stream. Returns the route
     // with `stream` resolved, or nullopt when the camera can't be used.
-    std::optional<LensRoute> select(const LensRoute&, const Diagnostic&);
+    // retry = a repeat of a start the camera service rejected as unlisted: no discovery sweep and no reject line per
+    // attempt (the sweep probes up to 63 ids and logs each), it runs once for the attempt that finds the camera.
+    std::optional<LensRoute> select(const LensRoute&, const Diagnostic&, bool retry = false);
+    // True when the last select() failed only because the camera service does not list a camera id this process
+    // has opened before: the id comes back once the HAL finishes closing the device (after a forced close).
+    bool lastSelectRejectedTransient() const noexcept { return selectRejectedTransient_; }
     CameraControlState initialControls(const LensRoute& route) const;
     // Releases the controller lock while waiting; stillCurrent is checked with
     // that lock held before touching session state after each wait.
@@ -78,10 +85,14 @@ class CameraDeviceSession final {
     // A device kept open for the next lens (keepDeviceForNextOpen) is not "the open device":
     // a start must still run and reuse it through open().
     bool hasDevice() const noexcept { return device_ != nullptr && !deviceKept_; }
-    // Rawr 17U fork: the next release() keeps the device open when the next open() is for the same
+    // The next release() keeps the device open when the next open() is for the same
     // cameraId, so a lens switch between physical cameras of one logical camera only rebuilds the
     // capture session. Samsung (S23 Ultra) blocks reopening a just-closed camera for 1.5-3.5 s.
     void keepDeviceForNextOpen(const std::string& cameraId) { keepForCameraId_ = cameraId; }
+    // Closes a device kept for the next lens when that lens will not open after all (its start bailed out
+    // before open()), so the camera is not held with nobody using it. No-op when none is kept.
+    void closeKeptDevice(const Diagnostic&, const std::string& reason);
+    bool deviceKept() const noexcept { return deviceKept_; }
     // True when the last successful open() reused a kept device instead of opening one.
     bool lastOpenReused() const noexcept { return lastOpenReused_; }
     bool hasSession() const noexcept { return session_ != nullptr; }
@@ -166,6 +177,8 @@ class CameraDeviceSession final {
     std::string keepForCameraId_;  // set by keepDeviceForNextOpen, consumed by release()
     bool deviceKept_ = false;      // device_ stays open between release() and the next open()
     bool lastOpenReused_ = false;
+    bool selectRejectedTransient_ = false;
+    std::set<std::string> seenCameraIds_;  // camera ids whose characteristics were read in this process
     std::string keptCameraId_;
     std::string keptOrOpenCameraId_;  // cameraId of device_ (open or kept)
     std::map<std::string, std::optional<uint32_t>> vendorTags_;  // name -> tag of the open camera

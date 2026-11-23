@@ -172,16 +172,23 @@ void CameraDeviceSession::closeDeviceDetached(std::function<void()> afterClose) 
     }).detach();
 }
 
-std::optional<LensRoute> CameraDeviceSession::select(const LensRoute& requested, const Diagnostic& diag) {
+std::optional<LensRoute> CameraDeviceSession::select(const LensRoute& requested, const Diagnostic& diag, bool retry) {
     ++generation_;
-    emitCameraDiscovery(manager_, diag);
+    selectRejectedTransient_ = false;
+    if (!retry) emitCameraDiscovery(manager_, diag);
     ACameraMetadata* chars = nullptr;
     const camera_status_t cs = ACameraManager_getCameraCharacteristics(manager_, requested.cameraId.c_str(), &chars);
     if (!ok(cs) || !chars) {
-        diag("CAMERA_NDK_SELECTION_REJECT cameraId=" + requested.cameraId +
-             " stage=characteristics status=" + statusText(cs));
+        // The service answers INVALID_PARAMETER for an id it does not list. An id that listed before and is gone now
+        // is a device still closing (a forced close leaves it unlisted for seconds), not a camera that is absent.
+        selectRejectedTransient_ = cs == ACAMERA_ERROR_INVALID_PARAMETER && seenCameraIds_.count(requested.cameraId) > 0;
+        if (!retry)
+            diag("CAMERA_NDK_SELECTION_REJECT cameraId=" + requested.cameraId +
+                 " stage=characteristics status=" + statusText(cs) + (selectRejectedTransient_ ? " transient=1" : ""));
         return std::nullopt;
     }
+    seenCameraIds_.insert(requested.cameraId);
+    if (retry) emitCameraDiscovery(manager_, diag);
 
     // A physical sub-camera streams through its logical parent: the device,
     // controls and vendor keys stay on the logical camera, while the RAW
@@ -327,16 +334,32 @@ std::optional<LensRoute> CameraDeviceSession::select(const LensRoute& requested,
 CameraControlState CameraDeviceSession::initialControls(const LensRoute& route) const {
     return readInitialCameraControlState(characteristics_, route, generation_);
 }
+void CameraDeviceSession::closeKeptDevice(const Diagnostic& diag, const std::string& reason) {
+    if (!deviceKept_) return;
+    deviceKept_ = false;
+    diag("CAMERA_NDK_DEVICE_KEPT_CLOSE cameraId=" + keptCameraId_ + " " + reason);
+    CameraDeviceCallbackContext* const closingContext = std::exchange(deviceContext_, nullptr);
+    std::string gate = std::exchange(heldGate_, std::string());
+    if (device_) {
+        closeDeviceDetached([closingContext, gate] {
+            delete closingContext;
+            if (!gate.empty()) releaseVendorCameraGate(gate);
+        });
+    } else {
+        delete closingContext;
+        if (!gate.empty()) releaseVendorCameraGate(gate);
+    }
+}
 bool CameraDeviceSession::open(const LensRoute& route, CameraCallbacks& callbacks, const Diagnostic& diag,
                                std::unique_lock<std::mutex>& controllerLock,
                                const std::function<bool()>& stillCurrent) {
     const auto deadline = std::chrono::steady_clock::now() + kOpenBudget;
     lastOpenReused_ = false;
     if (deviceKept_) {
-        deviceKept_ = false;
         const bool reuse = device_ && keptCameraId_ == route.cameraId && heldGate_ == route.vendorGate &&
                            effectiveCameraApi(route) != CameraApi::Java;
         if (reuse) {
+            deviceKept_ = false;
             if (deviceContext_) deviceContext_->generation.store(generation_, std::memory_order_release);
             diag("CAMERA_NDK_DEVICE_REUSED cameraId=" + route.cameraId + " lensId=" + route.lensId +
                  " generation=" + std::to_string(generation_));
@@ -344,18 +367,7 @@ bool CameraDeviceSession::open(const LensRoute& route, CameraCallbacks& callback
             return true;
         }
         // Not the same camera after all: close the kept device as release() would have.
-        diag("CAMERA_NDK_DEVICE_KEPT_CLOSE cameraId=" + keptCameraId_ + " next=" + route.cameraId);
-        CameraDeviceCallbackContext* const closingContext = std::exchange(deviceContext_, nullptr);
-        std::string gate = std::exchange(heldGate_, std::string());
-        if (device_) {
-            closeDeviceDetached([closingContext, gate] {
-                delete closingContext;
-                if (!gate.empty()) releaseVendorCameraGate(gate);
-            });
-        } else {
-            delete closingContext;
-            if (!gate.empty()) releaseVendorCameraGate(gate);
-        }
+        closeKeptDevice(diag, "next=" + route.cameraId);
     }
     {
         std::unique_lock<std::mutex> lock(gPendingCloseMutex);
@@ -678,6 +690,7 @@ bool CameraDeviceSession::createSession(ANativeWindow* window, const std::option
                                                 : o.window == captureWindow_   ? "capture"
                                                                                : "aux_jpeg");
     }
+    callbackContext->ignoreLostCompanion = selected && effectiveWorkarounds(*selected).ignoreLostCompanion;
     sessionContext_ = callbackContext;
     staticLevels_.reset();
     captureStaticLevels_.reset();
@@ -906,7 +919,7 @@ CameraReaderRetirement CameraDeviceSession::release(const Diagnostic& diag) {
     const std::string keepFor = std::exchange(keepForCameraId_, std::string());
     if (device_ && !minimal && !deviceKept_ && !keepFor.empty() && keepFor == keptOrOpenCameraId_ &&
         std::string(device_->backendName()) == "native") {
-        // Rawr 17U fork: keep the device for the next lens of the same logical camera. Its callback
+        // Keep the device for the next lens of the same logical camera. Its callback
         // context moves to the new generation so device errors still reach the controller.
         deviceKept_ = true;
         keptCameraId_ = keepFor;

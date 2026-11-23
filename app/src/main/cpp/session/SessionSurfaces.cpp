@@ -4,6 +4,7 @@
 #include <stdexcept>
 
 #include "diagnostics/logging/NativeLog.h"
+#include "imaging/FrameLimits.h"
 #include "session/SessionEngine.h"
 #include "vulkan/RawAhbImporter.h"
 #include "vulkan/VulkanDispatch.h"
@@ -87,7 +88,12 @@ bool SessionEngine::setPresentationSurface(JNIEnv* env, jobject surfaceObj, int 
 }
 ANativeWindow* SessionEngine::createRawReader(uint64_t generation, uint32_t width, uint32_t height,
                                               rawrcam::geometry::RawPixelFormat format, uint64_t usage) {
-    return rawFrameIngress_.create(generation, width, height, format, usage, profileMaxImages_);
+    // Small readers get the deeper realtime reader and ingress queue (imaging/FrameLimits.h); the queue follows the
+    // reader, so a reader of the usual 6 keeps the usual single waiting frame.
+    const std::size_t maxImages =
+        imaging::realtimeRawReaderMaxImages(profileMaxImages_, std::uint64_t(width) * height * 2u);
+    ingressQueue_.setMaxImages(imaging::ingressImageCapacity(maxImages));
+    return rawFrameIngress_.create(generation, width, height, format, usage, uint32_t(maxImages));
 }
 
 // Whether the allocator takes a RAW buffer of this size with the given usage plus what the camera adds.
@@ -172,7 +178,7 @@ ANativeWindow* SessionEngine::createRawInputWindow(uint64_t generation, uint32_t
             // read stays for the fallback upload.
             uint64_t usage = AHARDWAREBUFFER_USAGE_CPU_READ_OFTEN;
             if (format == rawrcam::geometry::RawPixelFormat::Raw10 && !realtime_.coordinator().cpuIngressRequired()) {
-                // Rawr 17U fork: grallocs before 4.1 refuse GPU_DATA_BUFFER on RAW10 too (Galaxy S23 Ultra,
+                // Grallocs before 4.1 refuse GPU_DATA_BUFFER on RAW10 too (Galaxy S23 Ultra,
                 // SM8550: "non-BLOB pixel format with GPU_DATA_BUFFER usage is not supported prior to gralloc
                 // 4.1"). Every request then fails and the ladder demotes ~1 s later with a session restart, on
                 // every app launch. Ask the allocator up front, as for RAW16 below, and start CPU-only.

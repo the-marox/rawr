@@ -23,9 +23,9 @@ bool takeFailureLine(uint64_t generation) {
 }
 void reportFailure(CameraSessionCallbackContext* callback, const char* kind, int64_t frameNumber, int reason,
                    int sequenceId, const CameraRequest* request, const char* target = nullptr) {
-    // A lost companion buffer does not fail the frame: Xiaomi's HAL drops the small companion
-    // output on full-size stills (17 Ultra 50/200 MP) while the RAW outputs still arrive.
-    if (sequenceId < 0 && target && std::strcmp(target, "companion") == 0) {
+    // ignoreLostCompanion lenses: a lost companion buffer does not fail the frame. Xiaomi's HAL drops the small
+    // companion output on full-size stills (17 Ultra 50/200 MP) while the RAW outputs still arrive.
+    if (callback->ignoreLostCompanion && sequenceId < 0 && target && std::strcmp(target, "companion") == 0) {
         if (!takeFailureLine(callback->generation)) return;
         CameraCallbackGuard<CameraEventSink> guard(callback->lifetime);
         if (guard.owner)
@@ -41,7 +41,7 @@ void reportFailure(CameraSessionCallbackContext* callback, const char* kind, int
         trace.record(diagnostics::RuntimeTraceStage::CameraBufferLost, 0, callback->generation, -1, 0, 0, 0u,
                      frameNumber);
     CameraCallbackGuard<CameraEventSink> guard(callback->lifetime);
-    if (guard.owner) guard.owner->cameraCaptureFailed(callback->generation);
+    if (guard.owner) guard.owner->cameraCaptureFailed(callback->generation, frameNumber);
     if (guard.owner) guard.owner->cameraStillFailed(callback->generation, request, kind, frameNumber, reason);
     if (!takeFailureLine(callback->generation)) return;
     if (guard.owner)

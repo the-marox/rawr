@@ -1,6 +1,8 @@
 #pragma once
 #include <android/log.h>
+#if defined(__ANDROID__)
 #include <sys/system_properties.h>
+#endif
 
 #include <algorithm>
 #include <array>
@@ -50,6 +52,18 @@ inline bool remosaicBlockCfaBuffer(std::vector<uint8_t>& raw16, uint32_t width, 
                               blackMean);
     return false;
 }
+// A debug system property whose first character is `value` (always false in host tests).
+inline bool stillDebugPropIs(const char* name, char value) {
+#if defined(__ANDROID__)
+    char buffer[PROP_VALUE_MAX] = {};
+    return __system_property_get(name, buffer) > 0 && buffer[0] == value;
+#else
+    (void)name;
+    (void)value;
+    return false;
+#endif
+}
+
 // A block-CFA lens (CameraContextMetadata::cfaBlock > 1) hands stills over as
 // the block mosaic; remosaic the copy to Bayer before anything (journal, DNG,
 // develop) reads it, like ingress does for the viewfinder. `gpu` (optional)
@@ -59,8 +73,7 @@ inline void remosaicBlockCfaStill(imaging::RawSnapshot& frame, BlockRemosaicGpu*
     if (!context || context->cfaBlock <= 1u || reducedRawRequested(*context)) return;
     // Debug: `adb shell setprop debug.rawr.keep_block_cfa 1` keeps the raw block mosaic in the DNG
     // (looks pink in editors) so remosaic methods can be compared offline on real scenes.
-    char keep[PROP_VALUE_MAX] = {};
-    if (__system_property_get("debug.rawr.keep_block_cfa", keep) > 0 && keep[0] == '1') {
+    if (stillDebugPropIs("debug.rawr.keep_block_cfa", '1')) {
         __android_log_print(ANDROID_LOG_WARN, "RawrCamNative", "STILL_CFA_REMOSAIC_SKIPPED requestId=%llu (debug.rawr.keep_block_cfa)",
                             static_cast<unsigned long long>(frame.requestId));
         return;
@@ -70,8 +83,8 @@ inline void remosaicBlockCfaStill(imaging::RawSnapshot& frame, BlockRemosaicGpu*
     // 4x4 blocks at Standard (Xiaomi 200 MP): the generic remosaic takes ~16 s there, the fast path well under 1 s.
     const bool fast = context->cfaBlock == 4u && quality == imaging::CfaRemosaicQuality::Standard &&
                       frame.raw16.size() >= size_t(frame.width) * frame.height * 2u;
-    long long jpegMs = -1;
-    bool onGpu = false;
+    [[maybe_unused]] long long jpegMs = -1;
+    [[maybe_unused]] bool onGpu = false;
     if (fast) {
         const uint32_t threads = std::clamp(std::thread::hardware_concurrency(), 1u, 8u);
         const auto& b = context->baselineBlackLevelPhysicalRggb;
@@ -84,9 +97,7 @@ inline void remosaicBlockCfaStill(imaging::RawSnapshot& frame, BlockRemosaicGpu*
         // checker texture of binning the remosaicked frame (+2.5 dB on synthetic scenes). A TV screen's
         // sub-pixels can show as moire. `adb shell setprop debug.rawr.jpeg_from_blocks 0` bins the remosaicked
         // frame instead, for comparison.
-        char fromBlocks[PROP_VALUE_MAX] = {};
-        const bool binRemosaicked =
-            __system_property_get("debug.rawr.jpeg_from_blocks", fromBlocks) > 0 && fromBlocks[0] == '0';
+        const bool binRemosaicked = stillDebugPropIs("debug.rawr.jpeg_from_blocks", '0');
         if (jpegNeedsBinning(frame) && !binRemosaicked) {
             const auto jpegStart = std::chrono::steady_clock::now();
             auto half = halfSizeBayerSnapshot(frame);

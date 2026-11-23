@@ -37,6 +37,7 @@
 #include "metadata/MetadataDiagnostics.h"
 #include "session/SessionEngine.h"
 #include "video/VideoResamplePolicy.h"
+#include "video/ContextKeptArea.h"
 #include "video_pipeline/VideoCrop.h"
 #include "vulkan/VulkanDispatch.h"
 
@@ -210,9 +211,9 @@ SessionEngine::SessionEngine(std::string filesDir) : filesDir_(std::move(filesDi
         captureFrameIngress_.destroy();
         captureReaderGeneration_ = 0;
     };
-    callbacks.captureFailed = [this](uint64_t generation) {
+    callbacks.captureFailed = [this](uint64_t generation, int64_t frameNumber) {
         std::lock_guard<std::mutex> lock(mu_);
-        rawReaderUsage_.captureFailed(generation);
+        rawReaderUsage_.captureFailed(generation, frameNumber);
     };
     callbacks.acquisitionFailed = [this](uint64_t generation, uint64_t tag) {
         // Camera callbacks never acquire the session lock or run teardown.
@@ -317,13 +318,8 @@ void SessionEngine::setVideoPreviewCropOut(uint32_t width, uint32_t height, uint
 
 rawrcam::video::VideoKeptArea SessionEngine::videoKeptAreaLocked(
     const rawrcam::metadata::CameraContextMetadata& m) const {
-    // Above 30 fps the sensor mode can pad more edges (image.cropEdgesHighFps).
-    const bool high = videoHighFps_;
-    return rawrcam::video::videoKeptArea(realtime_.rawWidth(), realtime_.rawHeight(),
-                                         high ? std::max(m.cropLeft, m.highFpsCropLeft) : m.cropLeft,
-                                         high ? std::max(m.cropTop, m.highFpsCropTop) : m.cropTop,
-                                         high ? std::max(m.cropRight, m.highFpsCropRight) : m.cropRight,
-                                         high ? std::max(m.cropBottom, m.highFpsCropBottom) : m.cropBottom);
+    // Above 30 fps the sensor mode can pad more edges (image.cropEdgesHighFps); one rule, video/ContextKeptArea.h.
+    return rawrcam::video::contextKeptArea(realtime_.rawWidth(), realtime_.rawHeight(), m, videoHighFps_);
 }
 
 void SessionEngine::setVideoHighFps(bool high) {
@@ -511,6 +507,11 @@ void SessionEngine::consumeIngress(imaging::FrameIngressQueue::Event event, imag
     }
     {
         std::lock_guard<std::mutex> lock(mu_);
+        if (raw && lastCameraContext_ &&
+            (lastCameraContext_->cfaBlock > 1u || lastCameraContext_->photoCfaBlock > 1u)) {
+            try { vulkanContext_.prepareRemosaic(); }
+            catch (const std::exception& e) { LOGE("REMOSAIC_PREWARM_START_FAILED %s", e.what()); }
+        }
         if (raw) rawReaderUsage_.rawArrived(std::get<imaging::RawFrameLease>(event.payload).get().generation);
         drainFullSizeStills();
         if (drops.images) realtime_.timing().recordDropped(drops.images);

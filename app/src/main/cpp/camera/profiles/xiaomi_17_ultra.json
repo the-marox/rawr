@@ -102,6 +102,11 @@
           ],
           "white": 0
         }
+      },
+      "session": {
+        "workarounds": [
+          "ignoreLostCompanion"
+        ]
       }
     },
     {
@@ -282,6 +287,11 @@
           ],
           "white": 0
         }
+      },
+      "session": {
+        "workarounds": [
+          "ignoreLostCompanion"
+        ]
       }
     },
     {
@@ -322,7 +332,7 @@
         "sensorLayout": {
           "block": 2,
           "liveRemosaic": "standard",
-          "photoRemosaic": "high"
+          "photoRemosaic": "detail"
         }
       }
     },
@@ -442,6 +452,11 @@
           ],
           "white": 1023
         }
+      },
+      "session": {
+        "workarounds": [
+          "ignoreLostCompanion"
+        ]
       }
     },
     {
@@ -481,7 +496,10 @@
       },
       "session": {
         "opMode": 36868,
-        "frameRate": 30
+        "frameRate": 30,
+        "workarounds": [
+          "ignoreLostCompanion"
+        ]
       },
       "vendorKeys": [
         {
@@ -559,7 +577,10 @@
       },
       "session": {
         "opMode": 36868,
-        "frameRate": 30
+        "frameRate": 30,
+        "workarounds": [
+          "ignoreLostCompanion"
+        ]
       },
       "vendorKeys": [
         {
@@ -637,7 +658,10 @@
       },
       "session": {
         "opMode": 36868,
-        "frameRate": 30
+        "frameRate": 30,
+        "workarounds": [
+          "ignoreLostCompanion"
+        ]
       },
       "vendorKeys": [
         {
@@ -716,7 +740,7 @@
         "sensorLayout": {
           "block": 2,
           "liveRemosaic": "standard",
-          "photoRemosaic": "high"
+          "photoRemosaic": "detail"
         }
       }
     },
@@ -887,6 +911,11 @@
           ],
           "white": 1023
         }
+      },
+      "session": {
+        "workarounds": [
+          "ignoreLostCompanion"
+        ]
       }
     },
     {
@@ -926,7 +955,10 @@
       },
       "session": {
         "opMode": 36868,
-        "frameRate": 30
+        "frameRate": 30,
+        "workarounds": [
+          "ignoreLostCompanion"
+        ]
       },
       "vendorKeys": [
         {
@@ -1022,7 +1054,10 @@
       },
       "session": {
         "opMode": 36868,
-        "frameRate": 30
+        "frameRate": 30,
+        "workarounds": [
+          "ignoreLostCompanion"
+        ]
       },
       "vendorKeys": [
         {
@@ -1118,7 +1153,10 @@
       },
       "session": {
         "opMode": 36868,
-        "frameRate": 30
+        "frameRate": 30,
+        "workarounds": [
+          "ignoreLostCompanion"
+        ]
       },
       "vendorKeys": [
         {
@@ -1233,7 +1271,7 @@
         "sensorLayout": {
           "block": 2,
           "liveRemosaic": "standard",
-          "photoRemosaic": "high"
+          "photoRemosaic": "detail"
         }
       }
     },

@@ -134,7 +134,7 @@ struct NativeCameraController::Impl final : CameraEventSink {
     bool preparingFocus = false;
     std::optional<float> fullSizeFocusDistance;
     bool retainFullSizeFocus = false;
-    // Rawr 17U fork: preview frames left with the lens held after a single full-size still.
+    // Preview frames left with the lens held after a single full-size still.
     int focusHoldFramesLeft = 0;
     static constexpr int kFocusHoldFrames = 20;
     static constexpr int kFocusHoldHiddenFrames = 4;
@@ -156,6 +156,18 @@ struct NativeCameraController::Impl final : CameraEventSink {
     bool active = false;
     bool starting = false;
     bool shutDown = false;
+    // A start rejected because the camera service does not list the camera yet (a device still closing after a
+    // forced close: vivo X300 FE, 3x) retries from the control tick every kSelectRetryIntervalMs, not by blocking the
+    // camera lane, until kSelectRetryBudgetMs. Without it nothing retried until the session policy's 8 s stall
+    // watchdog, so the preview stayed dead for 9-17 s. 0 = no retry pending; any stop, lens switch or start ends it.
+    static constexpr int64_t kSelectRetryIntervalMs = 250;
+    static constexpr int64_t kSelectRetryBudgetMs = 15000;
+    int64_t selectRetryNextMs = 0;
+    int64_t selectRetryUntilMs = 0;
+    void clearSelectRetryLocked() {
+        selectRetryNextMs = 0;
+        selectRetryUntilMs = 0;
+    }
     // Empty or unknown lens ids resolve to the profile's first lens at start.
     std::string lensId;
     // Exposure/WB/focus intent each physical camera had when the user left it,
@@ -219,6 +231,7 @@ struct NativeCameraController::Impl final : CameraEventSink {
         std::unique_lock<std::mutex> lock(mutex);
         if (active == value) return;
         active = value;
+        if (!active) clearSelectRetryLocked();
         if (active) {
             startLocked(lock);
             return;
@@ -234,7 +247,7 @@ struct NativeCameraController::Impl final : CameraEventSink {
         teardownCameraResourcesLocked(lock);
     }
 
-    // Rawr 17U fork: a lens switch within one logical camera keeps the device open on the
+    // A lens switch within one logical camera keeps the device open on the
     // Galaxy S23 Ultra (SM-S918B), whose HAL refuses to reopen a just-closed camera for
     // 1.5-3.5 s (Android 17, diagnostics from two users). Everywhere else the device closes
     // and reopens as before. debug.rawr.keep_device=1 opts another device in, =0 opts out.
@@ -249,6 +262,7 @@ struct NativeCameraController::Impl final : CameraEventSink {
         std::unique_lock<std::mutex> lock(mutex);
         if (lensId == value) return;
         startLadder.resetGivenUp();
+        clearSelectRetryLocked();
 
         const bool restart = active;
         if (!restart) {
@@ -265,7 +279,7 @@ struct NativeCameraController::Impl final : CameraEventSink {
             diag("CAMERA_LENS_SWITCH_FORCED from=" + lensId + " to=" + value + " reason=session_close_timeout");
             forceRetireSessionLocked(lock, "CAMERA_LENS_SWITCH");
         } else if (keepDeviceAcrossLensSwitch() && preferredCameraId.empty()) {
-            // Rawr 17U fork: same logical camera -> keep the device open, rebuild only the session.
+            // Same logical camera -> keep the device open, rebuild only the session.
             const auto from = routeForLens(profile, lensId);
             const auto to = routeForLens(profile, value);
             if (from && to && !to->cameraId.empty() && from->cameraId == to->cameraId)
@@ -793,6 +807,7 @@ struct NativeCameraController::Impl final : CameraEventSink {
     void rollbackCameraStartLocked(std::unique_lock<std::mutex>& lock, const std::string& reason) {
         active = false;
         starting = false;
+        clearSelectRetryLocked();
         if (deviceSession.hasSession()) {
             if (!retireSessionLocked(lock, kStopRetireTimeout, "CAMERA_START_FAILURE"))
                 forceRetireSessionLocked(lock, "CAMERA_START_FAILURE");
@@ -819,6 +834,7 @@ struct NativeCameraController::Impl final : CameraEventSink {
             diag("CAMERA_NDK_SELECTION_REJECT lensId=" + lensId + " profile=" + profile.id +
                  " reason=lens_not_in_profile");
             active = false;
+            deviceSession.closeKeptDevice([this](const std::string& line) { diag(line); }, "reason=lens_not_in_profile");
             return;
         }
         requests.retire();
@@ -832,10 +848,25 @@ struct NativeCameraController::Impl final : CameraEventSink {
             !outcome.empty())
             diag("CAMERA_API_OVERRIDE lens=" + requestedRoute.lensId + " " + outcome);
         const std::optional<LensRoute> selected =
-            deviceSession.select(requestedRoute, [this](const std::string& line) { diag(line); });
+            deviceSession.select(requestedRoute, [this](const std::string& line) { diag(line); },
+                                 /*retry=*/selectRetryUntilMs != 0);
         if (!selected) {
-            active = false;
             starting = false;
+            if (deviceSession.lastSelectRejectedTransient()) {
+                const int64_t now = monotonicMs();
+                if (selectRetryUntilMs == 0) {
+                    selectRetryUntilMs = now + kSelectRetryBudgetMs;
+                    diag("CAMERA_NDK_SELECTION_RETRY lens=" + lensId + " budgetMs=" + std::to_string(kSelectRetryBudgetMs));
+                }
+                if (now < selectRetryUntilMs) {
+                    selectRetryNextMs = now + kSelectRetryIntervalMs;  // active stays set: the tick starts it again
+                    return;
+                }
+                diag("CAMERA_NDK_SELECTION_RETRY_GAVE_UP lens=" + lensId);
+            }
+            clearSelectRetryLocked();
+            active = false;
+            deviceSession.closeKeptDevice([this](const std::string& line) { diag(line); }, "reason=selection_rejected");
             return;
         }
         const LensRoute& route = *selected;
@@ -1066,7 +1097,7 @@ struct NativeCameraController::Impl final : CameraEventSink {
                                          });
         if (!stillCurrent()) return;
         if (!sessionCreated && opened && deviceSession.lastOpenReused()) {
-            // Rawr 17U fork: a kept device can fail its next configure (S23 Ultra, once after a launch:
+            // A kept device can fail its next configure (S23 Ultra, once after a launch:
             // device error, then "Broken pipe" on configure). That says nothing about the route's companion
             // stream: close the device and start this lens again with a fresh open, with no RAW-only penalty.
             diag("CAMERA_NDK_DEVICE_REUSE_FAILED lensId=" + lensId + " retry=fresh_open");
@@ -1114,6 +1145,11 @@ struct NativeCameraController::Impl final : CameraEventSink {
             return;
         }
         starting = false;
+        if (selectRetryUntilMs != 0) {
+            diag("CAMERA_NDK_SELECTION_RETRY_RECOVERED lens=" + lensId + " afterMs=" +
+                 std::to_string(monotonicMs() - (selectRetryUntilMs - kSelectRetryBudgetMs)));
+            clearSelectRetryLocked();
+        }
         // The companion only has to start the pipeline. Producing it on every
         // frame holds each capture result back about a frame behind its RAW
         // image, which starves the preview pairer.
@@ -1282,15 +1318,15 @@ struct NativeCameraController::Impl final : CameraEventSink {
         if (framesLeft <= 1)
             longExposureEndMs.store(frameStartMs + frameMs + kReadoutMarginMs, std::memory_order_relaxed);
     }
-    void cameraCaptureFailed(uint64_t callbackGeneration) override {
+    void cameraCaptureFailed(uint64_t callbackGeneration, int64_t frameNumber) override {
         // Set once at construction; the receiver checks the generation.
-        if (callbacks.captureFailed) callbacks.captureFailed(callbackGeneration);
+        if (callbacks.captureFailed) callbacks.captureFailed(callbackGeneration, frameNumber);
         if (ladderGeneration.load(std::memory_order_acquire) != callbackGeneration) return;
         bool restart = false;
         {
             std::lock_guard<std::mutex> lock(mutex);
             if (callbackGeneration != deviceSession.generation()) return;
-            restart = noteLadderOutcomeLocked(startLadder.captureFailed(callbackGeneration), "capture_failed");
+            restart = noteLadderOutcomeLocked(startLadder.captureFailed(callbackGeneration, frameNumber), "capture_failed");
         }
         if (restart && callbacks.acquisitionFailed) callbacks.acquisitionFailed(callbackGeneration, 0);
     }
@@ -1359,7 +1395,7 @@ struct NativeCameraController::Impl final : CameraEventSink {
                 }
             }
             restoreViewfinderLocked();
-            // Rawr 17U fork: a remosaic still (1x 50 MP single frame) switches the sensor mode and the HAL
+            // A remosaic still (1x 50 MP single frame) switches the sensor mode and the HAL
             // resets the lens when the preview mode comes back; continuous AF then hunted from infinity.
             // Hold the preview at the pre-still distance for a few frames, then hand back to continuous AF.
             if (!aborted && !retainFullSizeFocus && fullSizeFocusDistance && std::isfinite(*fullSizeFocusDistance) &&
@@ -1407,7 +1443,17 @@ struct NativeCameraController::Impl final : CameraEventSink {
             captureChanged.notify_all();
             return;
         }
-        // The first preview frames after the still still show the HAL's reset lens (one frame on the 17U):
+        if (actions.optimizedStill && actions.frame->optimizedStillRequestId) {
+            // OIS as the HAL applied it to this still (the preview's mode is copied onto the still request).
+            ACameraMetadata_const_entry oisResult{};
+            const bool reported = ACameraMetadata_getConstEntry(result, ACAMERA_LENS_OPTICAL_STABILIZATION_MODE,
+                                                                &oisResult) == ACAMERA_OK && oisResult.count == 1;
+            diag("CAMERA_STILL_OIS tag=" + std::to_string(*actions.frame->optimizedStillRequestId) +
+                 " preference=" + (control.oisEnabled ? "on" : "off") +
+                 " supported=" + (control.capabilities.oisSupported ? "1" : "0") +
+                 " result=" + (reported ? std::to_string(oisResult.data.u8[0]) : "missing"));
+        }
+        // The first preview frames after the still still show the HAL's reset lens (one frame on the Xiaomi 17 Ultra):
         // keep them off the viewfinder, as Rexture's frozen preview already does for its burst.
         if (control.viewfinderFocusHold && !actions.optimizedStill &&
             focusHoldFramesLeft > kFocusHoldFrames - kFocusHoldHiddenFrames)
@@ -2137,6 +2183,14 @@ struct NativeCameraController::Impl final : CameraEventSink {
     }
     void tickControls(int64_t nowMs) {
         std::unique_lock<std::mutex> lock(mutex);
+        if (selectRetryNextMs != 0 && nowMs >= selectRetryNextMs) {
+            selectRetryNextMs = 0;
+            if (active && !shutDown && !starting && !deviceSession.hasDevice())
+                startLocked(lock);
+            else
+                clearSelectRetryLocked();
+            return;
+        }
         if (const auto watched = ladderGeneration.load(std::memory_order_acquire);
             watched != 0 && watched == deviceSession.generation() &&
             noteLadderOutcomeLocked(startLadder.tick(watched, nowMs), "no_first_frame")) {
