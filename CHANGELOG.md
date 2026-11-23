@@ -17,13 +17,19 @@ first and moves to `xiaomi-17u` once verified.
   vivo where 28 and 30 frame 50 MP quad bursts failed now gets 30/30. On the
   17U this is the 50 MP multiframe (17 frames by default, up to 30). Merged
   without conflicts; capture_job_test passes here.
+  Checked on the 17U: three 30-frame 1x 50 MP bursts in a row merged 30/30
+  (28-60 s each; the third ran while the first two were still processing,
+  and Android closed background apps for memory, not Rawr), a 17-frame one
+  17/17, 200>50 6/6, and a 200 MP single frame saved.
 
 ### Photo aspect ratio
 
 - 3:2 and 16:9 photos fill the screen width in the viewfinder, running
   behind the shutter cluster like 16:9 video, instead of a narrow box inside
   the 3:4 photo frame. 1:1 and 5:4 still fit the photo frame; 2.39 and XPan
-  stay inside it (full width would run past the screen).
+  stay inside it (full width would run past the screen). The bottom controls
+  float over it, as in 16:9 video (they hid the last quarter of the frame).
+  Checked: JPEG 16:9 4096x2304 and 3:2 4096x2730 from the 4096x3072 frame.
 
 ## 0.5.1-17u.8
 
