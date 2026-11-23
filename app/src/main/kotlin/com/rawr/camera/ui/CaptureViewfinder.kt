@@ -257,6 +257,7 @@ internal fun CaptureViewfinder(
                 LightMeterOverlay(
                     exposureTimeNs = state.appliedExposureTimeNs,
                     orientation = state.orientation,
+                    tofForFocus = { tofDistanceForFocus(it, state.focus, state.capabilities.manualFocus) },
                     focusAtDistance = { mm ->
                         tofFocusNormalized(mm, state.capabilities.manualFocus)?.let {
                             dispatch(com.rawr.camera.architecture.SetManualFocus(it))

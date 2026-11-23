@@ -39,6 +39,7 @@ import com.rawr.camera.architecture.MoveSpotAe
 import com.rawr.camera.architecture.OpenFocusSelector
 import com.rawr.camera.architecture.Refocus
 import com.rawr.camera.architecture.SetFocusMode
+import com.rawr.camera.integration.AuxSensorReading
 import com.rawr.camera.architecture.SetManualFocus
 import com.rawr.camera.model.*
 import kotlin.math.roundToInt
@@ -283,7 +284,7 @@ private fun pulsingAlpha(status: TargetStatus): Float {
 internal fun FocusBottomControls(state: CaptureUiState, dispatch: CaptureDispatch, modifier: Modifier = Modifier) {
     // The laser ToF distance, where the phone has one (rear cameras): a cell that focuses there.
     val aux = LocalAuxSensors.current?.collectAsStateWithLifecycle()?.value
-    val tof = aux?.tofDistanceMm?.let { mm ->
+    val tof = tofDistanceForFocus(aux, state.focus, state.capabilities.manualFocus)?.let { mm ->
         tofFocusNormalized(mm, state.capabilities.manualFocus)?.let { TofFocus(mm, it) }
     }
     Column(modifier, verticalArrangement = Arrangement.spacedBy(CaptureDimens.ControlGap)) {
@@ -312,6 +313,32 @@ internal fun tofFocusNormalized(distanceMm: Float?, capability: ManualFocusCapab
     if (!capability.supported || !capability.distanceReadoutTrustworthy) return null
     val normalized = mfNormalizedFromDiopters(1000f / distanceMm, capability.minimumFocusDistance) ?: return null
     return normalized.coerceIn(capability.minNormalized, capability.maxNormalized)
+}
+
+/** AF focus confirmed this far or farther (diopters: 3 m) ... */
+private const val TOF_NO_TARGET_AF_DIOPTERS = 1f / 3f
+/** ... while every ToF zone with a target reads closer than this: the laser is taken to see nothing. */
+private const val TOF_NO_TARGET_MAX_MM = 1_000f
+
+/**
+ * The ToF distance to show and focus at, or null when there is none or the laser seems to see no real
+ * target. The Xiaomi 17 Ultra's ST L8 reports open sky as a valid 0.5-0.6 m in every band (the Xiaomi 15's
+ * VI5300 flags the same case by its status). So when the camera's AF has placed the lens and confirms focus
+ * at 3 m or farther while every ToF zone with a target reads under 1 m, the reading is not offered: it is
+ * the sky, or a window pane in front of the scene. Manual focus, a scanning or failed AF, or a lens whose
+ * focus distance is not calibrated leave the reading as it is.
+ */
+internal fun tofDistanceForFocus(
+    reading: AuxSensorReading?,
+    focus: FocusUiState,
+    capability: ManualFocusCapability
+): Float? {
+    val distance = reading?.tofDistanceMm ?: return null
+    val farthest = reading.tofFarthestMm ?: distance
+    val afDiopters = focus.appliedFocusDiopters
+    val afFocusedFar = focus.mode != FocusMode.Mf && focus.afFocused && capability.distanceReadoutTrustworthy &&
+        afDiopters != null && afDiopters.isFinite() && afDiopters <= TOF_NO_TARGET_AF_DIOPTERS
+    return distance.takeUnless { afFocusedFar && farthest < TOF_NO_TARGET_MAX_MM }
 }
 
 /** Short label for the ToF cell: centimetres under a metre, then one decimal. */

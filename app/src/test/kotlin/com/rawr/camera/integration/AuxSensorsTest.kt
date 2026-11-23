@@ -27,6 +27,35 @@ class AuxSensorsTest {
         assertNull(AuxSensors.tofDistanceMm(floatArrayOf()))
     }
 
+    // The Xiaomi 17 Ultra's ST L8 (utalpt's dumpsys): four distance/status pairs, bands from the top.
+    private fun l8(vararg bandsMm: Float) = FloatArray(16).also { v -> bandsMm.forEachIndexed { i, mm -> v[i * 2] = mm } }
+
+    @Test fun theL8IsReadAsFourBands() {
+        assertEquals(TofLayout.Bands, AuxSensors.tofLayoutFor("L8 TOF Sensor"))
+        assertEquals(TofLayout.Single, AuxSensors.tofLayoutFor("vi5300_tof"))
+        assertEquals(TofLayout.Single, AuxSensors.tofLayoutFor(null))
+        // Flat wall: the nearer middle band to focus at, the farthest band kept for the sky check.
+        assertEquals(TofSample(1018f, 1072f), AuxSensors.tofSample(l8(993f, 1018f, 1040f, 1072f), TofLayout.Bands))
+        // A hand over the top half changes bands 0 and 1 only.
+        assertEquals(TofSample(105f, 1122f), AuxSensors.tofSample(l8(95f, 105f, 1080f, 1122f), TofLayout.Bands))
+        // Open sky: status 0 everywhere and a made-up ~0.6 m (left to the AF check in the UI).
+        assertEquals(TofSample(540f, 630f), AuxSensors.tofSample(l8(600f, 560f, 540f, 630f), TofLayout.Bands))
+    }
+
+    @Test fun anL8BandWithoutATargetIsLeftOut() {
+        val values = l8(1735f, 1731f, 1064f, 636f)
+        assertEquals(TofSample(1064f, 1735f), AuxSensors.tofSample(values, TofLayout.Bands))
+        values[5] = 255f // band 2 (the desk) without a target
+        assertEquals(TofSample(1731f, 1735f), AuxSensors.tofSample(values, TofLayout.Bands))
+        values[3] = 255f // and band 1: nothing left in the middle of the frame
+        assertNull(AuxSensors.tofSample(values, TofLayout.Bands))
+    }
+
+    @Test fun theVi5300LayoutIsUnchanged() {
+        assertEquals(TofSample(901.67f, 901.67f), AuxSensors.tofSample(tofWall, TofLayout.Single))
+        assertNull(AuxSensors.tofSample(tofSky, TofLayout.Single))
+    }
+
     @Test fun mainsFlickerIsConfirmedAfterThreeReadings() {
         val c = FlickerClassifier()
         assertNull(c.feed(led50HzMains, led50HzMains))

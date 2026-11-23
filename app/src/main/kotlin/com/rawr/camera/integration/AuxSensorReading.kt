@@ -38,6 +38,11 @@ data class AuxSensorReading(
     val flickerPwmHz: Float? = null,
     /** Distance to what the laser AF time-of-flight sensor sees, millimetres. */
     val tofDistanceMm: Float? = null,
+    /**
+     * The farthest ToF zone with a real target, millimetres: [tofDistanceMm] for a single-zone sensor,
+     * the farthest of the bands for a multi-zone one. Null with [tofDistanceMm].
+     */
+    val tofFarthestMm: Float? = null,
     /** Barometric pressure, hectopascals. */
     val pressureHpa: Float? = null,
     /** Compass direction of the rear lens axis from magnetic north, degrees (capture metadata only). */
