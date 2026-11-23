@@ -5,7 +5,8 @@
 # Rawr 17U
 
 > **Rawr 17U - unofficial modified version of Rawr.**
-> Based on Rawr 0.5.1 by adityawarmanfw (GPL-3.0-only, see `NOTICE` and `LICENSE`):
+> Based on Rawr 0.5.1 by adityawarmanfw (GPL-3.0-only, see `NOTICE` and `LICENSE`), synced with its main
+> branch up to #150:
 > [github.com/adityawarmanfw/rawr](https://github.com/adityawarmanfw/rawr)
 >
 > Modified by Paulo Gonçalves ([@utalpt](https://github.com/utalpt)), November 2026. Not affiliated with
@@ -32,36 +33,82 @@
 
 ## What this fork adds (Xiaomi 17 Ultra)
 
-**Resolution**
+Everything the fork adds, kept here also once Ed has taken it into Rawr: those items say *(Already in
+Rawr: Ed's #N)*, with the pull request it came in. Entry by entry, with how each was checked:
+[CHANGELOG.md](CHANGELOG.md). Synced with Ed's main up to #150 (23 Nov 2026).
+
+**Photo: 50 and 200 MP**
 - **50 MP RAW** on the main, tele and ultra-wide cameras: the viewfinder streams the binned 4:3 RAW at 30 fps
   with continuous and tap AF, and the shutter takes one full-size still. Multiframe merges up to 30 full-size
-  frames (17 by default, memory-aware: strips when the merge does not fit).
-- **200 MP tele** at 3.2x and 4.3x, in two lenses: `200>50` merges up to 6 frames and writes a 50 MP DNG
-  (2x2 binning of the quad-Bayer blocks), and `200 SF` writes one single-frame full 200 MP DNG (about 200 MB).
-  The JPEG is always developed at 50 MP.
-- `200>50` capture is zero copy: the GPU reduces each 200 MP frame straight from the camera buffer, with no CPU
-  unpack. On the 17U the 6 frames are in after about 1.5 s (2.7-4.7 s before), also when the phone is warm;
-  merge and JPEG time are unchanged. Details in [`docs/xiaomi-17u-50mp.md`](docs/xiaomi-17u-50mp.md#200-mp-capture-zero-copy).
-- Full-size stills use our own block remosaic (directional colour planes, per-zone flat-field) because the
-  17 Ultra HAL offers no remosaic reprocessing.
+  frames (17 by default, memory-aware: strips when the merge does not fit). *(Already in Rawr: Ed's #143, the
+  17 Ultra and 15 Ultra built-in profiles.)*
+- **200 MP tele** at 3.2x and 4.3x: `200>50` merges up to 6 frames into a 50 MP DNG (2x2 binning of the
+  quad-Bayer blocks), `200>25` the same at 25 MP, and `200 SF` writes one full 200 MP DNG (about 200 MB).
+  *(Already in Rawr: Ed's #143.)*
+- **Zero-copy 200 MP bursts:** the GPU reduces each 200 MP frame straight from the camera buffer, with no
+  CPU unpack; the 6 frames are in after about 1.5 s (2.7-4.7 s before). *(Already in Rawr: Ed's #144.)*
+- **Fast 200 MP remosaic** (4x4 blocks, well under 1 s instead of ~16 s), and the 200 MP JPEG developed
+  straight from the blocks (no stair-stepped edges from binning the remosaicked frame).
+- **Lost companion buffers** on full-size stills no longer fail the photo (Xiaomi's HAL drops the small
+  companion output while the RAW arrives). *(Already in Rawr: Ed's #143, as the per-lens
+  ignoreLostCompanion workaround.)*
+- **Focus after a 1x 50 MP single frame:** the lens is held at its distance for a few frames after the
+  still, so the viewfinder no longer jumps. *(Already in Rawr: Ed's #141.)*
+- **Photo aspect ratio** crop of the JPEG (the DNG stays full), picker in the top bar.
+- **Padded raw edges** dropped per lens (`image.cropEdges`), for stills and the viewfinder. *(Already in
+  Rawr: Ed's #150.)*
 
-**Lenses and readout modes**
-- One lens button per focal length (0.6x, 1x, 3.2x, 4.3x; the tele periscope moves to 100 mm for 4.3x), with a variant picker: `Normal`, `50MP`, `200>50` / `200 SF`, `ISZ`
-  (in-sensor zoom) and the dual-gain readouts `DCG`, `DSG`, `DAG` (14-bit, with a per-lens ISO cap).
-- Lens bar grouping (Auto / Grouped / All) and button size (Compact / Normal / Large), set from the eye panel.
-- Exposure memory (**Settings > Control Style > Exposure memory**): **Per camera**, each lens keeps its own
-  exposure mode, ISO, shutter, EV and WB; or **Shared**, one set for every lens, like one camera body (focus
-  stays per lens). Both are kept after closing the app.
+**Lenses and controls**
+- One lens button per focal length (0.6x, 1x, 3.2x, 4.3x; the periscope moves to 100 mm for 4.3x) with a
+  variant picker: `Normal`, `50MP`, `200>50` / `200>25` / `200 SF`, `ISZ` (in-sensor zoom) and the dual-gain
+  readouts `DCG`, `DSG`, `DAG` (14-bit, with a per-lens ISO cap).
+- Lens bar grouping (Auto / Grouped / All) and button size (Compact / Normal / Large), from the eye panel.
+- **Exposure memory** (Settings > Control Style): **Per camera**, each lens keeps its own exposure mode,
+  ISO, shutter, EV and WB, or **Shared**, one set for every lens (focus stays per lens).
 - Each lens can keep its own frame count, look, tone and film.
-
-**Viewfinder and controls**
+- Manual ISO shows the standard numbers on the third stops (80, 160, 320, 640, 1250 instead of 79, 159,
+  317, 635, 1270).
 - Swipe-down quick panel (AE / metering, highlights, frames per lens, per-lens look), exposure row with
-  tap-to-set slider bar, VF controls show/hide, RESET and UNDO. Camera controls persist across restarts.
+  tap-to-set slider bar, VF controls show/hide, RESET and UNDO; camera controls persist across restarts.
 - Film strip and PARAMS editor, AgX quick card with advanced grids, long-press help on controls.
 - Themes (Leica, Mono, Steel, Sage, Custom), button shapes, and a layout that stays upright in landscape.
-- Video: 60 and 120 fps in the frame-rate cycle.
 
-**Xiaomi HAL workarounds**: lost companion buffers on stills, late viewfinder results, unadvertised session keys.
+**White balance**
+- **Pick neutral** (WB panel > PICK NEUTRAL, then tap something truly white or grey): Rawr measures that
+  area and switches to Manual with the temperature and tint that make it neutral; warm picks correct about
+  halfway, keeping some of the light's warmth.
+- **Manual WB renders with the requested gains as white**, so the JPEG matches the DNG (it took the HAL's
+  own neutral before, a magenta cast). *(Already in Rawr: Ed's #142.)*
+
+**Video**
+- **4K60 10-bit without dropped frames:** a fast path that demosaics, shades, white-balances, applies the
+  look and writes P010/NV12 for the encoder in one GPU pass (0 dropped frames over 3 minutes, phone at
+  ~4-5 W instead of ~8-12 W), with the encoder fed straight from the GPU.
+- **60 fps sensor modes:** the blank rows they pad are left out of the viewfinder, metering and recording
+  (`image.cropEdgesHighFps`), on the rear lenses and the front camera. *(Already in Rawr: Ed's #150.)*
+- **Open Gate** at 60 fps records 3408x2560 (4:3), the same box as the viewfinder; 4096x3072 at 30 fps.
+- **Recording aspect ratios** (1.43 IMAX to 2.76 Ultra Panavision, XPan).
+- **Gyro stabilisation** (Standard, Strong) and **Level horizon**, built on apos-fandango's gyro integrator
+  from the Rawr X14U fork.
+- **Clean recording view** (controls fade out, a swipe shows them) and **Do not disturb while recording**.
+- Light meter (lux, EV, colour temperature, flicker, laser distance), antibanding from the flicker sensor
+  and a Gyroflow gyro log (.gcsv beside the video), from the-marox's PR #1.
+
+**Galaxy S23 Ultra**
+- Faster lens switching (median 2.6 s to 0.6-0.7 s) and app launch: the camera stays open across lens
+  switches of the same logical camera, and RAW10 buffers are probed up front. *(Already in Rawr: Ed's
+  #140.)*
+
+**Xiaomi 15 (by the-marox, PRs #2 to #5)**
+- GLES bridge for RAW16 where the Vulkan driver refuses the camera buffers; 60 fps only where a sensor mode
+  delivers the RAW stream; sensed flicker for AE; ToF focus and light-sensor WB (both also work on the
+  17 Ultra); 1080p from the full sensor width. The mirrored-lens preview fix of #3 is *(already in Rawr:
+  Ed's #150)*.
+
+**Renderer**
+- Sensor CFA (RAW tab): Auto finds a Quad Bayer block mosaic tagged as Bayer (for example 50 MP Xiaomi 15
+  Ultra DNGs from other apps) and remosaics it; large uncompressed DNGs open; optional Renderer icon in the
+  app drawer and Settings > Renderer.
 
 ### How 50 and 200 MP are reached
 

@@ -4,6 +4,54 @@ Fork of [Rawr](https://github.com/adityawarmanfw/rawr) for the Xiaomi 17 Ultra.
 Releases follow Ed's version: `0.5.1-17u.N`. Test work lands on `yuv-probe`
 first and moves to `xiaomi-17u` once verified.
 
+## Unreleased (`yuv-probe`, test builds)
+
+### From upstream Rawr (Ed): #139 to #150
+
+Ed took this fork's #140 (S23 Ultra), #141 (focus hold) and #142 (Manual WB)
+and ported more of it himself: #143 (17 Ultra and 15 Ultra built-in profiles,
+lost-companion workaround, 12-character lens names), #144 (200 MP reduced
+bursts read RAW10 in place on the GPU), #150 (cropEdges, cropEdgesHighFps,
+the-marox's mirrored-preview fix and the 17U front at 60 fps). Merged into
+the fork, with Ed's own work since #138:
+
+- #139 Quad Detail remosaic with block moments, in pipelined strips; the
+  log shows the OIS mode a still was taken with (CAMERA_STILL_OIS).
+- #145 2x2 photo lenses remosaic with Detail: on the 17U the 1x, 3.2x and
+  4.3x ISZ lenses (were High).
+- #134 (by Mateusz) the recovery of interrupted stills no longer deletes
+  photos already published.
+- #146 a device kept open for the next lens (S23 Ultra) is closed when that
+  lens never opens (closeKeptDevice), instead of staying open unused.
+- #148 a lost first frame counts as one failure, not one per callback; a
+  camera the service does not list yet (still closing) is retried at once.
+- #149 the HEVC encoder asks for realtime priority at the recording's rate
+  (already in the fork) and, if refused, is recreated before configuring
+  again. Small realtime RAW readers (the 17U's binned lenses) now hold 8
+  images with 3 waiting frames: this fork tried the same in 0.5.1-17u.4 and
+  reverted it (more drops at the start of a 4K60 take on the 17U), so it is
+  checked again in this round.
+- #147 the host test suite builds again.
+
+Kept from the fork where it does more: Open Gate high-fps sizes and the
+recording aspect ratios, the-marox's 1.25x-2x video resample (#5), the
+200 MP fast remosaic and JPEG from the blocks, two-plane gain maps, and the
+viewfinder/scope throttles while recording. The lost-companion workaround
+is now per lens (ignoreLostCompanion), named on every photo-stream lens of
+the 17U profile, which is now Ed's (the fork's plus those workarounds and
+Detail).
+
+Host tests here: everything builds; the merge's own tests pass (crop,
+kept area, colour, start ladder, reader ladder, route fixture). The
+failures left were there before the merge (camera_profile, camera_result_
+state, and still_binned_fallback, which now builds: it expects the generic
+remosaic on 4x4 blocks, where the fork takes its fast path).
+
+### README
+
+- "What this fork adds" lists everything the fork adds, also what Ed has
+  taken into Rawr since, marked with his pull request.
+
 ## 0.5.1-17u.7
 
 the-marox's Xiaomi 15 work (PRs #3-#5), checked on the 17U, and the 17U
