@@ -4,7 +4,11 @@ Fork of [Rawr](https://github.com/adityawarmanfw/rawr) for the Xiaomi 17 Ultra.
 Releases follow Ed's version: `0.5.1-17u.N`. Test work lands on `yuv-probe`
 first and moves to `xiaomi-17u` once verified.
 
-## Unreleased (`yuv-probe`, test builds)
+## 0.5.1-17u.9
+
+Ed's #151 (full-size bursts keep their frames when the camera falls behind)
+and 3:2/16:9 photos framed across the full screen width, checked on the
+Xiaomi 17 Ultra.
 
 ### From upstream Rawr (Ed): #151
 
@@ -29,7 +33,8 @@ first and moves to `xiaomi-17u` once verified.
   the 3:4 photo frame. 1:1 and 5:4 still fit the photo frame; 2.39 and XPan
   stay inside it (full width would run past the screen). The bottom controls
   float over it, as in 16:9 video (they hid the last quarter of the frame).
-  Checked: JPEG 16:9 4096x2304 and 3:2 4096x2730 from the 4096x3072 frame.
+  Checked: JPEG 16:9 4096x2304 and 3:2 4096x2730 from the 4096x3072 frame,
+  framing matches the viewfinder and tap-to-focus lands where tapped.
 
 ## 0.5.1-17u.8
 
