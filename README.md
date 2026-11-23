@@ -47,8 +47,10 @@ Rawr: Ed's #N)*, with the pull request it came in. Entry by entry, with how each
   *(Already in Rawr: Ed's #143.)*
 - **Zero-copy 200 MP bursts:** the GPU reduces each 200 MP frame straight from the camera buffer, with no
   CPU unpack; the 6 frames are in after about 1.5 s (2.7-4.7 s before). *(Already in Rawr: Ed's #144.)*
-- **Fast 200 MP remosaic** (4x4 blocks, well under 1 s instead of ~16 s), and the 200 MP JPEG developed
-  straight from the blocks (no stair-stepped edges from binning the remosaicked frame).
+- **The 200 MP JPEG developed straight from the 4x4 blocks** (no stair-stepped edges from binning the
+  remosaicked frame), with the fork's own fast 200 MP remosaic for the DNG (about 0.8-0.9 s on the 17U; the
+  generic CPU remosaic took ~16 s). Ed's Rawr has since added its own GPU remosaic for these blocks (#129);
+  the two have not been compared on the 17U.
 - **Lost companion buffers** on full-size stills no longer fail the photo (Xiaomi's HAL drops the small
   companion output while the RAW arrives). *(Already in Rawr: Ed's #143, as the per-lens
   ignoreLostCompanion workaround.)*
