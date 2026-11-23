@@ -4,7 +4,10 @@ Fork of [Rawr](https://github.com/adityawarmanfw/rawr) for the Xiaomi 17 Ultra.
 Releases follow Ed's version: `0.5.1-17u.N`. Test work lands on `yuv-probe`
 first and moves to `xiaomi-17u` once verified.
 
-## Unreleased (`yuv-probe`, test builds)
+## 0.5.1-17u.8
+
+Sync with Ed's main up to #150, checked on the Xiaomi 17 Ultra, and the
+README's full list of what the fork adds.
 
 ### From upstream Rawr (Ed): #139 to #150
 
@@ -51,12 +54,6 @@ saved), 15 lens switches with no failed open, front 60 fps inside its
 4096x2304 area. Seen once: 1x DCG lost 4 frames in a row (HAL ERROR_BUFFER)
 about 1 s after opening; the session went on.
 
-### CI
-
-- The shader SPIR-V upload (for the AOC analysis) no longer fails the
-  build: in the private test repository the account's artifact quota was
-  full, after the APK had already gone to the test-build prerelease.
-
 Kept from the fork where it does more: Open Gate high-fps sizes and the
 recording aspect ratios, the-marox's 1.25x-2x video resample (#5), the
 200 MP fast remosaic and JPEG from the blocks, two-plane gain maps, and the
@@ -77,6 +74,12 @@ remosaic on 4x4 blocks, where the fork takes its fast path).
 
 - "What this fork adds" lists everything the fork adds, also what Ed has
   taken into Rawr since, marked with his pull request.
+
+### CI
+
+- The shader SPIR-V upload (for the AOC analysis) no longer fails the
+  build: in the private test repository the account's artifact quota was
+  full, after the APK had already gone to the test-build prerelease.
 
 ## 0.5.1-17u.7
 
