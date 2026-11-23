@@ -91,7 +91,7 @@ internal fun CaptureControls(
     onSelectDcp: (String?) -> Unit = {},
     videoControls: VideoControlState = VideoControlState(),
     onToggleVideoRecording: () -> Unit = {},
-    /** Transparent background for floating over the 16:9 bleed (video overlay slot). */
+    /** Transparent background for floating over a bleeding viewfinder (16:9 video, 3:2/16:9 photo). */
     overlay: Boolean = false,
     /** Lens and mode selectors fade out while recording (17U clean recording view). */
     selectorsAlpha: Float = 1f
@@ -107,7 +107,7 @@ internal fun CaptureControls(
         // below. No thumbnail, MERGED, or FILM in video mode.
         Column(
             modifier
-                .background(if (isVideo && overlay) Color.Transparent else CaptureColors.Surface)
+                .background(if (overlay) Color.Transparent else CaptureColors.Surface)
                 .padding(horizontal = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -166,7 +166,7 @@ internal fun CaptureControls(
         }
         return
     }
-    Box(modifier.background(CaptureColors.Surface)) {
+    Box(modifier.background(if (overlay) Color.Transparent else CaptureColors.Surface)) {
         LensAndDcpSelector(
             dcp = dcp,
             onSelectDcp = onSelectDcp,
