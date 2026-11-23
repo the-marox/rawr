@@ -50,7 +50,7 @@ two standard sensors many phones have, the barometer (`TYPE_PRESSURE`) and the r
 | `xiaomi.sensor.back_lux_strm` | continuous, 10 Hz | [0] lux, [1] lux, [2] gain, [3] integration ms, [4..7] raw channels |
 | `xiaomi.sensor.back_lux` | on change | [0] lux |
 | `xiaomi.sensor.flicker` | ~8 Hz | [0] dominant frequency, a multiple of 7.8125 Hz (1000/128); 7.8125 = no flicker |
-| `xiaomi.sensor.tof` | continuous, 10 Hz | [0] distance mm (about -5 when covered, max 4000), [2]/[3] range bounds mm |
+| `xiaomi.sensor.tof` | continuous, 10 Hz | [0] distance mm (about -5 when covered, max 4000), [1] status (0 target, 255 none), [2]/[3] range bounds mm |
 
 In the dark the CCT reads about 662000 ("no measurement"); Rawr drops CCT outside 1000–25000 K and below 2 lux.
 
@@ -64,10 +64,18 @@ Readings taken with the probe app, back of the phone towards the source:
 | Wall at ~20 cm under the same lamp | 9.8 | 2720 K | 7.81 |
 
 ToF [0]: 218 mm against a wall at about 20 cm, 529 mm and 3384 mm at farther surfaces, -5 with the phone lying
-on its back.
+on its back. Aimed at an overcast sky [0] still gives 1.7–2.8 m, with status 255: only status 0 counts.
+
+The Xiaomi 17 Ultra's `xiaomi.sensor.tof` is an ST "L8 TOF Sensor" with another layout: [0..7] four
+distance/status pairs, one per horizontal band of the frame from the top (portrait), [8..15] unset. A flat wall
+reads 993/1018/1040/1072 mm; a hand over the top half changes bands 0 and 1 only. Rawr picks the layout from the
+sensor's name (`tofLayoutFor`) and focuses at the nearer of the two middle bands. At open sky every band reports
+a made-up 520–630 mm with status 0, so the status cannot tell; `tofDistanceForFocus` drops the distance when AF
+confirms focus at 3 m or farther while every band with a target reads under 1 m. The TOF cell, the light-meter
+pill and the capture metadata all take the distance from there.
 
 Flicker is confirmed after three readings in a row within one bin of 100 or 120 Hz and released after
-five readings in a row that are not (`FlickerClassifier`).
+16 readings in a row that are not, about two seconds (`FlickerClassifier`).
 
 To check another phone: `adb shell dumpsys sensorservice | grep -iE "flicker|cct|lux|tof"`. If its sensors use
 other string types or layouts, add them to `LIGHT_SOURCES` / `FLICKER_TYPE` in `AuxLightSensors`.

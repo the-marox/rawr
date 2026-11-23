@@ -1,5 +1,8 @@
 package com.rawr.camera.integration
 
+import com.rawr.camera.model.FocusMode
+import com.rawr.camera.model.FocusUiState
+import com.rawr.camera.model.ManualFocusCapability
 import kotlin.math.abs
 import kotlin.math.log2
 import kotlin.math.roundToLong
@@ -233,4 +236,31 @@ object FlickerBanding {
         val periods = (exposureNs.toDouble() / periodNs).roundToLong().coerceAtLeast(1L)
         return periods * periodNs
     }
+}
+
+/** AF focus confirmed this far or farther (diopters: 3 m) ... */
+private const val TOF_NO_TARGET_AF_DIOPTERS = 1f / 3f
+/** ... while every ToF zone with a target reads closer than this: the laser is taken to see nothing. */
+private const val TOF_NO_TARGET_MAX_MM = 1_000f
+
+/**
+ * The ToF distance to show and focus at, or null when there is none or the laser seems to see no real
+ * target. The Xiaomi 17 Ultra's ST L8 reports open sky as a valid 0.5-0.6 m in every band (the Xiaomi 15's
+ * VI5300 flags the same case by its status). So when the camera's AF has placed the lens and confirms focus
+ * at 3 m or farther while every ToF zone with a target reads under 1 m, the reading is not offered: it is
+ * the sky, or a window pane in front of the scene. Manual focus, a scanning or failed AF, or a lens whose
+ * focus distance is not calibrated leave the reading as it is. The TOF cell, the light-meter pill and the
+ * capture metadata (rawr:TofDistance) all take the distance from here.
+ */
+internal fun tofDistanceForFocus(
+    reading: AuxSensorReading?,
+    focus: FocusUiState,
+    capability: ManualFocusCapability
+): Float? {
+    val distance = reading?.tofDistanceMm ?: return null
+    val farthest = reading.tofFarthestMm ?: distance
+    val afDiopters = focus.appliedFocusDiopters
+    val afFocusedFar = focus.mode != FocusMode.Mf && focus.afFocused && capability.distanceReadoutTrustworthy &&
+        afDiopters != null && afDiopters.isFinite() && afDiopters <= TOF_NO_TARGET_AF_DIOPTERS
+    return distance.takeUnless { afFocusedFar && farthest < TOF_NO_TARGET_MAX_MM }
 }

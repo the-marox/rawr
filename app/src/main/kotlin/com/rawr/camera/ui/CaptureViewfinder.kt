@@ -32,6 +32,7 @@ import com.rawr.camera.architecture.PickWhiteBalanceAt
 import com.rawr.camera.architecture.ToggleMonitorPanel
 import com.rawr.camera.architecture.ToggleWhiteBalancePanel
 import com.rawr.camera.model.*
+import com.rawr.camera.integration.tofDistanceForFocus
 
 @Composable
 internal fun CaptureViewfinder(

@@ -1,6 +1,7 @@
 package com.rawr.camera.ui
 
 import com.rawr.camera.integration.AuxSensorReading
+import com.rawr.camera.integration.tofDistanceForFocus
 import com.rawr.camera.model.FocusMode
 import com.rawr.camera.model.FocusUiState
 import com.rawr.camera.model.ManualFocusCapability
