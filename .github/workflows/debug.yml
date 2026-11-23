@@ -89,11 +89,24 @@ jobs:
             ./gradlew :app:testDebugUnitTest :app:assembleDebug
           fi
 
+      # (a private repository – the test builds', utalpt/rawr-fullres – has a small artifact quota shared by the
+      # account: its APK goes to the test-build prerelease instead; release files don't count against it)
       - uses: actions/upload-artifact@v4
+        if: ${{ !github.event.repository.private }}
         with:
           name: rawr-debug-${{ github.sha }}
           path: app/build/outputs/apk/*/*.apk
           retention-days: 14
+
+      - name: Test build prerelease (private repository)
+        if: github.event.repository.private
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p test-apk && cp app/build/outputs/apk/*/*.apk test-apk/
+          gh release delete test-build --cleanup-tag --yes || true
+          gh release create test-build test-apk/*.apk --prerelease --target "$GITHUB_SHA" \
+            --title "Test build" --notes "CI build of ${GITHUB_SHA} (${GITHUB_REF_NAME})."
 
       # SPIR-V of every embedded shader (arm64 build), renamed *.comp.spv for
       # the Adreno Offline Compiler (_debug\aoc.bat).
@@ -109,7 +122,7 @@ jobs:
         with:
           name: shaders-spv-${{ github.sha }}
           path: shaders-spv/
-          retention-days: 14
+          retention-days: 3
 
       # Merges to main republish the `debug` prerelease so its download link
       # stays stable. PRs only keep the run artifact.
@@ -125,7 +138,7 @@ jobs:
             --notes "Debug build of ${GITHUB_SHA::8}. Installs alongside release as Rawr Debug."
 
       - uses: actions/upload-artifact@v4
-        if: failure()
+        if: ${{ failure() && !github.event.repository.private }}
         with:
           name: test-reports
           path: app/build/reports/tests/
