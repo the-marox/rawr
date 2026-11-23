@@ -60,7 +60,11 @@ jobs:
       # native/image_scopes embeds its SPIR-V through `uv run`.
       - uses: astral-sh/setup-uv@v6
 
+      # Saves the Gradle cache from every branch (by default only the default branch, main, saves it, so test
+      # builds from yuv-probe started each time with an empty Gradle home).
       - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: false
 
       # Compiler cache for the native code: unchanged C++ files are not rebuilt.
       - uses: hendrikmuhs/ccache-action@v1.2
@@ -82,7 +86,8 @@ jobs:
           VARIANT: ${{ github.event.inputs.variant || 'debug' }}
         run: |
           if [ "$VARIANT" = "benchmark" ]; then
-            ./gradlew :app:assembleBenchmark
+            # Test build: skips lint (about a minute); the debug builds and releases still run it.
+            ./gradlew :app:assembleBenchmark -x lintVitalAnalyzeBenchmark -x lintVitalReportBenchmark -x lintVitalBenchmark
           elif [ "$SKIP_TESTS" = "true" ]; then
             ./gradlew :app:assembleDebug
           else
