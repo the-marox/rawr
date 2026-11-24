@@ -11,6 +11,7 @@
 #include <mutex>
 #include <optional>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "tonemap/ColorRenderProfile.h"
@@ -44,6 +45,10 @@ class PreviewLookController final {
     const tonemap::TonemapParams& toneParams() const noexcept { return tonemapParams_; }
     tonemap::TonemapEngine* tone() const noexcept { return tonemap_.get(); }
     std::shared_ptr<spektrafilm_native::SpektraFilm> acquireFilm() const;
+    // Rawr 17U fork: split compare while a film-sheet card is held. setFilmCompare(look) prepares (or takes from
+    // the engine cache) an engine for the held look; null ends the compare and keeps the engine in the cache.
+    void setFilmCompare(const spektrafilm_native::FilmLook* look);
+    std::pair<std::shared_ptr<spektrafilm_native::SpektraFilm>, spektrafilm_native::FilmLook> acquireCompare() const;
     // Configuration/profile/suppression methods require the session transition gate.
     bool selectProfile(tonemap_integration::ColorRenderProfile profile, std::string importedProfileId);
     void suppressForVideo(bool suppressed);
@@ -61,6 +66,7 @@ class PreviewLookController final {
         uint32_t width, height;
         uint64_t generation;
     };
+    void installCompareFilm(PreparedFilm prepared);
     bool canPrepareFilm() const noexcept;
     static bool sameBakedFilm(const spektrafilm_native::FilmLook& a, const spektrafilm_native::FilmLook& b) noexcept;
     bool needsFilmRebuild(const spektrafilm_native::FilmLook& look) const noexcept;
@@ -108,5 +114,11 @@ class PreviewLookController final {
     // pipeline cache (vulkan/VulkanDispatch.h), so a rebuild costs the stock's tables and arena, not shaders.
     std::mutex filmCacheMutex_;
     std::vector<PreparedFilm> filmCache_;
+    // Split compare: its engine (built for its baked look), the held look per frame, and its own build request.
+    PreparedFilm compare_{};
+    spektrafilm_native::FilmLook compareLook_{};
+    bool compareActive_ = false;
+    uint64_t compareGeneration_ = 0;
+    std::optional<FilmBuildRequest> pendingCompareBuild_;
 };
 }  // namespace rawrcam::pipeline

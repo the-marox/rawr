@@ -85,6 +85,59 @@ std::shared_ptr<spektrafilm_native::SpektraFilm> PreviewLookController::acquireF
     std::lock_guard<std::mutex> lock(filmMutex_);
     return film_;
 }
+std::pair<std::shared_ptr<spektrafilm_native::SpektraFilm>, spektrafilm_native::FilmLook>
+PreviewLookController::acquireCompare() const {
+    std::lock_guard<std::mutex> lock(filmMutex_);
+    if (!compareActive_ || !compare_.engine) return {};
+    return {compare_.engine, compareLook_};
+}
+
+void PreviewLookController::installCompareFilm(PreparedFilm prepared) {
+    PreparedFilm outgoing{};
+    {
+        std::lock_guard<std::mutex> lock(filmMutex_);
+        outgoing = std::move(compare_);
+        compare_ = std::move(prepared);
+    }
+    if (outgoing.engine) stashFilm(std::move(outgoing));
+    SESSION_LOGI("FILM_COMPARE_READY film=%d paper=%d", compare_.look.film, compare_.look.paper);
+}
+
+void PreviewLookController::setFilmCompare(const spektrafilm_native::FilmLook* look) {
+    std::lock_guard<std::mutex> lock(transitionMutex_);
+    ++compareGeneration_;
+    if (!look) {
+        PreparedFilm outgoing{};
+        {
+            std::lock_guard<std::mutex> filmLock(filmMutex_);
+            compareActive_ = false;
+            outgoing = std::move(compare_);
+            compare_ = {};
+        }
+        // Kept alive by the cache (a frame in flight may still hold it); the next tap of that card swaps at once.
+        if (outgoing.engine) stashFilm(std::move(outgoing));
+        SESSION_LOGI("FILM_COMPARE_END");
+        return;
+    }
+    if (!requestedFilmEnabled_ || videoSuppressed_ || !canPrepareFilm() || !film_) return;
+    {
+        std::lock_guard<std::mutex> filmLock(filmMutex_);
+        compareLook_ = *look;
+        compareActive_ = true;
+    }
+    SESSION_LOGI("FILM_COMPARE_BEGIN film=%d paper=%d", look->film, look->paper);
+    if (compare_.engine && sameBakedFilm(compare_.look, *look) && preparedFilmFits(compare_)) return;
+    if (auto cached = takeCachedFilm(*look)) {
+        SESSION_LOGI("FILM_COMPARE_CACHE_HIT film=%d paper=%d", look->film, look->paper);
+        installCompareFilm(std::move(*cached));
+        return;
+    }
+    {
+        std::lock_guard<std::mutex> buildLock(filmBuildMutex_);
+        pendingCompareBuild_ = FilmBuildRequest{*look, previewWidth_, previewHeight_, compareGeneration_};
+    }
+    filmBuildCv_.notify_one();
+}
 void PreviewLookController::configureGeometry(uint32_t width, uint32_t height) {
     ++filmBuildGeneration_;
     previewWidth_ = width;
@@ -117,6 +170,8 @@ void PreviewLookController::clearProcessing(bool teardownFilm) {
         clearFilmCache();
         std::lock_guard<std::mutex> lock(filmMutex_);
         film_.reset();
+        compare_ = {};
+        compareActive_ = false;
         filmArenaW_ = filmArenaH_ = 0;
     }
 }
@@ -485,12 +540,37 @@ void PreviewLookController::scheduleFilmBuildLocked() {
 void PreviewLookController::filmBuildLoop() {
     for (;;) {
         FilmBuildRequest request{};
+        bool compareBuild = false;
         {
             std::unique_lock<std::mutex> lock(filmBuildMutex_);
-            filmBuildCv_.wait(lock, [this] { return filmBuildStop_.load() || pendingFilmBuild_.has_value(); });
+            filmBuildCv_.wait(lock, [this] {
+                return filmBuildStop_.load() || pendingFilmBuild_.has_value() || pendingCompareBuild_.has_value();
+            });
             if (filmBuildStop_.load()) return;
-            request = *pendingFilmBuild_;
-            pendingFilmBuild_.reset();
+            // The look in use first; then the held card's compare engine (Rawr 17U fork).
+            if (pendingFilmBuild_) {
+                request = *pendingFilmBuild_;
+                pendingFilmBuild_.reset();
+            } else {
+                request = *pendingCompareBuild_;
+                pendingCompareBuild_.reset();
+                compareBuild = true;
+            }
+        }
+        if (compareBuild) {
+            try {
+                auto prepared = prepareFilm(request.look, request.width, request.height);
+                std::lock_guard<std::mutex> lock(transitionMutex_);
+                if (filmBuildStop_.load()) continue;
+                if (request.generation == compareGeneration_ && compareActive_ && preparedFilmFits(prepared)) {
+                    installCompareFilm(std::move(prepared));
+                } else if (film_ && preparedFilmFits(prepared)) {
+                    stashFilm(std::move(prepared));  // let go before it was ready: kept for the next tap
+                }
+            } catch (const std::exception& e) {
+                emit(std::string("FILM_COMPARE_PREPARE_FAILURE error=") + e.what());
+            }
+            continue;
         }
         try {
             auto prepared = prepareFilm(request.look, request.width, request.height);

@@ -409,6 +409,13 @@ class RawPreviewCoordinator(application: Application) : AutoCloseable {
         postNative { native.setFilmSimLook(nativeHandle, values, enums) }
     }
 
+    /** Rawr 17U fork: split compare while a film-sheet card is held (no debounce); null ends it. */
+    fun setFilmCompareLook(values: FloatArray?, enums: IntArray?) {
+        val valuesCopy = values?.copyOf()
+        val enumsCopy = enums?.copyOf()
+        postNative { native.setFilmCompareLook(nativeHandle, valuesCopy, enumsCopy) }
+    }
+
     fun setFilmSimLook(values: FloatArray, enums: IntArray) {
         val valuesCopy = values.copyOf()
         val enumsCopy = enums.copyOf()

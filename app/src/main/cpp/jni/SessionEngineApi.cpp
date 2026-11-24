@@ -336,4 +336,7 @@ void setViewfinderDivisor(EngineHandle h, uint32_t divisor) noexcept {
 void setFilmSimLook(EngineHandle h, spektrafilm_native::FilmLook look) noexcept {
     if (h) engine(h)->setFilmSimLook(look);
 }
+void setFilmCompareLook(EngineHandle h, const spektrafilm_native::FilmLook* look) noexcept {
+    if (h) engine(h)->setFilmCompareLook(look);
+}
 }  // namespace rawrcam::session

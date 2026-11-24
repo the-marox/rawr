@@ -274,10 +274,10 @@ class CaptureViewModel(application: Application) : AndroidViewModel(application)
 
     fun onFilmEvent(event: com.rawr.camera.architecture.CaptureFilmEvent) {
         if (event is com.rawr.camera.architecture.CaptureFilmEvent.HoldLook) {
-            // Rawr 17U fork: preview only - the held card goes to the viewfinder, the settings stay as they are.
-            val current = latestSettings.filmSimLook
-            val look = event.edit?.invoke(current) ?: current
-            previewCoordinator.setFilmSimLook(look.toFloatArray(), look.toIntArray())
+            // Rawr 17U fork: preview only - the held card renders the second half of the viewfinder (split
+            // compare), the settings and the first half stay as they are; null ends the compare.
+            val look = event.edit?.invoke(latestSettings.filmSimLook)
+            previewCoordinator.setFilmCompareLook(look?.toFloatArray(), look?.toIntArray())
             return
         }
         val next = settingsEditor.update { current ->

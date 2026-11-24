@@ -69,6 +69,30 @@ void recordScaledBlit(VkCommandBuffer command, VkImage src, uint32_t srcWidth, u
                          0, nullptr, 2, after);
 }
 
+// Rawr 17U fork: blits the second half (rows) of src over the second half of dst - the split compare of the
+// film sheet. Same barriers as recordScaledBlit.
+void recordSecondHalfBlit(VkCommandBuffer command, VkImage src, uint32_t srcWidth, uint32_t srcHeight,
+                          VkAccessFlags srcAccess, VkImage dst, uint32_t dstWidth, uint32_t dstHeight,
+                          VkAccessFlags dstAccess) {
+    const VkImageMemoryBarrier before[2] = {generalImageBarrier(src, srcAccess, VK_ACCESS_TRANSFER_READ_BIT),
+                                            generalImageBarrier(dst, dstAccess, VK_ACCESS_TRANSFER_WRITE_BIT)};
+    vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr,
+                         0, nullptr, 2, before);
+    VkImageBlit blit{};
+    blit.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+    blit.srcOffsets[0] = {0, static_cast<int32_t>(srcHeight / 2u), 0};
+    blit.srcOffsets[1] = {static_cast<int32_t>(srcWidth), static_cast<int32_t>(srcHeight), 1};
+    blit.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+    blit.dstOffsets[0] = {0, static_cast<int32_t>(dstHeight / 2u), 0};
+    blit.dstOffsets[1] = {static_cast<int32_t>(dstWidth), static_cast<int32_t>(dstHeight), 1};
+    vkCmdBlitImage(command, src, VK_IMAGE_LAYOUT_GENERAL, dst, VK_IMAGE_LAYOUT_GENERAL, 1, &blit, VK_FILTER_LINEAR);
+    const VkImageMemoryBarrier after[2] = {
+        generalImageBarrier(dst, VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT),
+        generalImageBarrier(src, VK_ACCESS_TRANSFER_READ_BIT, VK_ACCESS_SHADER_READ_BIT)};
+    vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr,
+                         0, nullptr, 2, after);
+}
+
 }  // namespace
 
 RawDevelopRecorder::RawDevelopRecorder(raw_preview::RawPreview& rawPreview, tonemap::TonemapEngine& tonemap,
@@ -528,6 +552,25 @@ RawDevelopRecordResult RawDevelopRecorder::record(const RawDevelopRecordInput& i
             recordScaledBlit(slot.command, slot.lookScaledOut.image, lookWidth, lookHeight, VK_ACCESS_SHADER_WRITE_BIT,
                              slot.tonemapped.image, in.previewWidth, in.previewHeight,
                              VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT);
+            // Rawr 17U fork: split compare - the held card's engine renders the same input again and its second
+            // half goes over the second half of the frame (its own frame slots, so both looks stay intact).
+            if (acquireCompare_) {
+                const auto compare = acquireCompare_();
+                if (compare.first) {
+                    auto compareRecord = filmRecord;
+                    compareRecord.look = compare.second;
+                    compareRecord.look.filmExposureEv = rawrcam::color::filmExposureEv(
+                        compare.second, in.tonemapParams.aePostGain, in.tonemapParams.exposureEV);
+                    try {
+                        compare.first->record(compareRecord);
+                        recordSecondHalfBlit(slot.command, slot.lookScaledOut.image, lookWidth, lookHeight,
+                                             VK_ACCESS_SHADER_WRITE_BIT, slot.tonemapped.image, in.previewWidth,
+                                             in.previewHeight, VK_ACCESS_SHADER_READ_BIT);
+                    } catch (const std::exception& e) {
+                        if (audit_) audit_(std::string("PIPELINE_FILM_COMPARE_FALLBACK error=") + e.what());
+                    }
+                }
+            }
             performance_.markTonemapDone(slot.command, in.slotIndex);
             performance_.markTonemapRepeatInputReady(slot.command, in.slotIndex);
             performance_.markTonemapRepeatDone(slot.command, in.slotIndex);

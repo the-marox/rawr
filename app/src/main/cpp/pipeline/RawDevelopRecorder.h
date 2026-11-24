@@ -137,6 +137,10 @@ class RawDevelopRecorder final {
                        rawr::local_tone::ExposureFusionProcessor* localTone = nullptr);
 
     RawDevelopRecordResult record(const RawDevelopRecordInput& input, uint32_t auditSubmitCount) const;
+    // Rawr 17U fork: split compare in the film sheet - while a card is held, the second half of the film frame
+    // is rendered by this engine and look instead (null engine: no compare).
+    using FilmCompare = std::pair<std::shared_ptr<spektrafilm_native::SpektraFilm>, spektrafilm_native::FilmLook>;
+    void setFilmCompareSource(std::function<FilmCompare()> source) { acquireCompare_ = std::move(source); }
     void recordSceneExposure(VkCommandBuffer command, uint32_t frameSlot, VkImageView view, uint32_t width,
                              uint32_t height, const std::array<float, 9>& sensorToSrgb,
                              const std::array<float, 4>& wb, const std::array<float, 4>& spot = {},
@@ -157,6 +161,7 @@ class RawDevelopRecorder final {
     // dangling pointer behind (previously a raw snapshot taken once at
     // construction went stale across destroy/recreate).
     std::function<std::shared_ptr<spektrafilm_native::SpektraFilm>()> acquireFilm_;
+    std::function<FilmCompare()> acquireCompare_;
     rawrcam::diagnostics::PipelineDiagnostics& diagnostics_;
     rawrcam::diagnostics::RawIntegrityProbe& integrityProbe_;
     MonitorRecorder monitor_;
