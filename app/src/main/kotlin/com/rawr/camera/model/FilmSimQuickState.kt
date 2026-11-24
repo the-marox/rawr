@@ -61,7 +61,9 @@ data class FilmSimQuickState(
     val params: Map<String, FilmSimQuickParam> = emptyMap(),
     val discretes: Map<String, FilmSimQuickDiscrete> = emptyMap(),
     val flags: Map<String, FilmSimQuickFlag> = emptyMap(),
-    val grainEnabled: Boolean = false
+    val grainEnabled: Boolean = false,
+    /** Rawr 17U fork: each preset's whole look, for holding a preset card in the film sheet. */
+    val presetLooks: Map<String, com.rawr.camera.settings.model.FilmSimLook> = emptyMap()
 ) {
     companion object {
         fun empty() = FilmSimQuickState(

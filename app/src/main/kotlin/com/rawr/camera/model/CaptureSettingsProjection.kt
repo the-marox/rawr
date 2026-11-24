@@ -79,7 +79,8 @@ internal fun SettingsValues.toFilmSimQuickState(): FilmSimQuickState {
         flags = CaptureFilmCatalog.controls.filterIsInstance<FilmControl.Flag>().associate { control ->
             control.flag.name to flag(control)
         },
-        grainEnabled = look.grainEnabled
+        grainEnabled = look.grainEnabled,
+        presetLooks = (FilmFactoryPresets.all + filmPresets).associate { it.id to it.look }
     )
 }
 

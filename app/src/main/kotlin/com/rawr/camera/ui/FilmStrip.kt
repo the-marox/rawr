@@ -64,8 +64,10 @@ internal fun FilmStrip(
     onScrubDiscrete: (String, Int) -> Unit,
     onToggleFlag: (String, Boolean) -> Unit,
     modifier: Modifier = Modifier,
-    /** Rawr 17U fork: a stock card held (field name, position), or (null, null) on release - preview only. */
-    onHoldPreview: (String?, Int?) -> Unit = { _, _ -> }
+    /** Rawr 17U fork: keep a card's change to the look (FilmStockSheet.kt). */
+    onApplyLook: (LookEdit) -> Unit = {},
+    /** Rawr 17U fork: a card held - its change on the viewfinder only; null on release. */
+    onHoldLook: (LookEdit?) -> Unit = {}
 ) {
     var mode by remember { mutableStateOf(FilmStripMode.Collapsed) }
     var sectionKey by remember { mutableStateOf(quick.sections.firstOrNull()?.key ?: "film") }
@@ -101,8 +103,8 @@ internal fun FilmStrip(
                     // Stays open after a pick (sticky) for quick A/B comparison; tap FILM to close.
                     onSelect = onSelectPreset,
                     onOpenParams = { mode = FilmStripMode.Quick },
-                    onPickStock = onScrubDiscrete,
-                    onHoldStock = onHoldPreview
+                    onApplyLook = onApplyLook,
+                    onHoldLook = onHoldLook
                 )
             }
             FilmStripMode.Quick -> {
@@ -173,8 +175,8 @@ private fun FilmFixedColumn(
     paramsActive: Boolean = false,
     /** Card shown above FILM (the PARAMS quick card), given the grid width. */
     card: (@Composable () -> Unit)? = null,
-    onPickStock: (String, Int) -> Unit = { _, _ -> },
-    onHoldStock: (String?, Int?) -> Unit = { _, _ -> }
+    onApplyLook: (LookEdit) -> Unit = {},
+    onHoldLook: (LookEdit?) -> Unit = {}
 ) {
     val haptics = LocalCaptureHaptics.current
     val showHelp = rememberControlHelp()
@@ -196,8 +198,8 @@ private fun FilmFixedColumn(
                 FilmStockSheet(
                     quick = quick,
                     onSelectPreset = onSelect,
-                    onPick = onPickStock,
-                    onHold = onHoldStock
+                    onApply = onApplyLook,
+                    onHold = onHoldLook
                 )
             }
             card?.let { content ->

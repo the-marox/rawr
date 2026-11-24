@@ -1,5 +1,7 @@
 package com.rawr.camera.ui
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -7,20 +9,23 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
@@ -32,90 +37,163 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rawr.camera.model.FilmSimQuickState
+import com.rawr.camera.settings.architecture.SetFilmSimDiscreteValue
+import com.rawr.camera.settings.architecture.withDiscrete
+import com.rawr.camera.settings.model.FilmSimDiscreteField
+import com.rawr.camera.settings.model.FilmSimLook
 import com.rawr.camera.settings.model.FilmStocks
+import kotlin.math.abs
 
 /*
- * Rawr 17U fork: the film stock picker as cards in groups (negative, cinema, slide, print paper), after the film
- * browser of the fork's own Klipp Lab (utalpt/klipp, FilmBrowser17u). Tap a card to use the stock; hold it to see
- * it on the live viewfinder while the finger is down (the setting is not changed), release to go back.
- * The cards show the stock's name for now; previews of the current frame through each stock come later.
+ * Rawr 17U fork: the film picker as cards, after the film browser of the fork's own Klipp Lab (utalpt/klipp,
+ * FilmBrowser17u). One row of tabs (presets, the stock groups, print paper, filter, grain, halation) over one row
+ * of cards, so most of the viewfinder stays clear. Tap a card to use it; hold it to see it on the live viewfinder
+ * while the finger is down (the settings do not change) - the sheet fades out meanwhile so the whole frame shows.
+ * The cards show names for now; previews of the current frame through each card come later.
  */
 
-/** One card: a position in [FilmStocks.films] or [FilmStocks.papers], its maker, and the group it opens. */
-private data class StockCard(val index: Int, val maker: String, val group: String?)
+/** A change to the look: what a card does when tapped (kept) or held (preview only). */
+typealias LookEdit = (FilmSimLook) -> FilmSimLook
 
-private fun films(indices: List<Int>, group: String): List<StockCard> = indices.mapIndexed { i, index ->
-    val maker = if (index in setOf(13, 14, 15, 18, 19)) "FUJIFILM" else "KODAK"
-    StockCard(index, maker, if (i == 0) group else null)
+private class Card(
+    val key: String,
+    val top: String,
+    val name: String,
+    val edit: LookEdit,
+    val selected: Boolean,
+    /** A preset: tapping selects the preset (the settings keep its id), holding shows its look. */
+    val presetId: String? = null
+)
+
+private enum class Tab(val label: String) {
+    Presets("PRESETS"), Negative("NEGATIVE"), Cinema("CINEMA"), Slide("SLIDE"), Paper("PAPER"),
+    Filter("FILTER"), Grain("GRAIN"), Halation("HALATION")
 }
 
-// Positions in FilmStocks.films (the native profile order): Kodak and Fujifilm negatives, the motion picture
-// stocks, then the reversal (slide) stocks, which are scanned directly and take no paper.
-private val NegativeCards = films(listOf(2, 1, 3, 4, 5, 0, 6, 7, 13, 14, 15), "NEGATIVE")
-private val CinemaCards = films(listOf(8, 9, 10, 11, 12), "CINEMA")
-private val SlideCards = films(listOf(16, 17, 18, 19), "SLIDE")
-private val PaperCards = FilmStocks.papers.indices.map { index ->
-    StockCard(index, if (index == 5) "FUJIFILM" else "KODAK", if (index == 0) "PRINT PAPER" else null)
+// Positions in FilmStocks.films (the native profile order).
+private val NegativeFilms = listOf(2, 1, 3, 4, 5, 0, 6, 7, 13, 14, 15)
+private val CinemaFilms = listOf(8, 9, 10, 11, 12)
+private val SlideFilms = listOf(16, 17, 18, 19)
+private val FujiFilms = setOf(13, 14, 15, 18, 19)
+
+private fun stockEdit(field: FilmSimDiscreteField, index: Int): LookEdit =
+    { it.withDiscrete(SetFilmSimDiscreteValue(field, index)) }
+
+private fun tabOf(film: Int): Tab = when (film) {
+    in CinemaFilms -> Tab.Cinema
+    in SlideFilms -> Tab.Slide
+    else -> Tab.Negative
+}
+
+// Filter strengths as on the glass (1/8 to 2), grain and halation in three steps.
+private val FilterStrengths = listOf(0.125f to "1/8", 0.25f to "1/4", 0.5f to "1/2", 1f to "1", 2f to "2")
+private val GrainSteps = listOf(0.5f to "Light", 1f to "Medium", 2f to "Strong")
+private val HalationSteps = listOf(0.5f to "Low", 1f to "Medium", 2f to "High")
+
+private fun near(a: Float, b: Float) = abs(a - b) < 0.02f
+
+private fun cardsFor(tab: Tab, quick: FilmSimQuickState): List<Card> {
+    val film = quick.discretes["Film"]?.selectedIndex ?: -1
+    val paper = quick.discretes["Paper"]?.selectedIndex ?: -1
+    fun films(list: List<Int>) = list.map { i ->
+        Card("film$i", if (i in FujiFilms) "FUJIFILM" else "KODAK", FilmStocks.films.getOrElse(i) { "?" },
+            stockEdit(FilmSimDiscreteField.Film, i), i == film)
+    }
+    return when (tab) {
+        Tab.Presets -> quick.presets.mapNotNull { p ->
+            val look = quick.presetLooks[p.id] ?: return@mapNotNull null
+            Card("preset:${p.id}", "PRESET", p.label, { look }, p.id == quick.selectedPresetId, presetId = p.id)
+        }
+        Tab.Negative -> films(NegativeFilms)
+        Tab.Cinema -> films(CinemaFilms)
+        Tab.Slide -> films(SlideFilms)
+        Tab.Paper -> FilmStocks.papers.mapIndexed { i, name ->
+            Card("paper$i", if (i == 5) "FUJIFILM" else "KODAK", name, stockEdit(FilmSimDiscreteField.Paper, i), i == paper)
+        }
+        Tab.Filter -> {
+            val on = quick.flags["CameraDiffusionEnabled"]?.enabled == true
+            val family = quick.discretes["CameraDiffusionFamily"]?.selectedIndex ?: -1
+            val strength = quick.params["CameraDiffusionStrength"]?.value ?: 0.5f
+            listOf(Card("filter:none", "FILTER", "None", { it.copy(cameraDiffusionEnabled = false) }, !on)) +
+                FilmStocks.diffusionFamilies.mapIndexed { i, name ->
+                    Card("filter:$i", "FILTER", name,
+                        { it.copy(cameraDiffusionEnabled = true, cameraDiffusionFamily = i) }, on && family == i)
+                } +
+                FilterStrengths.map { (value, label) ->
+                    Card("strength:$label", "STRENGTH", label,
+                        { it.copy(cameraDiffusionEnabled = true, cameraDiffusionStrength = value) },
+                        on && near(strength, value))
+                }
+        }
+        Tab.Grain -> {
+            val on = quick.flags["GrainEnabled"]?.enabled == true
+            val amount = quick.params["GrainAmount"]?.value ?: 1f
+            listOf(Card("grain:off", "GRAIN", "Off", { it.copy(grainEnabled = false) }, !on)) +
+                GrainSteps.map { (value, label) ->
+                    Card("grain:$label", "GRAIN", label,
+                        { it.copy(grainEnabled = true, grainAmount = value) }, on && near(amount, value))
+                }
+        }
+        Tab.Halation -> {
+            val on = quick.flags["HalationEnabled"]?.enabled == true
+            val amount = quick.params["HalationAmount"]?.value ?: 1f
+            listOf(Card("hal:off", "HALATION", "Off", { it.copy(halationEnabled = false) }, !on)) +
+                HalationSteps.map { (value, label) ->
+                    Card("hal:$label", "HALATION", label,
+                        { it.copy(halationEnabled = true, halationAmount = value) }, on && near(amount, value))
+                }
+        }
+    }
 }
 
 @Composable
 internal fun FilmStockSheet(
     quick: FilmSimQuickState,
     onSelectPreset: (String) -> Unit,
-    /** Field name ("Film" or "Paper") and position. */
-    onPick: (String, Int) -> Unit,
-    /** Field name and position while a card is held; (null, null) on release. */
-    onHold: (String?, Int?) -> Unit,
+    /** Keep a change to the look. */
+    onApply: (LookEdit) -> Unit,
+    /** Show a change on the viewfinder only while a card is held; null on release. */
+    onHold: (LookEdit?) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val haptics = LocalCaptureHaptics.current
     val film = quick.discretes["Film"]?.selectedIndex ?: -1
-    val paper = quick.discretes["Paper"]?.selectedIndex ?: -1
-    val gap = CaptureDimens.ControlGap
+    var tab by remember { mutableStateOf(tabOf(film)) }
+    var holding by remember { mutableStateOf(false) }
+    // Held: the sheet fades out so the whole viewfinder shows the held card.
+    val sheetAlpha by animateFloatAsState(if (holding) 0f else 1f, tween(120), label = "filmSheetAlpha")
+    val tabs = Tab.entries.filter { it != Tab.Paper || film !in FilmStocks.positiveFilmIndices }
     Column(
         modifier
             .fillMaxWidth()
+            .alpha(sheetAlpha)
             .background(Color.Black.copy(alpha = .62f), RoundedCornerShape(14.dp))
-            .padding(vertical = gap)
+            .padding(vertical = 6.dp)
             .testTag("film_stock_sheet"),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 10.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            SheetLabel("PRESETS")
-            Text(
-                "TAP: USE · HOLD: PREVIEW",
-                color = Color.White.copy(alpha = .55f),
-                fontFamily = CaptureMono,
-                fontSize = 9.sp,
-                style = ViewfinderTextStyle
-            )
-        }
         LazyRow(
-            contentPadding = PaddingValues(horizontal = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+            contentPadding = PaddingValues(horizontal = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            items(quick.presets.size) { i ->
-                val preset = quick.presets[i]
-                val on = preset.id == quick.selectedPresetId
+            items(tabs.size, key = { tabs[it].name }) { i ->
+                val t = tabs[i]
+                val on = t == tab
                 Box(
                     Modifier
-                        .height(30.dp)
+                        .height(26.dp)
                         .viewfinderChip(active = on)
                         .captureClickable(shape = CaptureTextRippleShape) {
                             haptics.selection()
-                            onSelectPreset(preset.id)
+                            tab = t
                         }
-                        .padding(horizontal = 10.dp)
-                        .testTag(CaptureTestTags.filmPreset(preset.id)),
+                        .padding(horizontal = 8.dp)
+                        .testTag("film_sheet_tab:${t.name}"),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        preset.label.uppercase(),
-                        color = if (on) CaptureColors.Accent else Color.White.copy(alpha = .85f),
+                        t.label,
+                        color = if (on) CaptureColors.Accent else Color.White.copy(alpha = .8f),
                         fontFamily = CaptureMono,
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 10.sp,
@@ -125,77 +203,49 @@ internal fun FilmStockSheet(
                 }
             }
         }
-        StockRow(NegativeCards, "Film", film, FilmStocks.films, onPick, onHold)
-        StockRow(CinemaCards, "Film", film, FilmStocks.films, onPick, onHold)
-        StockRow(SlideCards, "Film", film, FilmStocks.films, onPick, onHold)
-        // A slide film is scanned directly: no paper to pick.
-        if (film !in FilmStocks.positiveFilmIndices) {
-            StockRow(PaperCards, "Paper", paper, FilmStocks.papers, onPick, onHold)
-        }
-    }
-}
-
-@Composable
-private fun SheetLabel(text: String) {
-    Text(
-        text,
-        color = CaptureColors.AccentSoft,
-        fontFamily = CaptureMono,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 10.sp,
-        style = ViewfinderTextStyle
-    )
-}
-
-@Composable
-private fun StockRow(
-    cards: List<StockCard>,
-    field: String,
-    selected: Int,
-    names: List<String>,
-    onPick: (String, Int) -> Unit,
-    onHold: (String?, Int?) -> Unit
-) {
-    val group = cards.firstOrNull()?.group
-    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-        if (group != null) Box(Modifier.padding(horizontal = 10.dp)) { SheetLabel(group) }
-        val start = cards.indexOfFirst { it.index == selected }.coerceAtLeast(0)
-        val list = rememberLazyListState(initialFirstVisibleItemIndex = (start - 1).coerceAtLeast(0))
+        val cards = cardsFor(tab, quick)
+        val start = cards.indexOfFirst { it.selected }.coerceAtLeast(0)
+        // A list state per tab, so each tab opens at its selected card.
+        val list = remember(tab) { LazyListState((start - 1).coerceAtLeast(0)) }
         LazyRow(
             state = list,
-            contentPadding = PaddingValues(horizontal = 10.dp),
+            contentPadding = PaddingValues(horizontal = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            items(cards.size, key = { cards[it].index }) { i ->
+            items(cards.size, key = { cards[it].key }) { i ->
                 val card = cards[i]
-                StockCardView(card, names.getOrElse(card.index) { "?" }, card.index == selected, field, onPick, onHold)
+                CardView(
+                    card,
+                    onTap = {
+                        val preset = card.presetId
+                        if (preset != null) onSelectPreset(preset) else onApply(card.edit)
+                    },
+                    onHold = { down ->
+                        holding = down
+                        onHold(if (down) card.edit else null)
+                    }
+                )
             }
         }
     }
 }
 
 @Composable
-private fun StockCardView(
-    card: StockCard,
-    name: String,
-    on: Boolean,
-    field: String,
-    onPick: (String, Int) -> Unit,
-    onHold: (String?, Int?) -> Unit
-) {
+private fun CardView(card: Card, onTap: () -> Unit, onHold: (Boolean) -> Unit) {
     val haptics = LocalCaptureHaptics.current
     // The latest callbacks: the gesture detector lives on with the card.
-    val pick by rememberUpdatedState(onPick)
+    val tap by rememberUpdatedState(onTap)
     val hold by rememberUpdatedState(onHold)
     val shape = RoundedCornerShape(8.dp)
+    val on = card.selected
     Column(
         Modifier
             .width(84.dp)
-            .height(48.dp)
+            .height(46.dp)
             .clip(shape)
             .background(Color(0xFF1C1C1C))
-            .then(if (on) Modifier.border(2.dp, CaptureColors.Accent, shape) else Modifier.border(1.dp, CaptureColors.Outline, shape))
-            .pointerInput(card.index, field) {
+            .border(if (on) 2.dp else 1.dp, if (on) CaptureColors.Accent else CaptureColors.Outline, shape)
+            .pointerInput(card.key) {
                 var held = false
                 detectTapGestures(
                     onPress = {
@@ -203,27 +253,27 @@ private fun StockCardView(
                         tryAwaitRelease()
                         if (held) {
                             held = false
-                            hold(null, null)
+                            hold(false)
                         }
                     },
                     onLongPress = {
                         held = true
                         haptics.longPress()
-                        hold(field, card.index)
+                        hold(true)
                     },
                     onTap = {
                         haptics.selection()
-                        pick(field, card.index)
+                        tap()
                     }
                 )
             }
-            .semantics { contentDescription = "$name${if (on) ", in use" else ""}. Tap to use, hold to preview." }
-            .testTag("film_stock_card:$field:${card.index}")
+            .semantics { contentDescription = "${card.name}${if (on) ", in use" else ""}. Tap to use, hold to preview." }
+            .testTag("film_card:${card.key}")
             .padding(horizontal = 7.dp, vertical = 5.dp),
         verticalArrangement = Arrangement.SpaceBetween
     ) {
         Text(
-            card.maker,
+            card.top,
             color = if (on) CaptureColors.AccentSoft else Color.White.copy(alpha = .5f),
             fontFamily = CaptureMono,
             fontSize = 8.sp,
@@ -231,7 +281,7 @@ private fun StockCardView(
             style = ViewfinderTextStyle
         )
         Text(
-            name,
+            card.name,
             color = if (on) Color.White else Color.White.copy(alpha = .85f),
             fontFamily = CaptureMono,
             fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal,

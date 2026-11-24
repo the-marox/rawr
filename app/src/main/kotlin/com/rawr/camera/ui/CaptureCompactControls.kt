@@ -132,8 +132,8 @@ private fun CompactStripStack(
                 onToggleFlag = { key, enabled -> onFilmEvent(CaptureFilmEvent.SetFlag(
                     com.rawr.camera.settings.model.FilmSimFlag.valueOf(key), enabled)) },
                 modifier = Modifier.fillMaxWidth(),
-                onHoldPreview = { key, index -> onFilmEvent(CaptureFilmEvent.HoldPreview(
-                    key?.let { com.rawr.camera.settings.model.FilmSimDiscreteField.valueOf(it) }, index ?: 0)) }
+                onApplyLook = { edit -> onFilmEvent(CaptureFilmEvent.ApplyLook(edit)) },
+                onHoldLook = { edit -> onFilmEvent(CaptureFilmEvent.HoldLook(edit)) }
             )
         } else if (!state.filmSimEnabled || forceTonemapStrip) {
             TonemapStrip(

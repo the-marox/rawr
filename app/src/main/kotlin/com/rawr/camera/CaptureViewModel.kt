@@ -31,7 +31,6 @@ import com.rawr.camera.model.toRenderProfileQuickState
 import com.rawr.camera.model.toViewfinderQuickState
 import com.rawr.camera.model.withToneParameter
 import com.rawr.camera.settings.architecture.SetFilmSimDiscreteValue
-import com.rawr.camera.settings.architecture.withDiscrete
 import com.rawr.camera.settings.architecture.SetFilmSimFlag
 import com.rawr.camera.settings.architecture.SetFilmSimNumericValue
 import com.rawr.camera.settings.architecture.capturePreferences
@@ -274,19 +273,17 @@ class CaptureViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun onFilmEvent(event: com.rawr.camera.architecture.CaptureFilmEvent) {
-        if (event is com.rawr.camera.architecture.CaptureFilmEvent.HoldPreview) {
-            // Rawr 17U fork: preview only - the held stock goes to the viewfinder, the settings stay as they are.
-            val field = event.field
-            val look = latestSettings.filmSimLook.let { look ->
-                if (field == null || event.index !in field.options().indices) look
-                else look.withDiscrete(SetFilmSimDiscreteValue(field, field.storedValue(event.index)))
-            }
+        if (event is com.rawr.camera.architecture.CaptureFilmEvent.HoldLook) {
+            // Rawr 17U fork: preview only - the held card goes to the viewfinder, the settings stay as they are.
+            val current = latestSettings.filmSimLook
+            val look = event.edit?.invoke(current) ?: current
             previewCoordinator.setFilmSimLook(look.toFloatArray(), look.toIntArray())
             return
         }
         val next = settingsEditor.update { current ->
             when (event) {
-                is com.rawr.camera.architecture.CaptureFilmEvent.HoldPreview -> current
+                is com.rawr.camera.architecture.CaptureFilmEvent.HoldLook -> current
+                is com.rawr.camera.architecture.CaptureFilmEvent.ApplyLook -> current.copy(filmSimLook = event.edit(current.filmSimLook))
                 is com.rawr.camera.architecture.CaptureFilmEvent.SelectPreset -> current.withFilmPreset(event.id)
                 is com.rawr.camera.architecture.CaptureFilmEvent.ScrubNumeric -> current.withFilmNumeric(
                     SetFilmSimNumericValue(event.parameter, event.value), quantize = true, enableGrain = true
