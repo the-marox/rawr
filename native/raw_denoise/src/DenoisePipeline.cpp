@@ -305,8 +305,8 @@ DenoisePipeline::DenoisePipeline(VkPhysicalDevice physical, VkDevice device, Den
                               &im.prePipeLayout);
     im.atrLayout = makeLayout(device, {{0, STORAGE_IMAGE}, {1, STORAGE_IMAGE}, {2, STORAGE_IMAGE},
                                        {3, STORAGE_BUFFER}, {4, STORAGE_BUFFER}, {5, STORAGE_IMAGE}},
-                              40, &im.atrPipeLayout);
-    im.thrLayout = makeLayout(device, {{0, STORAGE_BUFFER}, {1, STORAGE_BUFFER}}, 24,
+                              44, &im.atrPipeLayout);
+    im.thrLayout = makeLayout(device, {{0, STORAGE_BUFFER}, {1, STORAGE_BUFFER}}, 32,
                               &im.thrPipeLayout);
     im.backLayout = makeLayout(device, {{0, STORAGE_IMAGE}, {1, STORAGE_IMAGE}, {2, STORAGE_IMAGE}},
                                96, &im.backPipeLayout);
@@ -383,11 +383,27 @@ void DenoisePipeline::record(VkCommandBuffer command, VkImageView srcView, VkIma
     for (int i = 0; i < 3; i++) p[i] = std::max(params.shadows + 0.1f * std::log(1.0f / wb[i]), 0.0f);
     const float fulcrum = 0.05f;
     const float compensateP = fulcrum / std::pow(fulcrum, params.shadows);
-    const float a = params.noiseA * compensateP;
-    const float b = params.noiseB;
+    float a = params.noiseA * compensateP;
+    float b = params.noiseB;
     // WB-adaptive Y0U0V0 rows then strength scaling (mirrors set_up_conversion_matrices).
     float m[9] = {1.0f / 3, 1.0f / 3, 1.0f / 3, 0.5f, 0.0f, -0.5f, 0.25f, -0.5f, 0.25f};
-    {
+    if (params.wbColourAxes) {
+        // Exact generalized Anscombe of the pre-WB channels (they share the green model): t = 2 sqrt(x + b/a) / sqrt(a)
+        // has unit noise at every level, deep shadows included (darktable's x + b under-states the read-noise floor
+        // there by 1.5-2.5x). sqrt(wb_c) t_c is the same transform of the white-balanced channel, so rows over
+        // sqrt(wb_c) t_c put U0 = V0 = 0 on white-balanced grey; each row is scaled to unit noise.
+        for (int c = 0; c < 3; c++) p[c] = 1.0f;
+        a = params.noiseA;
+        b = params.noiseA > 0.0f ? params.noiseB / params.noiseA : 0.0f;
+        float s[3];
+        for (int c = 0; c < 3; c++) s[c] = std::sqrt(wb[c] > 0.0f && std::isfinite(wb[c]) ? wb[c] : 1.0f);
+        const float rows[9] = {s[0], s[1], s[2], s[0], 0.0f, -s[2], 0.5f * s[0], -s[1], 0.5f * s[2]};
+        for (int r = 0; r < 3; r++) {
+            float v = 0.0f;
+            for (int c = 0; c < 3; c++) v += rows[r * 3 + c] * rows[r * 3 + c];
+            for (int c = 0; c < 3; c++) m[r * 3 + c] = rows[r * 3 + c] / std::sqrt(v);
+        }
+    } else {
         const float sumInv = (1 / wb[0] + 1 / wb[1] + 1 / wb[2]) * std::sqrt(3.0f);
         m[0] = sumInv / wb[0];
         m[1] = sumInv / wb[1];
@@ -408,6 +424,11 @@ void DenoisePipeline::record(VkCommandBuffer command, VkImageView srcView, VkIma
         yuvM[i] = m[i] / f;
         rgbM[i] = rgb[i] * f;
     }
+    // Colour thresholds from the noise: with wbColourAxes U0 / V0 have unit noise before the 1 / f scaling, so band s
+    // carries ~varf^s / f (the white-noise band model BayesShrink's sb also uses); the threshold is k times that.
+    float noiseUv0 = 0.0f;
+    if (params.wbColourAxes && params.noiseThresholdUv > 0.0f && std::isfinite(params.noiseThresholdUv))
+        noiseUv0 = params.noiseThresholdUv / f;
 
     // ---- tile scratch (grow-once, reused) ----
     if (im.scratchExtent < extent) {
@@ -523,15 +544,18 @@ void DenoisePipeline::record(VkCommandBuffer command, VkImageView srcView, VkIma
                     float inv;
                     uint32_t mode, scaleIdx, groupsX;
                     float edgeK;
-                } pa{extent, tw, th, halo, mult, 1.0f / sb2, 0u, (uint32_t)scale, groupsX, params.edgeK};
+                    uint32_t garrote;
+                } pa{extent, tw, th, halo, mult, 1.0f / sb2, 0u, (uint32_t)scale, groupsX, params.edgeK,
+                     params.garrote ? 1u : 0u};
                 dispatch(atrPipe, im.atrPipeLayout, atrSet, &pa, sizeof(pa), groupsX, groupsY);
                 {
                     struct PT {
                         uint32_t partialCount, innerPixels;
                         float sb2, forceY, forceUv;
                         uint32_t scaleIdx;
+                        float noiseU, noiseV;
                     } pt{groupsX * groupsY, tw * th, sb2, params.forceY, params.forceUv,
-                         (uint32_t)scale};
+                         (uint32_t)scale, noiseUv0 * sb, noiseUv0 * sb};
                     dispatch(im.thrPipe, im.thrPipeLayout, im.thrSet, &pt, sizeof(pt), 1, 1);
                 }
                 pa.mode = 1u;
