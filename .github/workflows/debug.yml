@@ -30,6 +30,10 @@ jobs:
     runs-on: ${{ github.event_name != 'pull_request' && vars.RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 60
     steps:
+      # Shows where the build runs: "Runner: dragon-rawr-dev" on the mini PC, "Runner: GitHub Actions …" otherwise
+      - name: "Runner: ${{ runner.name }}"
+        run: echo "### Runner \`$RUNNER_NAME\` - $(nproc) CPUs, $(free -g | awk '/^Mem:/{print $2}') GB RAM" >> "$GITHUB_STEP_SUMMARY"
+
       # Self-hosted: keep the previous checkout's build outputs (incremental Gradle/CMake build).
       - uses: actions/checkout@v4
         with:
@@ -107,7 +111,7 @@ jobs:
             ./gradlew :app:testDebugUnitTest :app:assembleDebug
           fi
 
-      # (a private repository – the test builds', utalpt/rawr-fullres – has a small artifact quota shared by the
+      # (a private repository – the test builds', utalpt/rawr-dev – has a small artifact quota shared by the
       # account: its APK goes to the test-build prerelease instead; release files don't count against it)
       - uses: actions/upload-artifact@v4
         if: ${{ !github.event.repository.private }}
@@ -124,7 +128,7 @@ jobs:
           rm -rf test-apk && mkdir -p test-apk && cp app/build/outputs/apk/*/*.apk test-apk/
           gh release delete test-build --cleanup-tag --yes || true
           gh release create test-build test-apk/*.apk --prerelease --target "$GITHUB_SHA" \
-            --title "Test build" --notes "CI build of ${GITHUB_SHA} (${GITHUB_REF_NAME})."
+            --title "Test build" --notes "CI build of ${GITHUB_SHA} (${GITHUB_REF_NAME}) on ${RUNNER_NAME}."
 
       # SPIR-V of every embedded shader (arm64 build), renamed *.comp.spv for
       # the Adreno Offline Compiler (_debug\aoc.bat).
