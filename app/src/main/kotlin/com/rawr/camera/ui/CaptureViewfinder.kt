@@ -69,6 +69,7 @@ internal fun CaptureViewfinder(
             MonitoringOverlay(state.armedOverlays, state.falseColorManual, Modifier.matchParentSize())
         }
         GridOverlay(state.grid, Modifier.matchParentSize(), clearCenter = quick.levelMeterEnabled)
+        FilmCompareOverlay(Modifier.matchParentSize())
         if (quick.levelMeterEnabled) LevelMeterOverlay(Modifier.matchParentSize())
 
         var viewfinderSize by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }

@@ -8,6 +8,8 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -18,6 +20,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -81,6 +84,58 @@ private val NegativeFilms = listOf(2, 1, 3, 4, 5, 0, 6, 7, 13, 14, 15)
 private val CinemaFilms = listOf(8, 9, 10, 11, 12)
 private val SlideFilms = listOf(16, 17, 18, 19)
 private val FujiFilms = setOf(13, 14, 15, 18, 19)
+
+/**
+ * Rawr 17U fork: what the viewfinder shows while a card is held, for [FilmCompareOverlay]: the look in use on the
+ * left half and the held card on the right (the split falls on the middle of the screen, measured on the 17U), or
+ * the held card over the whole viewfinder ([full]: grain and halation).
+ */
+internal data class FilmCompareHold(val current: String, val held: String, val full: Boolean)
+
+internal object FilmCompareOverlayState {
+    var hold by mutableStateOf<FilmCompareHold?>(null)
+}
+
+/** Rawr 17U fork: the divider and the two names over the viewfinder while a film-sheet card is held. */
+@Composable
+internal fun FilmCompareOverlay(modifier: Modifier) {
+    val hold = FilmCompareOverlayState.hold ?: return
+    Box(modifier) {
+        if (!hold.full) {
+            Box(
+                Modifier
+                    .align(Alignment.Center)
+                    .fillMaxHeight()
+                    .width(2.dp)
+                    .background(Color.White.copy(alpha = .85f))
+            )
+            Row(Modifier.fillMaxWidth().align(Alignment.TopCenter).padding(top = 10.dp)) {
+                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { CompareLabel(hold.current) }
+                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { CompareLabel(hold.held) }
+            }
+        } else {
+            Box(Modifier.align(Alignment.TopCenter).padding(top = 10.dp)) { CompareLabel(hold.held) }
+        }
+    }
+}
+
+@Composable
+private fun CompareLabel(text: String) {
+    Text(
+        text,
+        color = Color.White,
+        fontFamily = CaptureMono,
+        fontSize = 11.sp,
+        fontWeight = FontWeight.SemiBold,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        style = ViewfinderTextStyle,
+        modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(Color.Black.copy(alpha = .6f))
+            .padding(horizontal = 8.dp, vertical = 3.dp)
+    )
+}
 
 private fun stockEdit(field: FilmSimDiscreteField, index: Int): LookEdit =
     { it.withDiscrete(SetFilmSimDiscreteValue(field, index)) }
@@ -305,6 +360,16 @@ internal fun FilmStockSheet(
                 }
             }
         }
+        // a hold cut short (sheet closed mid-hold) leaves no labels behind and ends the compare
+        val endHold by rememberUpdatedState(onHold)
+        DisposableEffect(Unit) {
+            onDispose {
+                if (FilmCompareOverlayState.hold != null) {
+                    FilmCompareOverlayState.hold = null
+                    endHold(null)
+                }
+            }
+        }
         val cards = cardsFor(tab, quick)
         val start = cards.indexOfFirst { it.selected }.coerceAtLeast(0)
         // A list state per tab, so each tab opens at its selected card.
@@ -322,7 +387,14 @@ internal fun FilmStockSheet(
                         val preset = card.presetId
                         if (preset != null) onSelectPreset(preset) else onApply(card.edit)
                     },
-                    onHold = { down -> onHold(if (down) card.edit else null) }
+                    onHold = { down ->
+                        FilmCompareOverlayState.hold = if (down) FilmCompareHold(
+                            current = cards.firstOrNull { it.selected }?.name ?: "In use",
+                            held = card.name,
+                            full = tab == FilmSheetTab.Grain || tab == FilmSheetTab.Halation
+                        ) else null
+                        onHold(if (down) card.edit else null)
+                    }
                 )
             }
         }
