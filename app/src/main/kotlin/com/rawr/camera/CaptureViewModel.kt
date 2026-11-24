@@ -286,6 +286,8 @@ class CaptureViewModel(application: Application) : AndroidViewModel(application)
                 halationEnabled = current.halationEnabled,
                 halationAmount = current.halationAmount
             ) == current
+            android.util.Log.i("RawrFilmSheet", if (look == null) "HOLD_LOOK end" else
+                "HOLD_LOOK film=${look.film} paper=${look.paper} process=${look.process} full=$full current=${current.film}")
             previewCoordinator.setFilmCompareLook(look?.toFloatArray(), look?.toIntArray(), full)
             return
         }

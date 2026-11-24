@@ -118,7 +118,11 @@ void PreviewLookController::setFilmCompare(const spektrafilm_native::FilmLook* l
         SESSION_LOGI("FILM_COMPARE_END");
         return;
     }
-    if (!requestedFilmEnabled_ || videoSuppressed_ || !canPrepareFilm() || !film_) return;
+    if (!requestedFilmEnabled_ || videoSuppressed_ || !canPrepareFilm() || !film_) {
+        SESSION_LOGI("FILM_COMPARE_SKIP film=%d enabled=%d video=%d canPrepare=%d engine=%d", look->film,
+                     requestedFilmEnabled_ ? 1 : 0, videoSuppressed_ ? 1 : 0, canPrepareFilm() ? 1 : 0, film_ ? 1 : 0);
+        return;
+    }
     {
         std::lock_guard<std::mutex> filmLock(filmMutex_);
         compareLook_ = *look;
