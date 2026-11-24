@@ -12,9 +12,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -114,57 +114,54 @@ internal fun ScrubReadoutOverlay(modifier: Modifier = Modifier) {
         exit = fadeOut(tween(220, delayMillis = 450)),
         modifier = modifier
     ) {
-        // Compact (Rawr 17U fork): it sits over the picture while a control is scrubbed, so it should hide as
-        // little of it as possible - about half the earlier size, near the top edge.
-        val shape = RoundedCornerShape(10.dp)
+        // Rawr 17U fork: a slim capsule - title and value on one line - over a fine tick ruler (the scale's
+        // neighbours as ticks, the current one a red index), near the top edge, so it hides little of the picture.
         val boxed = CapturePalette.valueBackgrounds
-        Column(
-            Modifier
-                .widthIn(min = 88.dp)
-                .then(
-                    if (boxed) Modifier.background(Color.Black.copy(alpha = .5f), shape).border(1.dp, CaptureColors.Outline, shape)
-                    else Modifier
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Row(
+                Modifier
+                    .then(
+                        if (boxed) Modifier.background(Color.Black.copy(alpha = .47f), RoundedCornerShape(50))
+                        else Modifier
+                    )
+                    .padding(horizontal = 10.dp, vertical = 3.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(5.dp)
+            ) {
+                Text(
+                    shownTitle,
+                    color = Color.White.copy(alpha = .6f),
+                    fontFamily = CaptureMono,
+                    fontSize = 8.sp,
+                    letterSpacing = 1.sp,
+                    maxLines = 1,
+                    style = ViewfinderTextStyle
                 )
-                .padding(horizontal = 12.dp, vertical = 4.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(
-                shownTitle,
-                color = Color.White.copy(alpha = .6f),
-                fontFamily = CaptureMono,
-                fontSize = 8.sp,
-                letterSpacing = 1.5.sp,
-                maxLines = 1
-            )
-            Text(
-                shownValue,
-                color = Color.White,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 20.sp,
-                lineHeight = 23.sp,
-                maxLines = 1
-            )
+                Text(
+                    shownValue,
+                    color = Color.White,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 14.sp,
+                    lineHeight = 16.sp,
+                    maxLines = 1,
+                    style = ViewfinderTextStyle
+                )
+            }
             if (CapturePalette.dragScale && shownScale.size > 1 && shownIndex in shownScale.indices) {
-                // Lens-ring style scale: neighbours in grey, the current value in red under an index tick.
-                Box(
-                    Modifier
-                        .padding(top = 2.dp)
-                        .size(width = 1.dp, height = 4.dp)
-                        .background(CaptureColors.Accent)
-                )
                 Row(
-                    Modifier.padding(top = 1.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    Modifier.padding(top = 5.dp).height(7.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.Top
                 ) {
-                    shownScale.forEachIndexed { i, label ->
-                        Text(
-                            label,
-                            color = if (i == shownIndex) CaptureColors.Accent else Color.White.copy(alpha = .42f),
-                            fontFamily = CaptureMono,
-                            fontWeight = if (i == shownIndex) FontWeight.Bold else FontWeight.Normal,
-                            fontSize = 7.sp,
-                            maxLines = 1
+                    shownScale.indices.forEach { i ->
+                        val current = i == shownIndex
+                        Box(
+                            Modifier
+                                .size(width = if (current) 1.5.dp else 1.dp, height = if (current) 7.dp else 4.dp)
+                                .background(
+                                    if (current) CaptureColors.Accent else Color.White.copy(alpha = .5f),
+                                    RoundedCornerShape(1.dp)
+                                )
                         )
                     }
                 }
