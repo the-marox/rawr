@@ -114,32 +114,34 @@ internal fun ScrubReadoutOverlay(modifier: Modifier = Modifier) {
         exit = fadeOut(tween(220, delayMillis = 450)),
         modifier = modifier
     ) {
-        val shape = RoundedCornerShape(16.dp)
+        // Compact (Rawr 17U fork): it sits over the picture while a control is scrubbed, so it should hide as
+        // little of it as possible - about half the earlier size, near the top edge.
+        val shape = RoundedCornerShape(10.dp)
         val boxed = CapturePalette.valueBackgrounds
         Column(
             Modifier
-                .widthIn(min = 150.dp)
+                .widthIn(min = 88.dp)
                 .then(
-                    if (boxed) Modifier.background(Color.Black.copy(alpha = .62f), shape).border(1.dp, CaptureColors.Outline, shape)
+                    if (boxed) Modifier.background(Color.Black.copy(alpha = .5f), shape).border(1.dp, CaptureColors.Outline, shape)
                     else Modifier
                 )
-                .padding(horizontal = 28.dp, vertical = 10.dp),
+                .padding(horizontal = 12.dp, vertical = 4.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
                 shownTitle,
                 color = Color.White.copy(alpha = .6f),
                 fontFamily = CaptureMono,
-                fontSize = 10.sp,
-                letterSpacing = 2.sp,
+                fontSize = 8.sp,
+                letterSpacing = 1.5.sp,
                 maxLines = 1
             )
             Text(
                 shownValue,
                 color = Color.White,
                 fontWeight = FontWeight.SemiBold,
-                fontSize = 34.sp,
-                lineHeight = 38.sp,
+                fontSize = 20.sp,
+                lineHeight = 23.sp,
                 maxLines = 1
             )
             if (CapturePalette.dragScale && shownScale.size > 1 && shownIndex in shownScale.indices) {
@@ -147,12 +149,12 @@ internal fun ScrubReadoutOverlay(modifier: Modifier = Modifier) {
                 Box(
                     Modifier
                         .padding(top = 2.dp)
-                        .size(width = 1.5.dp, height = 7.dp)
+                        .size(width = 1.dp, height = 4.dp)
                         .background(CaptureColors.Accent)
                 )
                 Row(
-                    Modifier.padding(top = 3.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    Modifier.padding(top = 1.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     shownScale.forEachIndexed { i, label ->
@@ -161,7 +163,7 @@ internal fun ScrubReadoutOverlay(modifier: Modifier = Modifier) {
                             color = if (i == shownIndex) CaptureColors.Accent else Color.White.copy(alpha = .42f),
                             fontFamily = CaptureMono,
                             fontWeight = if (i == shownIndex) FontWeight.Bold else FontWeight.Normal,
-                            fontSize = 9.sp,
+                            fontSize = 7.sp,
                             maxLines = 1
                         )
                     }

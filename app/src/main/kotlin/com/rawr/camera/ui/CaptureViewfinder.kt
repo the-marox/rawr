@@ -277,7 +277,7 @@ internal fun CaptureViewfinder(
             }
             // One status pill for every capture wait, in one place: moving it
             // while it fades out left an empty pill behind.
-            ScrubReadoutOverlay(Modifier.align(Alignment.TopCenter).padding(top = 72.dp))
+            ScrubReadoutOverlay(Modifier.align(Alignment.TopCenter).padding(top = 12.dp))
             CaptureStatusNotice(
                 longExposure = state.longExposure,
                 holdActive = state.bracketHoldActive,
