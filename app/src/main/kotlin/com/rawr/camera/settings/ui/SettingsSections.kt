@@ -131,6 +131,22 @@ internal fun SettingsSectionContent(
             DebugSettings(state, dispatch, onRequestSaveNotificationPermission, onExportDiagnosticsBundle)
         }
 
+        SettingsSection.PhotoHub -> {
+            PhotoHubSettings(state, dispatch)
+        }
+
+        SettingsSection.LookHub -> {
+            LookHubSettings(state, dispatch)
+        }
+
+        SettingsSection.RawHub -> {
+            RawHubSettings(state, dispatch)
+        }
+
+        SettingsSection.SystemHub -> {
+            SystemHubSettings(dispatch)
+        }
+
         SettingsSection.About -> {
             AboutSettings(onExportBackup, onImportBackup)
         }

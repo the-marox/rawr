@@ -185,25 +185,24 @@ private fun destinationTitle(destination: SettingsDestination): String = when (d
 
 @Composable
 private fun SettingsHome(dispatch: SettingsDispatch) {
+    // Rawr 17U fork: grouped by what the user wants to do. Photo, Look, RAW development and System are hubs
+    // (SettingsHubs.kt) linking to Ed's pages; Video, Viewfinder & controls and Lenses open their page directly.
     val entries =
         listOf(
-            SettingsHomeEntry(SettingsSection.Image, Icons.Rounded.Tune),
-            SettingsHomeEntry(SettingsSection.Capture, Icons.Rounded.CameraAlt),
-            SettingsHomeEntry(SettingsSection.DisplayControls, Icons.Rounded.MonitorHeart),
-            SettingsHomeEntry(SettingsSection.Dng, Icons.Rounded.Description),
-            SettingsHomeEntry(SettingsSection.Jpeg, Icons.Rounded.Image),
-            SettingsHomeEntry(SettingsSection.VideoEncoder, Icons.Rounded.Videocam),
-            SettingsHomeEntry(SettingsSection.Storage, Icons.Rounded.Folder),
-            SettingsHomeEntry(SettingsSection.Renderer, Icons.Rounded.Edit),
-            SettingsHomeEntry(SettingsSection.Experimental, Icons.Rounded.Science),
-            SettingsHomeEntry(SettingsSection.Debug, Icons.Rounded.BugReport),
-            SettingsHomeEntry(SettingsSection.About, Icons.Rounded.Info)
+            SettingsHomeEntry(SettingsSection.PhotoHub, Icons.Rounded.CameraAlt, "Photo", "Capture, multiframe, DNG, JPEG, storage"),
+            SettingsHomeEntry(SettingsSection.LookHub, Icons.Rounded.Tune, "Look", "Tone & colour, film simulation, dynamic range, LUT"),
+            SettingsHomeEntry(SettingsSection.RawHub, Icons.Rounded.Image, "RAW development", "Demosaic, denoise, sharpening, lens corrections"),
+            SettingsHomeEntry(SettingsSection.VideoEncoder, Icons.Rounded.Videocam, "Video", "Encoder, format and bitrate"),
+            SettingsHomeEntry(SettingsSection.DisplayControls, Icons.Rounded.MonitorHeart, "Viewfinder & controls", "Display, control style, scopes and overlays"),
+            SettingsHomeEntry(SettingsSection.Lens, Icons.Rounded.Description, "Lenses", "The lens buttons and each lens's setup"),
+            SettingsHomeEntry(SettingsSection.SystemHub, Icons.Rounded.Info, "System", "Renderer, experimental, debug, backup and about")
         )
     SettingsPageContainer(testTag = SettingsTestTags.SCREEN_HOME) {
         SettingsGroup {
             entries.forEachIndexed { index, entry ->
                 SettingsRow(
-                    title = entry.section.title,
+                    title = entry.title,
+                    value = entry.summary,
                     leadingIcon = entry.icon,
                     testTag = SettingsTestTags.homeEntry(entry.section.name),
                     onClick = { dispatch.invoke(OpenSection(entry.section)) }
@@ -214,7 +213,12 @@ private fun SettingsHome(dispatch: SettingsDispatch) {
     }
 }
 
-private data class SettingsHomeEntry(val section: SettingsSection, val icon: ImageVector)
+private data class SettingsHomeEntry(
+    val section: SettingsSection,
+    val icon: ImageVector,
+    val title: String,
+    val summary: String
+)
 
 @Composable
 private fun ResetConfirmation(target: ResetTarget, dispatch: SettingsDispatch) {

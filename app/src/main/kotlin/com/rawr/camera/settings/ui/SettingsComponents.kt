@@ -151,10 +151,11 @@ internal fun SettingsGroup(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.padding(start = SettingsRowHorizontalPadding)
             ) {
+                // Rawr 17U fork: grey section titles and values - the accent is kept for what is on or chosen
                 Text(
                     title.uppercase(),
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontWeight = FontWeight.SemiBold
                 )
                 if (description != null) SettingsInfoButton(title, description)
@@ -204,7 +205,7 @@ internal fun SettingsRow(
             Icon(
                 imageVector = leadingIcon,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(end = SettingsRowHorizontalPadding)
             )
         }
@@ -231,7 +232,7 @@ internal fun SettingsRow(
                     style = MaterialTheme.typography.labelMedium,
                     color =
                         if (enabled) {
-                            MaterialTheme.colorScheme.primary
+                            MaterialTheme.colorScheme.onSurfaceVariant
                         } else {
                             MaterialTheme.colorScheme.onSurfaceVariant
                                 .copy(
@@ -856,7 +857,7 @@ internal fun <T> DropdownChoiceRow(
                     Text(
                         label(selected),
                         style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = if (enabled) 1f else .45f),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (enabled) 1f else .45f),
                         maxLines = 1
                     )
                     Icon(

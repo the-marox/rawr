@@ -45,6 +45,11 @@ enum class SettingsSection(val title: String) {
     FilmSim("Film Simulation"),
     Debug("Debug"),
     About("About"),
+    // Rawr 17U fork: the settings home groups by what the user wants to do; these hubs link to the pages above.
+    PhotoHub("Photo"),
+    LookHub("Look"),
+    RawHub("RAW development"),
+    SystemHub("System"),
 
     // Kept only for compatibility with older persisted/navigation tests; no longer exposed.
     CameraDevice("Camera / Device")

@@ -103,7 +103,7 @@ private fun HighlightMethodOptions(
     }
 }
 
-private fun dynamicRangeSummary(v: SettingsValues): String {
+internal fun dynamicRangeSummary(v: SettingsValues): String {
     val photo = when (v.photoDynamicRange()) {
         DynamicRangeMethod.Local -> "Local +${"%.1f".format(java.util.Locale.US, v.localToneShadowsEv)} EV"
         DynamicRangeMethod.Global -> "Global ${v.autoKeyExposure.label}"
