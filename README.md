@@ -35,7 +35,7 @@
 
 Everything the fork adds, kept here also once Ed has taken it into Rawr: those items say *(Already in
 Rawr: Ed's #N)*, with the pull request it came in. Entry by entry, with how each was checked:
-[CHANGELOG.md](CHANGELOG.md). Synced with Ed's main up to #152 (24 Nov 2026).
+[CHANGELOG.md](CHANGELOG.md). Synced with Ed's main up to #155 (24 Nov 2026).
 
 **Photo: 50 and 200 MP**
 - **50 MP RAW** on the main, tele and ultra-wide cameras: the viewfinder streams the binned 4:3 RAW at 30 fps
@@ -74,7 +74,17 @@ Rawr: Ed's #N)*, with the pull request it came in. Entry by entry, with how each
   317, 635, 1270).
 - Swipe-down quick panel (AE / metering, highlights, frames per lens, per-lens look), exposure row with
   tap-to-set slider bar, VF controls show/hide, RESET and UNDO; camera controls persist across restarts.
-- Film strip and PARAMS editor, AgX quick card with advanced grids, long-press help on controls.
+- AgX quick card with advanced grids, long-press help on controls.
+
+**Film**
+- **Film sheet:** turning FILM on opens the stocks as cards in tabs (presets, negative, cinema, slide, print
+  paper, filter, grain, halation), with the tab's settings above them; tap a card to use it.
+- **Hold a card to compare** without changing anything: the viewfinder splits down the middle, the look in
+  use on the left and the held card on the right, with a line and both names. Halation cards fill the whole
+  viewfinder, and grain cards open a **grain loupe** (the middle of the frame x4, the grain rendered at about
+  a photo's pixel size, since the normal viewfinder renders the film too small for grain to show).
+- **RESET** back to the preset in use (or the default look), with UNDO for 5 seconds; switching back to one of
+  the last two stocks is instant (the film engines are kept).
 - Themes (Leica, Mono, Steel, Sage, Custom), button shapes, and a layout that stays upright in landscape.
 
 **White balance**

@@ -4,6 +4,48 @@ Fork of [Rawr](https://github.com/adityawarmanfw/rawr) for the Xiaomi 17 Ultra.
 Releases follow Ed's version: `0.5.1-17u.N`. Test work lands on `yuv-probe`
 first and moves to `xiaomi-17u` once verified.
 
+## 0.5.1-17u.11
+
+The film stocks as cards, with hold-to-compare and a grain loupe, and Ed's #155, checked on the Xiaomi 17
+Ultra.
+
+### Film: stocks as cards
+
+- Turning FILM on opens the film sheet in place of the FILM and PARAMS buttons: one row of tabs - presets,
+  negative (Kodak and Fujifilm), cinema (Vision3 and Verita), slide, print paper (hidden for slide film,
+  which is scanned directly), filter (none, Glimmerglass, Black Pro-Mist, Pro-Mist, CineBloom, strengths 1/8
+  to 2), grain (off, light, medium, strong) and halation (off, 1, 2, 4) - over one row of cards, with the
+  tab's own settings above (exposure, diffusion, grain, halation). ✕ closes it; a long press on a tab or a
+  setting explains it. The layout follows the film browser of the fork's Klipp Lab.
+- Tap a card to use it. Hold it to compare without changing the setting: the viewfinder splits down the
+  middle, the look in use on the left and the held card on the right, with a white line and both names on
+  top. The held card gets its own film engine, so the look in use is never rebuilt for a hold.
+- Halation cards fill the whole viewfinder. Grain cards open a grain loupe: the middle of the frame enlarged
+  (x4 at the usual viewfinder size) and rendered at about the pixel size of a 4096-wide photo, passed to the
+  film model as an enlarger magnification. The normal viewfinder renders the film at a quarter of its size,
+  where grain does not show.
+- RESET in the tab row: back to the preset in use as saved (or to the default film look when no preset is in
+  use); for 5 seconds the chip reads UNDO and brings the previous look back.
+- The viewfinder keeps the last two film engines, so going back to a stock swaps at once instead of
+  rebuilding.
+- Checked on the 17U: a new stock builds in about 0.15-0.7 s (up to 1.4 s the first time), going back to one of the last two in 6-36 ms;
+  the split with Portra 400 against Velvia 100 (card on the right); the grain loupe; RESET and UNDO. Strong
+  grain in the JPEG roughly doubles the fine detail measured in a 400 px crop (5.5 -> 10.5).
+
+### From upstream Rawr (Ed): #155
+
+- Rexture (multiframe) chroma denoise on the white-balanced image, with colour thresholds from the noise
+  model and a lower edge-stop, against green / magenta blotches in dark merges; the 50 MP strip merge JPEG
+  develops the merge's 16-bit codes instead of rounding them back to sensor codes. Merged without
+  conflicts. Checked on the 17U: two 17-frame Rexture merges at about 3 lux, ISO 525 - the merged DNGs are
+  correct (16-bit scale, black and white levels, metadata) and the JPEG shadows are clean; the gain over
+  17u.10 was not measured (Ed's numbers: colour noise left in dark synthetic merges 12-30% -> 3.4-5.3%).
+
+### CI
+
+- Test builds of the private test repository run on a self-hosted runner when its RUNNER variable is set;
+  builds of this repository are unchanged.
+
 ## 0.5.1-17u.10
 
 Ed's #152 (faster stills with less memory), checked on the Xiaomi 17 Ultra.
