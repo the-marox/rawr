@@ -6,6 +6,7 @@
 #include <rawr/raw_merge_rexture_gpu/RawMergeRextureGpu.h>
 
 #include <cstdint>
+#include <string>
 #include <functional>
 
 namespace rawr::raw_gpu_pipeline {
@@ -75,6 +76,13 @@ class RextureRecorder final {
     void setMark(Mark mark) const { mark_ = std::move(mark); }
     // Number of marks recordAlignmentLevel emits for level l.
     static std::uint32_t alignmentMarks(std::uint32_t level) noexcept { return level == 0 ? 4u : 3u; }
+    // Marks recordAlignmentLevel emits for level l of this arena: level 1 is also filled (two more marks) while its tile grid is
+    // small (at most 1024 tiles), which depends on the frame size.
+    std::uint32_t levelMarks(std::uint32_t level) const {
+        if (level == 0) return 4u;
+        const auto& flow = arena_.image("rx_flow_l" + std::to_string(level));
+        return level == 1 && flow.extent.width * flow.extent.height <= 1024u ? 5u : 3u;
+    }
 
    private:
     mutable Mark mark_;
@@ -89,7 +97,7 @@ class RextureRecorder final {
     void recordFit(VkCommandBuffer, std::int32_t op, VkImageView rawU16, const MultiframeFrameParameters& f, float gain = 1.0f,
                    std::uint32_t slot = 0) const;
     void recordRcd(VkCommandBuffer, VkImageView rawU16, const MultiframeFrameParameters&, std::int32_t y0, std::int32_t rows,
-                   bool gate) const;
+                   bool gate, bool exportAndBound = true) const;
 };
 
 }  // namespace rawr::raw_gpu_pipeline

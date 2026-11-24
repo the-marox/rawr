@@ -106,8 +106,6 @@ PostDemosaicProcessor::PostDemosaicProcessor(VkPhysicalDevice pd, VkDevice devic
         throw std::invalid_argument("post-demosaic invalid Vulkan context/geometry");
     wbImage_ = rawr::vk::createOwnedImage(pd, device, width, height, VK_FORMAT_R16G16B16A16_SFLOAT,
                                                  VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
-    derivedClipState_ = rawr::vk::createOwnedImage(pd, device, width / 2u, height / 2u, VK_FORMAT_R16_UINT,
-                                                          VK_IMAGE_USAGE_STORAGE_BIT);
     createWbPipeline();
     createDeriveClipPipeline();
     createPredicateBuffer(pd);
@@ -125,7 +123,10 @@ PostDemosaicProcessor::PostDemosaicProcessor(VkPhysicalDevice pd, VkDevice devic
                                     : 0.0f;
         const float chromaBound = (std::isfinite(fccChromaBound) && fccChromaBound > 0.0f) ? 1.0f : 0.0f;
         fcc_ = std::make_unique<::fcc::FalseColorCorrectionPipeline>(
-            fc, fccShader, ::fcc::PipelineConfig{width, height, fccSteps_, normalizedChroma, edgeSigma, chromaBound});
+            fc, fccShader,
+            // No FCC-owned scratch: more than one step ping-pongs between the
+            // two full-size images this processor already alternates.
+            ::fcc::PipelineConfig{width, height, fccSteps_, normalizedChroma, edgeSigma, chromaBound, false});
     }
     if (defringeEnabled_) createDefringePipeline();
     } catch (...) {
@@ -160,7 +161,6 @@ PostDemosaicProcessor::~PostDemosaicProcessor() {
     if (device_) {
         rawr::vk::destroyOwnedImage(device_, derivedClipState_);
         rawr::vk::destroyOwnedImage(device_, wbImage_);
-        rawr::vk::destroyOwnedImage(device_, denoiseOut_);
     }
 }
 
@@ -563,6 +563,10 @@ void PostDemosaicProcessor::record(VkCommandBuffer cmd, VkImage sourceImage, VkI
         throw std::invalid_argument("Cannot stack post-RGB recovery with pre-demosaic reconstruction preservation");
     if (!cmd || !sourceImage || !sourceView) throw std::invalid_argument("post-demosaic null source");
     if (!clipStateView) {
+        // Only callers without sensor clip evidence need the derived mask.
+        if (!derivedClipState_.image)
+            derivedClipState_ = rawr::vk::createOwnedImage(physicalDevice_, device_, width_ / 2u, height_ / 2u,
+                                                           VK_FORMAT_R16_UINT, VK_IMAGE_USAGE_STORAGE_BIT);
         if (!derivedClipInitialized_) {
             auto b = barrier(derivedClipState_.image, 0, VK_ACCESS_SHADER_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED,
                              VK_IMAGE_LAYOUT_GENERAL);
@@ -606,6 +610,16 @@ void PostDemosaicProcessor::record(VkCommandBuffer cmd, VkImage sourceImage, VkI
     // Profiled wavelet denoise on the pre-WB camera-linear source, after clip
     // derivation (clip evidence stays on the original sensor data) and before
     // WB. Disabled by strength <= 0: downstream stages see the source untouched.
+    if (!wbImage_.image)
+        wbImage_ = rawr::vk::createOwnedImage(physicalDevice_, device_, width_, height_, VK_FORMAT_R16G16B16A16_SFLOAT,
+                                              VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
+    if (!wbImageInitialized_) {
+        auto b =
+            barrier(wbImage_.image, 0, VK_ACCESS_SHADER_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0,
+                             nullptr, 0, nullptr, 1, &b);
+        wbImageInitialized_ = true;
+    }
     const bool denoiseEnabled = std::isfinite(denoise.strength) && denoise.strength > 0.0f;
     if (!denoiseEnabled && timingPool) {
         // Keep queries 10-11 written so the still timing fetch stays a fixed
@@ -613,6 +627,8 @@ void PostDemosaicProcessor::record(VkCommandBuffer cmd, VkImage sourceImage, VkI
         vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, timingPool, 10);
         vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, timingPool, 11);
     }
+    VkImage wbImg = wbImage_.image;
+    VkImageView wbView = wbImage_.view;
     if (denoiseEnabled) {
         if (!denoise_) {
             raw_denoise::DenoiseShaders shaders{};
@@ -626,16 +642,6 @@ void PostDemosaicProcessor::record(VkCommandBuffer cmd, VkImage sourceImage, VkI
                                      denoise_img_backtransform_spv_size / 4u};
             denoise_ = std::make_unique<raw_denoise::DenoisePipeline>(physicalDevice_, device_, shaders);
         }
-        if (!denoiseOutInitialized_) {
-            denoiseOut_ = rawr::vk::createOwnedImage(
-                physicalDevice_, device_, width_, height_, VK_FORMAT_R16G16B16A16_SFLOAT,
-                VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
-            auto b = barrier(denoiseOut_.image, 0, VK_ACCESS_SHADER_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED,
-                             VK_IMAGE_LAYOUT_GENERAL);
-            vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                                 0, 0, nullptr, 0, nullptr, 1, &b);
-            denoiseOutInitialized_ = true;
-        }
         raw_denoise::DenoiseParams dp{};
         dp.strength = std::clamp(denoise.strength, 0.0f, 8.0f);
         dp.shadows = std::isfinite(denoise.detail) ? std::clamp(denoise.detail, 0.0f, 1.8f) : 1.0f;
@@ -646,20 +652,15 @@ void PostDemosaicProcessor::record(VkCommandBuffer cmd, VkImage sourceImage, VkI
         dp.maxScale = std::clamp(denoise.maxScale, 1, 7);
         dp.edgeK = std::isfinite(denoise.edgeK) ? std::clamp(denoise.edgeK, 0.02f, 4.0f) : 0.02f;
         denoise_->setTileBoundary(denoiseTileBoundary_);
-        denoise_->record(cmd, sourceView, denoiseOut_.view, width_, height_, dp, timingPool);
+        denoise_->record(cmd, sourceView, wbImage_.view, width_, height_, dp, timingPool);
         denoise_->setTileBoundary({});
-        auto ready = barrier(denoiseOut_.image, VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT);
+        auto ready = barrier(wbImage_.image, VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT);
         vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                              0, 0, nullptr, 0, nullptr, 1, &ready);
-        sourceImage = denoiseOut_.image;
-        sourceView = denoiseOut_.view;
-    }
-    if (!wbImageInitialized_) {
-        auto b =
-            barrier(wbImage_.image, 0, VK_ACCESS_SHADER_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
-        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0,
-                             nullptr, 0, nullptr, 1, &b);
-        wbImageInitialized_ = true;
+        wbImg = sourceImage;
+        wbView = sourceView;
+        sourceImage = wbImage_.image;
+        sourceView = wbImage_.view;
     }
     VkImageView wbSourceView = sourceView;
     const bool coloroppFusedWb = coloroppActive_ && !distortion.enabled;
@@ -686,7 +687,7 @@ void PostDemosaicProcessor::record(VkCommandBuffer cmd, VkImage sourceImage, VkI
                              nullptr, 1, &fillReady, 0, nullptr);
     }
     VkDescriptorImageInfo ii[2]{{VK_NULL_HANDLE, wbSourceView, VK_IMAGE_LAYOUT_GENERAL},
-                                {VK_NULL_HANDLE, wbImage_.view, VK_IMAGE_LAYOUT_GENERAL}};
+                                {VK_NULL_HANDLE, wbView, VK_IMAGE_LAYOUT_GENERAL}};
     VkWriteDescriptorSet w[3]{};
     for (uint32_t i = 0; i < 2; ++i) {
         w[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -759,7 +760,7 @@ void PostDemosaicProcessor::record(VkCommandBuffer cmd, VkImage sourceImage, VkI
     static_assert(sizeof(Pc) == 96);
     if (coloroppFusedWb) {
         // The highlight predicate stays zero: the guide chain is off with Inpaint Opposed.
-        coloropp_->recordFused(cmd, sourceView, wbImage_.view, gains, highlightThreshold, shading, cfaPattern,
+        coloropp_->recordFused(cmd, sourceView, wbView, gains, highlightThreshold, shading, cfaPattern,
                                geometry);
     } else {
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, wbPipeline_);
@@ -768,7 +769,7 @@ void PostDemosaicProcessor::record(VkCommandBuffer cmd, VkImage sourceImage, VkI
         vkCmdDispatch(cmd, (width_ + 15u) / 16u, (height_ + 15u) / 16u, 1);
     }
     if (timingPool) vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, timingPool, 1);
-    auto wb = barrier(wbImage_.image, VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT);
+    auto wb = barrier(wbImg, VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT);
     auto src = barrier(sourceImage, VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_SHADER_WRITE_BIT);
     VkImageMemoryBarrier bs[2]{wb, src};
     vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr,
@@ -804,9 +805,9 @@ void PostDemosaicProcessor::record(VkCommandBuffer cmd, VkImage sourceImage, VkI
         // skip the whole chain. The recovery pass below still runs and
         // reproduces the valid input for such frames.
         const rawr::highlight::GuideChain::Conditional conditional{beginConditional_, endConditional_, &condBegin};
-        VkImageView finalGuide = guideChain_->record(cmd, wbImage_.view, clipStateView, width_, height_, gains.data(),
+        VkImageView finalGuide = guideChain_->record(cmd, wbView, clipStateView, width_, height_, gains.data(),
                                                      predicatedGuide ? &conditional : nullptr);
-        VkDescriptorImageInfo hi[4]{{VK_NULL_HANDLE, wbImage_.view, VK_IMAGE_LAYOUT_GENERAL},
+        VkDescriptorImageInfo hi[4]{{VK_NULL_HANDLE, wbView, VK_IMAGE_LAYOUT_GENERAL},
                                     {VK_NULL_HANDLE, sourceView, VK_IMAGE_LAYOUT_GENERAL},
                                     {VK_NULL_HANDLE, clipStateView, VK_IMAGE_LAYOUT_GENERAL},
                                     {VK_NULL_HANDLE, finalGuide, VK_IMAGE_LAYOUT_GENERAL}};
@@ -822,7 +823,7 @@ void PostDemosaicProcessor::record(VkCommandBuffer cmd, VkImage sourceImage, VkI
         vkUpdateDescriptorSets(device_, 4, hw, 0, nullptr);
     } else {
         // OFF deliberately performs no guide construction or reconstruction.
-        VkDescriptorImageInfo hi[4]{{VK_NULL_HANDLE, wbImage_.view, VK_IMAGE_LAYOUT_GENERAL},
+        VkDescriptorImageInfo hi[4]{{VK_NULL_HANDLE, wbView, VK_IMAGE_LAYOUT_GENERAL},
                                     {VK_NULL_HANDLE, sourceView, VK_IMAGE_LAYOUT_GENERAL},
                                     {VK_NULL_HANDLE, clipStateView, VK_IMAGE_LAYOUT_GENERAL},
                                     {VK_NULL_HANDLE, guideChain_->idleGuideView(), VK_IMAGE_LAYOUT_GENERAL}};
@@ -853,11 +854,11 @@ void PostDemosaicProcessor::record(VkCommandBuffer cmd, VkImage sourceImage, VkI
     if (timingPool) vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, timingPool, 3);
     // The highlight-stage result lives in wbImage_ when fused, otherwise in
     // the source image; defringe and FCC then ping-pong between the two.
-    const VkImage stagedImage = highlightFused ? wbImage_.image : sourceImage;
-    const VkImageView stagedView = highlightFused ? wbImage_.view : sourceView;
+    const VkImage stagedImage = highlightFused ? wbImg : sourceImage;
+    const VkImageView stagedView = highlightFused ? wbView : sourceView;
     if (!highlightFused) {
         auto recovered = barrier(sourceImage, VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT);
-        auto wbOut = barrier(wbImage_.image, VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_SHADER_WRITE_BIT);
+        auto wbOut = barrier(wbImg, VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_SHADER_WRITE_BIT);
         VkImageMemoryBarrier hs[2]{recovered, wbOut};
         vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0,
                              nullptr, 0, nullptr, 2, hs);
@@ -871,8 +872,8 @@ void PostDemosaicProcessor::record(VkCommandBuffer cmd, VkImage sourceImage, VkI
     if (timingPool) vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, timingPool, 16);
     if (defringeEnabled_) {
         // Alternate between the two existing images; no copy is needed.
-        const VkImage targetImage = correctedImage == sourceImage ? wbImage_.image : sourceImage;
-        const VkImageView targetView = correctedImage == sourceImage ? wbImage_.view : sourceView;
+        const VkImage targetImage = correctedImage == sourceImage ? wbImg : sourceImage;
+        const VkImageView targetView = correctedImage == sourceImage ? wbView : sourceView;
         auto correctedReady = barrier(correctedImage, VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT);
         auto targetWrite = barrier(targetImage, VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_SHADER_WRITE_BIT);
         VkImageMemoryBarrier pre[2]{correctedReady, targetWrite};
@@ -917,8 +918,8 @@ void PostDemosaicProcessor::record(VkCommandBuffer cmd, VkImage sourceImage, VkI
     if (fcc_) {
         const VkImage fccIn = finalImage_;
         const VkImageView fccInView = finalView_;
-        const VkImage fccOut = fccIn == sourceImage ? wbImage_.image : sourceImage;
-        const VkImageView fccOutView = fccIn == sourceImage ? wbImage_.view : sourceView;
+        const VkImage fccOut = fccIn == sourceImage ? wbImg : sourceImage;
+        const VkImageView fccOutView = fccIn == sourceImage ? wbView : sourceView;
         auto inReady = barrier(fccIn, VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT);
         auto outWrite = barrier(fccOut, VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_SHADER_WRITE_BIT);
         VkImageMemoryBarrier pre[2]{inReady, outWrite};
@@ -929,13 +930,14 @@ void PostDemosaicProcessor::record(VkCommandBuffer cmd, VkImage sourceImage, VkI
         ::fcc::LinearRgbImage out{fccOut, fccOutView, VK_FORMAT_R16G16B16A16_SFLOAT, VK_IMAGE_LAYOUT_GENERAL,
                                   width_, height_};
         if (timingPool) vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, timingPool, 4);
-        fcc_->record(cmd, in, out, fccSteps_);
+        // in -> out -> in ...: an even step count ends back in fccIn.
+        const ::fcc::LinearRgbImage* result = fcc_->recordPingPong(cmd, in, out, fccSteps_);
         if (timingPool) vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, timingPool, 5);
-        auto outReady = barrier(fccOut, VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT);
+        auto outReady = barrier(result->image, VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT);
         vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
                              0, nullptr, 0, nullptr, 1, &outReady);
-        finalImage_ = fccOut;
-        finalView_ = fccOutView;
+        finalImage_ = result->image;
+        finalView_ = result->view;
     } else if (timingPool) {
         vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, timingPool, 4);
         vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, timingPool, 5);
@@ -991,6 +993,19 @@ VkImageView PostDemosaicProcessor::sdrOutputView() const noexcept {
 }
 VkImage PostDemosaicProcessor::sdrOutputImage() const noexcept {
     return coloroppActive_ && coloropp_ && !deferColoroppTone_ ? coloropp_->toneImage() : outputImage();
+}
+void PostDemosaicProcessor::releaseScratch() noexcept {
+    const VkImage output = outputImage(), sdr = sdrOutputImage();
+    const auto spare = [&](const rawr::vk::OwnedImage& image) {
+        return image.image != VK_NULL_HANDLE && image.image != output && image.image != sdr;
+    };
+    if (spare(wbImage_)) {
+        rawr::vk::destroyOwnedImage(device_, wbImage_);
+        wbImageInitialized_ = false;
+    }
+    labDefringe_.reset();
+    // The wavelet tiles (about 135 MB at the default tile size) are only needed while the denoise runs.
+    denoise_.reset();
 }
 uint64_t PostDemosaicProcessor::defringeAllocatedBytes() const noexcept { return labDefringe_ ? labDefringe_->allocatedBytes() : 0; }
 uint64_t PostDemosaicProcessor::fccAllocatedBytes() const noexcept { return fcc_ ? fcc_->currentAllocatedBytes() : 0; }

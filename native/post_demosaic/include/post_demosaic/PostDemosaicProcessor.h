@@ -129,6 +129,11 @@ class PostDemosaicProcessor final {
     void prepareColoropp();
     // True when the last record() used Inpaint Opposed and so needs the tap.
     [[nodiscard]] bool coloroppToneRequired() const noexcept { return coloroppActive_; }
+    // Frees the owned full-size images the last record() left unused (the
+    // spare ping-pong image, the denoise output when it is not the result,
+    // and the defringe scratch); outputs stay valid. Call only once the GPU
+    // has finished that record(); the next record() recreates what it needs.
+    void releaseScratch() noexcept;
 
    private:
     void createWbPipeline();
@@ -206,8 +211,6 @@ class PostDemosaicProcessor final {
     // lazily on the first enabled record (strength <= 0 skips everything).
     std::unique_ptr<raw_denoise::DenoisePipeline> denoise_;
     std::function<void()> denoiseTileBoundary_;
-    rawr::vk::OwnedImage denoiseOut_{};
-    bool denoiseOutInitialized_ = false;
     std::unique_ptr<::fcc::FalseColorCorrectionPipeline> fcc_;
     std::unique_ptr<rawr::highlight::ColoroppProcessor> coloropp_;
     bool coloroppActive_ = false;

@@ -62,6 +62,8 @@
 #include "mf_rx_ref_tiles_prod.h"
 #include "mf_rx_cand_select_prod.h"
 #include "mf_rx_block_match_prod.h"
+#include "mf_rx_block_match_r1_prod.h"
+#include "mf_rx_block_match_r4_prod.h"
 #include "mf_rx_lk_prod.h"
 #include "mf_rx_fill_prod.h"
 #include "mf_rx_robust_prod.h"
@@ -76,6 +78,10 @@
 #include "mf_rx_fb_flags_prod.h"
 #include "mf_rx_fit_prod.h"
 #include "mf_rx_moving_prod.h"
+#include "mf_rx_accumulate_lean_prod.h"
+#include "mf_rx_cand_select_lean_prod.h"
+#include "mf_rx_accumulate_lean_fit_prod.h"
+#include "mf_rx_fit_motion_prod.h"
 namespace rawr::raw_gpu_pipeline {
 namespace {
 struct B {
@@ -254,6 +260,10 @@ const std::array<Spec, static_cast<size_t>(ShaderId::Count)> specs{{{"noise_esti
                                    {{0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {2, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {3, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}}},
                                   {"rx_block_match", mf_rx_block_match_prod_spv, mf_rx_block_match_prod_spv_size, mf_rx_block_match_prod_spv, mf_rx_block_match_prod_spv_size,
                                    {{0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {2, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {3, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {4, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}}},
+                                  {"rx_block_match_r1", mf_rx_block_match_r1_prod_spv, mf_rx_block_match_r1_prod_spv_size, mf_rx_block_match_r1_prod_spv, mf_rx_block_match_r1_prod_spv_size,
+                                   {{0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {2, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {3, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {4, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}}},
+                                  {"rx_block_match_r4", mf_rx_block_match_r4_prod_spv, mf_rx_block_match_r4_prod_spv_size, mf_rx_block_match_r4_prod_spv, mf_rx_block_match_r4_prod_spv_size,
+                                   {{0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {2, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {3, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {4, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}}},
                                   {"rx_lk", mf_rx_lk_prod_spv, mf_rx_lk_prod_spv_size, mf_rx_lk_prod_spv, mf_rx_lk_prod_spv_size,
                                    {{0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {2, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {3, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}}},
                                   {"rx_fill", mf_rx_fill_prod_spv, mf_rx_fill_prod_spv_size, mf_rx_fill_prod_spv, mf_rx_fill_prod_spv_size,
@@ -281,6 +291,14 @@ const std::array<Spec, static_cast<size_t>(ShaderId::Count)> specs{{{"noise_esti
                                   {"rx_fit", mf_rx_fit_prod_spv, mf_rx_fit_prod_spv_size, mf_rx_fit_prod_spv, mf_rx_fit_prod_spv_size,
                                    {{0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {2, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {3, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {4, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {5, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {6, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}}},
                                   {"rx_moving", mf_rx_moving_prod_spv, mf_rx_moving_prod_spv_size, mf_rx_moving_prod_spv, mf_rx_moving_prod_spv_size,
+                                   {{0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {2, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {3, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {4, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {5, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {6, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}}},
+                                  {"rx_accumulate_lean", mf_rx_accumulate_lean_prod_spv, mf_rx_accumulate_lean_prod_spv_size, mf_rx_accumulate_lean_prod_spv, mf_rx_accumulate_lean_prod_spv_size,
+                                   {{0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {2, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {3, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {4, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {5, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {6, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {7, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {8, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {9, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {10, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {11, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {12, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {13, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {14, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {15, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}}},
+                                  {"rx_cand_select_lean", mf_rx_cand_select_lean_prod_spv, mf_rx_cand_select_lean_prod_spv_size, mf_rx_cand_select_lean_prod_spv, mf_rx_cand_select_lean_prod_spv_size,
+                                   {{0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {2, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {3, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}}},
+                                  {"rx_accumulate_lean_fit", mf_rx_accumulate_lean_fit_prod_spv, mf_rx_accumulate_lean_fit_prod_spv_size, mf_rx_accumulate_lean_fit_prod_spv, mf_rx_accumulate_lean_fit_prod_spv_size,
+                                   {{0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {2, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {3, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {4, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {5, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {6, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {7, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {8, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {9, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {10, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {11, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {12, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {13, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {14, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {15, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}}},
+                                  {"rx_fit_motion", mf_rx_fit_motion_prod_spv, mf_rx_fit_motion_prod_spv_size, mf_rx_fit_motion_prod_spv, mf_rx_fit_motion_prod_spv_size,
                                    {{0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {2, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {3, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {4, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {5, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}, {6, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE}}}}};
 void ck(VkResult r, const char* w) {
     if (r != VK_SUCCESS) throw std::runtime_error(std::string(w) + " VkResult=" + std::to_string(r));
@@ -313,6 +331,8 @@ void VulkanExecutor::initialize(VkDevice d, bool wantTrace) {
         "rx_ref_tiles",
         "rx_cand_select",
         "rx_block_match",
+        "rx_block_match_r1",
+        "rx_block_match_r4",
         "rx_lk",
         "rx_fill",
         "rx_robust",
@@ -327,6 +347,10 @@ void VulkanExecutor::initialize(VkDevice d, bool wantTrace) {
         "rx_fb_flags",
         "rx_fit",
         "rx_moving",
+        "rx_accumulate_lean",
+        "rx_cand_select_lean",
+        "rx_accumulate_lean_fit",
+        "rx_fit_motion",
     };
     static_assert(sizeof(kOrder) / sizeof(kOrder[0]) == static_cast<size_t>(ShaderId::Count),
                   "executor spec order table out of sync with ShaderId");

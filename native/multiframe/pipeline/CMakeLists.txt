@@ -57,6 +57,8 @@ set(RAWR_MF_SHADER_SOURCES
   ${RAWR_MF_DIR}/merge_rexture/shaders/rx_ref_tiles.comp
   ${RAWR_MF_DIR}/merge_rexture/shaders/rx_cand_select.comp
   ${RAWR_MF_DIR}/merge_rexture/shaders/rx_block_match.comp
+  ${RAWR_MF_DIR}/merge_rexture/shaders/rx_block_match_r1.comp
+  ${RAWR_MF_DIR}/merge_rexture/shaders/rx_block_match_r4.comp
   ${RAWR_MF_DIR}/merge_rexture/shaders/rx_lk.comp
   ${RAWR_MF_DIR}/merge_rexture/shaders/rx_fill.comp
   ${RAWR_MF_DIR}/merge_rexture/shaders/rx_robust.comp
@@ -104,6 +106,28 @@ foreach(RAWR_MF_SRC IN LISTS RAWR_MF_SHADER_SOURCES)
     COMMAND ${CMAKE_COMMAND} -DINPUT=${RAWR_MF_TRACE} -DOUTPUT=${RAWR_MF_TRACE_HDR} -DSYMBOL=mf_${RAWR_MF_NAME}_trace_spv -P ${RAWR_EMBED_BINARY_SCRIPT}
     DEPENDS ${RAWR_MF_SRC} ${RAWR_MF_INCLUDE_DEPS} VERBATIM)
   list(APPEND RAWR_MF_SPV_OUTPUTS ${RAWR_MF_PROD} ${RAWR_MF_TRACE} ${RAWR_MF_PROD_HDR} ${RAWR_MF_TRACE_HDR})
+endforeach()
+# Production variants: a Rexture source compiled with one define (SOURCE:VARIANT:DEFINE=VALUE), e.g. RX_LEAN with its optional paths
+# (detail fit, verification outputs, the reference's exact ties) compiled out. Each becomes symbol mf_<variant>_prod_spv.
+set(RAWR_MF_VARIANTS
+  rx_accumulate:rx_accumulate_lean:RX_LEAN=1
+  rx_accumulate:rx_accumulate_lean_fit:RX_LEAN_FIT=1
+  rx_cand_select:rx_cand_select_lean:RX_LEAN=1
+  rx_fit:rx_fit_motion:RX_FIT_OP=3)
+file(GLOB RAWR_RX_GLSL_ALL ${RAWR_MF_DIR}/merge_rexture/shaders/*.glsl)
+foreach(RAWR_MF_VARIANT IN LISTS RAWR_MF_VARIANTS)
+  string(REPLACE ":" ";" RAWR_MF_V ${RAWR_MF_VARIANT})
+  list(GET RAWR_MF_V 0 RAWR_MF_V_SRC)
+  list(GET RAWR_MF_V 1 RAWR_MF_V_NAME)
+  list(GET RAWR_MF_V 2 RAWR_MF_V_DEF)
+  set(RAWR_MF_SRC ${RAWR_MF_DIR}/merge_rexture/shaders/${RAWR_MF_V_SRC}.comp)
+  set(RAWR_MF_OUT ${RAWR_MF_SPV_DIR}/prod/${RAWR_MF_V_NAME}.spv)
+  set(RAWR_MF_HDR ${RAWR_MF_SPV_DIR}/mf_${RAWR_MF_V_NAME}_prod.h)
+  add_custom_command(OUTPUT ${RAWR_MF_OUT} ${RAWR_MF_HDR}
+    COMMAND ${GLSLC} --target-env=vulkan1.1 -O -D${RAWR_MF_V_DEF} ${RAWR_MF_SRC} -o ${RAWR_MF_OUT}
+    COMMAND ${CMAKE_COMMAND} -DINPUT=${RAWR_MF_OUT} -DOUTPUT=${RAWR_MF_HDR} -DSYMBOL=mf_${RAWR_MF_V_NAME}_prod_spv -P ${RAWR_EMBED_BINARY_SCRIPT}
+    DEPENDS ${RAWR_MF_SRC} ${RAWR_RX_GLSL_ALL} VERBATIM)
+  list(APPEND RAWR_MF_SPV_OUTPUTS ${RAWR_MF_OUT} ${RAWR_MF_HDR})
 endforeach()
 add_custom_target(raw_multiframe_gpu_shaders ALL DEPENDS ${RAWR_MF_SPV_OUTPUTS})
 

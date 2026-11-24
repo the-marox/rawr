@@ -41,6 +41,8 @@ enum class ShaderId : std::uint32_t {
     RxRefTiles,
     RxCandSelect,
     RxBlockMatch,
+    RxBlockMatchR1,
+    RxBlockMatchR4,
     RxLk,
     RxFill,
     RxRobust,
@@ -55,6 +57,10 @@ enum class ShaderId : std::uint32_t {
     RxFbFlags,
     RxFit,
     RxMoving,
+    RxAccumulateLean,
+    RxCandSelectLean,
+    RxAccumulateLeanFit,
+    RxFitMotion,
     Count
 };
 struct ImageBinding {

@@ -1,3 +1,4 @@
+#include <cstddef>
 #include <cstdlib>
 #include <rawr/raw_gpu_pipeline/RextureFit.h>
 #include <rawr/raw_gpu_pipeline/RextureRecorder.h>
@@ -36,13 +37,20 @@ struct CandPc {
     std::int32_t level;
     float alpha, beta;
     std::int32_t exactTies;
+    std::int32_t fracCost;  // 1: candidates scored at their exact (bilinear) shift; production only, see rx_cand_select
 };
 struct BlockPc {
     std::int32_t ts, radius, metric, exactTies;
+    float priorRatio;  // rx_block_match_r4 only (levels 1-2): prefer the minimum next to the prior, see the shader
 };
+// Repeating texture near the sampling limit (shutter slats, railings, perforated metal): a far block-match minimum replaces the one
+// next to the coarser level's estimate only when its sub-pixel-corrected cost is below this fraction of the near one's. Removes the
+// outline artifacts (blobs of tiles aligned one period off) on the Paris shutter; neutral on the synthetic truth bursts.
+constexpr float kBmPriorRatio = 0.25f;
 struct LkPc {
     std::int32_t ts, which, iterations;
     float clipRadius, eps;
+    float stepGain;  // update scale: 1 = the reference's half step, kLkFullStep in production
 };
 struct RobustPc {
     float alpha, beta;
@@ -62,7 +70,11 @@ struct FinalPc {
     float white;
     std::int32_t w, h, cfa, debug;
     std::int32_t row0, rcdY0, rcdRows;  // first row of the dispatch; rows held by the RCD work planes
+    std::int32_t rcdPlanes;              // 1: the planes before export / bound, which rx_finalize applies per pixel
+    std::int32_t pad[3];                 // the shader's vec4 members start at 16-byte offsets
+    float rcdBalance[4], rcdInvRange[4];
 };
+static_assert(offsetof(FinalPc, rcdBalance) == 64 && sizeof(FinalPc) <= 128, "FinalPc must match rx_finalize's push block");
 struct FlagsPc {
     std::int32_t w, h;
 };
@@ -296,9 +308,24 @@ namespace {
 constexpr std::uint32_t kTileSize[4] = {8, 16, 16, 16};
 constexpr std::uint32_t kRadius[4] = {4, 4, 4, 1};
 constexpr std::int32_t kMetric[4] = {1, 1, 1, 0};
+// Tiles per workgroup of rx_block_match_r1 (its TPW). Small on purpose: on Adreno 840 3 tiles (7 KB of shared memory) beat 12 (28 KB)
+// by 1.5x, the group count being what hides the shared-memory latency.
+constexpr std::uint32_t kBmR1TilesPerGroup = 3;
 constexpr std::uint32_t kUpsampleScale[4] = {0, 4, 4, 2};
 constexpr std::int32_t kLkIterations = 6;
+// Production LK: the gradient is the central difference r(x + 1) - r(x - 1), twice the slope, which makes the reference's
+// Gauss-Newton step move half way (the error halves per iteration, so it needs 6). The full step reaches the same flow in 2
+// (synthetic truth bursts within +-0.02 dB of the 6 half steps; real bursts: noise and edge detail within 0.3%), 2.5x less LK.
+constexpr std::int32_t kLkIterationsFullStep = 2;
+constexpr float kLkFullStep = 2.0f;
 constexpr float kHessianEps = 1.0e-10f;
+
+// Profile mark names per alignment level (cand, bm, lk, fill, lk1): the per-level split of the stage totals.
+constexpr const char* kLevelMark[5][4] = {{"cand_l0", "cand_l1", "cand_l2", "cand_l3"},
+                                          {"bm_l0", "bm_l1", "bm_l2", "bm_l3"},
+                                          {"lk_l0", "lk_l1", "lk_l2", "lk_l3"},
+                                          {"fill_l0", "fill_l1", "fill_l2", "fill_l3"},
+                                          {"lk1_l0", "lk1_l1", "lk1_l2", "lk1_l3"}};
 
 void copyFlow(VkCommandBuffer c, const ArenaImage& src, const ArenaImage& dst) {
     VkMemoryBarrier b{};
@@ -355,38 +382,47 @@ void RextureRecorder::recordAlignmentLevel(VkCommandBuffer c, std::uint32_t l, b
         const auto& coarse = arena_.image("rx_flow_l" + std::to_string(l - 1));
         const std::uint32_t coarseTs = kTileSize[l - 1];
         CandPc p{std::int32_t((kUpsampleScale[l] * coarseTs) / 16u), float(kUpsampleScale[l]), std::int32_t(l),
-                 config_.noiseAlpha, config_.noiseBeta, debug ? 1 : 0};
-        executor_.record(c, ShaderId::RxCandSelect, {{ib(0, ref), ib(1, mov), ib(2, coarse), ib(3, flow)}, {}}, &p,
+                 config_.noiseAlpha, config_.noiseBeta, debug ? 1 : 0, debug ? 0 : 1};  // the verification build keeps the reference's integer shifts
+        executor_.record(c, debug ? ShaderId::RxCandSelect : ShaderId::RxCandSelectLean, {{ib(0, ref), ib(1, mov), ib(2, coarse), ib(3, flow)}, {}}, &p,
                          sizeof(p), tx, ty);
         computeWriteBarrier(c);
     }
-    if (mark_ && l > 0) mark_("cand");
+    if (mark_ && l > 0) mark_(kLevelMark[0][l]);
     if (debug) copyFlow(c, flow, arena_.image("rx_dbg_prior_l" + ls));
-    BlockPc bp{std::int32_t(kTileSize[l]), std::int32_t(kRadius[l]), kMetric[l], debug ? 1 : 0};
-    executor_.record(c, ShaderId::RxBlockMatch,
-                     {{ib(0, ref), ib(1, mov), ib(2, flow), ib(3, tiles), ib(4, arena_.image("rx_bmcost_l" + ls))}, {}}, &bp,
-                     sizeof(bp), tx, ty);
+    BlockPc bp{std::int32_t(kTileSize[l]), std::int32_t(kRadius[l]), kMetric[l], debug ? 1 : 0, debug ? 0.0f : kBmPriorRatio};
+    const DispatchBindings bmSets{{ib(0, ref), ib(1, mov), ib(2, flow), ib(3, tiles), ib(4, arena_.image("rx_bmcost_l" + ls))}, {}};
+    if (l == 3u && !debug) {
+        // Finest level (tile 16, radius 1, L1): one thread per (tile, candidate), kBmR1TilesPerGroup tiles per workgroup.
+        executor_.record(c, ShaderId::RxBlockMatchR1, bmSets, &bp, sizeof(bp), divUp(tx * ty, kBmR1TilesPerGroup), 1u);
+    } else if ((l == 1u || l == 2u) && !debug) {
+        executor_.record(c, ShaderId::RxBlockMatchR4, bmSets, &bp, sizeof(bp), tx, ty);
+    } else {
+        executor_.record(c, ShaderId::RxBlockMatch, bmSets, &bp, sizeof(bp), tx, ty);
+    }
     computeWriteBarrier(c);
-    if (mark_) mark_("bm");
+    if (mark_) mark_(kLevelMark[1][l]);
     if (debug) copyFlow(c, flow, arena_.image("rx_dbg_bm_l" + ls));
     // Levels above the coarsest: mode 2 and mode 1 tiles are independent, one dispatch. The coarsest level fills the
     // unconstrained tiles from the constrained ones between the two.
     // Level 1 is filled like the coarsest: a tile too faint to measure (a dark wall, wood grain) otherwise keeps the coarser level's estimate, which
     // for such a tile is far short of the real motion and is refined at no finer level.
     const bool fillLevel = l == 0u || (l == 1u && tx * ty <= 1024u);
-    LkPc lk{std::int32_t(kTileSize[l]), fillLevel ? 2 : 3, kLkIterations, float(kRadius[l]), kHessianEps};
-    executor_.record(c, ShaderId::RxLk, {{ib(0, ref), ib(1, mov), ib(2, flow), ib(3, tiles)}, {}}, &lk, sizeof(lk), tx, ty);
+    // The verification build keeps the reference's half steps.
+    LkPc lk{std::int32_t(kTileSize[l]), fillLevel ? 2 : 3, debug ? kLkIterations : kLkIterationsFullStep, float(kRadius[l]),
+            kHessianEps, debug ? 1.0f : kLkFullStep};
+    const ShaderId lkId = ShaderId::RxLk;
+    executor_.record(c, lkId, {{ib(0, ref), ib(1, mov), ib(2, flow), ib(3, tiles)}, {}}, &lk, sizeof(lk), tx, ty);
     computeWriteBarrier(c);
-    if (mark_) mark_("lk");
+    if (mark_) mark_(kLevelMark[2][l]);
     if (fillLevel) {
         executor_.record(c, ShaderId::RxFill, {{ib(0, flow), ib(1, tiles)}, {}}, nullptr, 0, 1, 1);
         computeWriteBarrier(c);
-        if (mark_) mark_("fill");
+        if (mark_) mark_(kLevelMark[3][l]);
         lk.which = 1;
-        executor_.record(c, ShaderId::RxLk, {{ib(0, ref), ib(1, mov), ib(2, flow), ib(3, tiles)}, {}}, &lk, sizeof(lk), tx,
+        executor_.record(c, lkId, {{ib(0, ref), ib(1, mov), ib(2, flow), ib(3, tiles)}, {}}, &lk, sizeof(lk), tx,
                          ty);
         computeWriteBarrier(c);
-        if (mark_) mark_("lk1");
+        if (mark_) mark_(kLevelMark[4][l]);
     }
 }
 }  // namespace rawr::raw_gpu_pipeline
@@ -449,7 +485,7 @@ void RextureRecorder::recordAccumulate(VkCommandBuffer c, VkImageView rawU16, co
     p.fit = config_.detailRestore ? 1 : 0;
     ImageBinding raw{0, rawU16, VK_IMAGE_LAYOUT_GENERAL};
     const ArenaImage& ss2 = debug ? arena_.image("rx_dbg_ss2") : a;   // never touched without debug
-    executor_.record(c, ShaderId::RxAccumulate,
+    executor_.record(c, debug ? ShaderId::RxAccumulate : (config_.detailRestore ? ShaderId::RxAccumulateLeanFit : ShaderId::RxAccumulateLean),
                      {{raw, ib(1, arena_.image("rx_flow_l3")), ib(2, arena_.image("rx_er")), ib(3, arena_.image("rx_base_cov")),
                        ib(4, a), ib(5, arena_.image("rx_acc_b")), ib(6, arena_.image("rx_acc_c")), ib(7, ss2),
                        raw8(rawU16), ib(9, arena_.image("rx_flow_l3")), ib(10, arena_.image("rx_er")),
@@ -515,12 +551,16 @@ void RextureRecorder::recordFinalize(VkCommandBuffer c, VkImageView rawU16, cons
         } else {
             const std::int32_t y0 = std::max(r0 - kRcdHalo, 0), y1 = std::min(r1 + kRcdHalo, h);
             if (y1 - y0 > std::int32_t(work.extent.height)) throw std::logic_error("rexture recorder: RCD strip too tall");
-            recordRcd(c, rawU16, f, y0, y1 - y0, true);
+            recordRcd(c, rawU16, f, y0, y1 - y0, true, /*exportAndBound=*/false);
             if (mark_) mark_("rcd");
             p.rcdY0 = y0;
             p.rcdRows = y1 - y0;
         }
         p.row0 = r0;
+        p.rcdPlanes = debug ? 0 : 1;
+        for (int i = 0; i < 3; ++i) p.rcdBalance[i] = config_.whiteBalance[i];
+        p.rcdBalance[3] = 1.0f;
+        for (int i = 0; i < 4; ++i) p.rcdInvRange[i] = 1.0f / (f.normalization.whiteLevel - f.normalization.blackByPhase[i]);
         executor_.record(c, ShaderId::RxFinalize,
                          {{raw, ib(1, arena_.image("rx_base_cov")), ib(2, accA), ib(3, arena_.image("rx_acc_b")), ib(4, accC),
                            ib(5, arena_.image("rx_support")), ib(6, work), ib(7, out), ib(8, dbgOut), ib(9, dbgPre),
@@ -595,7 +635,7 @@ void RextureRecorder::recordFit(VkCommandBuffer c, std::int32_t op, VkImageView 
     const auto& weight = arena_.image(slot == 1 ? "rx_fit_w_b" : "rx_fit_w");
     const Extent2D grid = op == 3 ? weight.extent : out.extent;
     ImageBinding raw{0, rawU16, VK_IMAGE_LAYOUT_GENERAL};
-    executor_.record(c, ShaderId::RxFit,
+    executor_.record(c, op == 3 ? ShaderId::RxFitMotion : ShaderId::RxFit,
                      {{raw, ib(1, arena_.image("rx_fit_bg")), ib(2, arena_.image("rx_fit_acc")), ib(3, out),
                        ib(4, arena_.image(slot == 1 ? "rx_flow_l3_b" : "rx_flow_l3")), ib(5, weight), ib(6, arena_.image("rx_fit_acc2"))},
                       {}},
@@ -658,7 +698,7 @@ void RextureRecorder::recordBaseDemosaic(VkCommandBuffer c, VkImageView rawU16, 
 // fp32 RCD of the image rows [y0, y0 + rows) into rx_rcd_work (direction field in rx_rcd_dir), then the native-range bound
 // in place. gate: only near the tiles flagged in rx_fb_tiles.
 void RextureRecorder::recordRcd(VkCommandBuffer c, VkImageView rawU16, const MultiframeFrameParameters& f, std::int32_t y0,
-                                std::int32_t rows, bool gate) const {
+                                std::int32_t rows, bool gate, bool exportAndBound) const {
     if (!rawU16) throw std::invalid_argument("rexture recorder: null RAW16 view");
     const auto& out = arena_.image("rx_rcd_work");
     const auto& dir = arena_.image("rx_rcd_dir");
@@ -694,6 +734,7 @@ void RextureRecorder::recordRcd(VkCommandBuffer c, VkImageView rawU16, const Mul
     executor_.record(c, ShaderId::RxRcdGreenSites, b, &p, sizeof(p), divUp(half, 8), divUp(n, 32));
     computeWriteBarrier(c);
     if (mark_ && !gate) mark_("rcd_sites");
+    if (!exportAndBound) return;   // production: rx_finalize exports and bounds the pixels it reads
     executor_.record(c, ShaderId::RxRcdExport, b, &p, sizeof(p), divUp(p.width, 4), divUp(n, 32));
     computeWriteBarrier(c);
     if (mark_ && !gate) mark_("rcd_export");
@@ -731,7 +772,7 @@ void RextureRecorder::recordAccumulatePair(VkCommandBuffer c, VkImageView rawSlo
     p.gain1 = gain1;
     p.fit = config_.detailRestore ? 1 : 0;
     ImageBinding raw{0, rawSlot0, VK_IMAGE_LAYOUT_GENERAL};
-    executor_.record(c, ShaderId::RxAccumulate,
+    executor_.record(c, config_.detailRestore ? ShaderId::RxAccumulateLeanFit : ShaderId::RxAccumulateLean,
                      {{raw, ib(1, arena_.image("rx_flow_l3")), ib(2, arena_.image("rx_er")), ib(3, arena_.image("rx_base_cov")),
                        ib(4, a), ib(5, arena_.image("rx_acc_b")), ib(6, arena_.image("rx_acc_c")), ib(7, a), raw8(rawSlot1),
                        ib(9, arena_.image("rx_flow_l3_b")), ib(10, arena_.image("rx_er_b")),
