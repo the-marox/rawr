@@ -170,8 +170,27 @@ internal fun LensEditorScreen(state: SettingsUiState, lensName: String?, dispatc
 
     if (showAdvanced) {
         SettingsPageContainer(testTag = SettingsTestTags.sectionRoot("LensAdvanced")) {
+            // Rawr 17U fork: the lens page keeps the basics (lens, capture, colour); the sensor tuning that was on
+            // it (exposure range, vendor mode, levels, layout, edge crop) is here, above Ed's automatic settings.
+            // Groups Ed adds to the lens page later go here too unless they are basics.
+            ExtendedExposureGroup(draft.image.exposure) { draft = draft.image { copy(exposure = it) } }
+            VendorModeGroup(draft, camera, onEditKey = { editKey = it ?: -1 }) { draft = it }
+            LevelsGroup(
+                title = "Black & white levels",
+                description = "Dynamic uses the camera's own levels. Static overrides them on every frame, " +
+                    "e.g. for vendor sensor modes with a different bit depth.",
+                levels = draft.image.levels,
+                camera = camera
+            ) { draft = draft.image { copy(levels = it) } }
+            SensorLayoutGroup(draft.image.sensorLayout, hasPhotoStream = draft.streams.photo != null) { draft = draft.image { copy(sensorLayout = it) } }
+            RawEdgeCropGroup(
+                crop = draft.image.cropEdges,
+                rawWidth = draft.streams.raw.choice.width,
+                rawHeight = draft.streams.raw.choice.height,
+                cfaBlock = draft.image.sensorLayout.block
+            ) { draft = draft.image { copy(cropEdges = it) } }
             SettingsGroup(
-                title = "Advanced · ${draft.name}",
+                title = "Automatic · ${draft.name}",
                 description = "The app sets these by itself. Change them only to work around a camera; " +
                     "Save on the lens page keeps them."
             ) {
@@ -227,22 +246,6 @@ internal fun LensEditorScreen(state: SettingsUiState, lensName: String?, dispatc
             )
         }
         CaptureGroup(draft, camera, onPickStream = { pickStream = true }) { draft = it }
-        ExtendedExposureGroup(draft.image.exposure) { draft = draft.image { copy(exposure = it) } }
-        VendorModeGroup(draft, camera, onEditKey = { editKey = it ?: -1 }) { draft = it }
-        LevelsGroup(
-            title = "Black & white levels",
-            description = "Dynamic uses the camera's own levels. Static overrides them on every frame, " +
-                "e.g. for vendor sensor modes with a different bit depth.",
-            levels = draft.image.levels,
-            camera = camera
-        ) { draft = draft.image { copy(levels = it) } }
-        SensorLayoutGroup(draft.image.sensorLayout, hasPhotoStream = draft.streams.photo != null) { draft = draft.image { copy(sensorLayout = it) } }
-        RawEdgeCropGroup(
-            crop = draft.image.cropEdges,
-            rawWidth = draft.streams.raw.choice.width,
-            rawHeight = draft.streams.raw.choice.height,
-            cfaBlock = draft.image.sensorLayout.block
-        ) { draft = draft.image { copy(cropEdges = it) } }
         LensDcpProfiles(
             image = draft.image,
             importing = importingDcp,
@@ -254,12 +257,15 @@ internal fun LensEditorScreen(state: SettingsUiState, lensName: String?, dispatc
             onSort = { descending -> draft = draft.image { sortDcps(descending) } }
         )
         SettingsGroup(title = "Advanced") {
-            val changed = draft.advancedSummary()
+            val keys = draft.vendorKeys.size
+            val changed = listOfNotNull(if (keys > 0) "$keys vendor key${if (keys == 1) "" else "s"}" else null) +
+                draft.advancedSummary()
             SettingsRow(
                 title = "Advanced settings",
-                value = if (changed.isEmpty()) "All automatic" else changed.joinToString(" · "),
-                supportingText = "What the app sets by itself: extra streams, buffers, use cases, session and camera " +
-                    "workarounds. Change them only to work around a camera",
+                value = if (changed.isEmpty()) "Sensor, vendor keys, levels · all automatic" else changed.joinToString(" · "),
+                supportingText = "Sensor tuning (exposure range, vendor mode and keys, black & white levels, sensor " +
+                    "layout, edge crop) and what the app sets by itself: extra streams, buffers, use cases, session " +
+                    "and camera workarounds",
                 testTag = lensEditorTag("advanced"),
                 onClick = { showAdvanced = true }
             )

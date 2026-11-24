@@ -37,6 +37,223 @@ val filmAssets = tasks.register<FilmAssetsTask>("generateFilmAssets") {
     sourceFile.set(rootProject.layout.projectDirectory.file("native/spektrafilm/assets/SpektraHanatos2025Spectra.f32"))
     outputDirectory.set(layout.buildDirectory.dir("generated/filmAssets"))
 }
+// Rawr 17U fork: the settings search index is generated from the settings sources at build time, so options Ed
+// adds to his pages are searchable with no change here. It reads every row title literal a settings page shows
+// (title = "...", label = "...", or the first argument of the row composables), follows the calls from each page
+// composable (SettingsSections.kt) and the page links (OpenSection / HubRow / home entries) to build the path.
+abstract class SettingsSearchIndexTask : DefaultTask() {
+    @get:InputDirectory abstract val sourceDirectory: DirectoryProperty
+    @get:OutputDirectory abstract val outputDirectory: DirectoryProperty
+
+    private class Fn(val name: String, val body: String)
+
+    @TaskAction fun generate() {
+        val files = sourceDirectory.get().asFile.walkTopDown().filter { it.isFile && it.extension == "kt" }.toList()
+        val functions = HashMap<String, MutableList<Fn>>()
+        var sectionsSource = ""
+        var modelsSource = ""
+        for (file in files) {
+            val text = stripComments(file.readText())
+            if (file.name == "SettingsSections.kt") sectionsSource = text
+            if (file.name == "SettingsModels.kt") modelsSource = text
+            for (fn in parseFunctions(text)) functions.getOrPut(fn.name) { mutableListOf() }.add(fn)
+        }
+        val sectionTitles = LinkedHashMap<String, String>()
+        Regex("""enum class SettingsSection\(val title: String\)\s*\{([^}]*)\}""").find(modelsSource)?.let { m ->
+            Regex("""(\w+)\("([^"]*)"\)""").findAll(m.groupValues[1]).forEach { sectionTitles[it.groupValues[1]] = it.groupValues[2] }
+        }
+        check(sectionTitles.isNotEmpty()) { "SettingsSection enum not found" }
+        // Page composable of each section: the first call in its `SettingsSection.X -> { ... }` branch.
+        val pageOf = LinkedHashMap<String, String>()
+        Regex("""SettingsSection\.(\w+)\s*->\s*\{\s*(\w+)\(""").findAll(sectionsSource).forEach {
+            pageOf[it.groupValues[1]] = it.groupValues[2]
+        }
+        check(pageOf.isNotEmpty()) { "SettingsSectionContent branches not found" }
+
+        val callRegex = Regex("""\b([A-Za-z_]\w*)\s*(?:<[^<>()]*>)?\s*\(""")
+        fun closure(root: String): List<Fn> {
+            val seen = HashSet<String>()
+            val out = ArrayList<Fn>()
+            val queue = ArrayDeque(listOf(root))
+            while (queue.isNotEmpty()) {
+                val name = queue.removeFirst()
+                if (!seen.add(name)) continue
+                val defs = functions[name] ?: continue
+                for (fn in defs) {
+                    out.add(fn)
+                    callRegex.findAll(fn.body).forEach { call ->
+                        val callee = call.groupValues[1]
+                        // Another page's composable is that page's options, not this one's.
+                        if (callee != name && callee in functions && callee !in pageOf.values) queue.add(callee)
+                    }
+                }
+            }
+            return out
+        }
+
+        val linkRegex = Regex("""SettingsSection\.(\w+)""")
+        val homeRegex = Regex("""SettingsHomeEntry\(\s*SettingsSection\.(\w+)""")
+        val titleRegexes = listOf(
+            Regex("""\b(?:title|label)\s*=\s*"((?:[^"\\$]|\\[^$])*)""""),
+            Regex("""\b(?:SettingsRow|SettingsSwitchRow|SettingsSelectionRow|DropdownChoiceRow|ToggleSubmenuRow|SettingsGroup)\(\s*"((?:[^"\\$]|\\[^$])*)"""")
+        )
+
+        // Page paths, breadth first from the home page.
+        val homeBody = functions["SettingsHome"]?.joinToString("\n") { it.body } ?: error("SettingsHome not found")
+        val path = LinkedHashMap<String, List<String>>()
+        val queue = ArrayDeque<String>()
+        homeRegex.findAll(homeBody).forEach { val s = it.groupValues[1]; if (s !in path) { path[s] = listOf(s); queue.add(s) } }
+        val pageFunctions = HashMap<String, List<Fn>>()
+        while (queue.isNotEmpty()) {
+            val section = queue.removeFirst()
+            val page = pageOf[section] ?: continue
+            val fns = closure(page)
+            pageFunctions[section] = fns
+            for (fn in fns) linkRegex.findAll(fn.body).forEach {
+                val target = it.groupValues[1]
+                if (target in sectionTitles && target in pageOf && target !in path) {
+                    path[target] = path.getValue(section) + target
+                    queue.add(target)
+                }
+            }
+        }
+
+        // A row named like a page (a hub's link, a page's own group) is found as that page.
+        val pageTitles = path.keys.map { sectionTitles.getValue(it).lowercase() }.toSet()
+        val rows = LinkedHashSet<List<String>>()
+        for ((section, sections) in path) {
+            val where = sections.joinToString(" › ") { sectionTitles.getValue(it) }
+            rows.add(listOf(sectionTitles.getValue(section), section, sections.dropLast(1).joinToString(" › ") { sectionTitles.getValue(it) }))
+            for (fn in pageFunctions[section].orEmpty()) for (regex in titleRegexes) regex.findAll(fn.body).forEach {
+                val title = it.groupValues[1].trim()
+                // Skips code identifiers (camelCase) and one-letter labels.
+                val identifier = Regex("[a-z]+[A-Z]\\w*").matches(title)
+                if (title.length >= 2 && title.any { c -> c.isLetter() } && !identifier && title.lowercase() !in pageTitles) {
+                    rows.add(listOf(title, section, where))
+                }
+            }
+        }
+
+        val out = StringBuilder()
+        out.append("package com.rawr.camera.settings.ui;\n\n")
+        out.append("// Generated by the generateSettingsSearchIndex task from the settings sources. Do not edit.\n")
+        out.append("final class SettingsSearchIndexData {\n    private SettingsSearchIndexData() {}\n\n")
+        out.append("    /** Rows of {title, SettingsSection name, page path}. */\n")
+        out.append("    static final String[][] ENTRIES = {\n")
+        for (row in rows) out.append("        {").append(row.joinToString(", ") { javaString(it) }).append("},\n")
+        out.append("    };\n}\n")
+        val target = outputDirectory.file("com/rawr/camera/settings/ui/SettingsSearchIndexData.java").get().asFile
+        target.parentFile.mkdirs()
+        target.writeText(out.toString())
+    }
+
+    private fun javaString(value: String): String {
+        val sb = StringBuilder("\"")
+        var i = 0
+        while (i < value.length) {
+            val c = value[i]
+            if (c == '\\' && i + 1 < value.length) {
+                // Kotlin escapes \" \\ \n \t \uXXXX are valid Java; \' too.
+                sb.append(c).append(value[i + 1]); i += 2; continue
+            }
+            if (c.code < 0x20 || c.code > 0x7e) sb.append(String.format("\\u%04x", c.code)) else sb.append(c)
+            i++
+        }
+        return sb.append('"').toString()
+    }
+
+    private fun stripComments(text: String): String {
+        val sb = StringBuilder(text.length)
+        var i = 0
+        var inString = false
+        while (i < text.length) {
+            val c = text[i]
+            if (inString) {
+                sb.append(c)
+                if (c == '\\' && i + 1 < text.length) { sb.append(text[i + 1]); i += 2; continue }
+                if (c == '"') inString = false
+                i++
+                continue
+            }
+            if (c == '"') { inString = true; sb.append(c); i++; continue }
+            if (c == '/' && i + 1 < text.length && text[i + 1] == '/') {
+                while (i < text.length && text[i] != '\n') i++
+                continue
+            }
+            if (c == '/' && i + 1 < text.length && text[i + 1] == '*') {
+                val end = text.indexOf("*/", i + 2)
+                i = if (end < 0) text.length else end + 2
+                continue
+            }
+            sb.append(c)
+            i++
+        }
+        return sb.toString()
+    }
+
+    // Index just past the string starting at [start] (a '"'), skipping templates such as "${if (a) "x" else "y"}".
+    private fun skipString(text: String, start: Int): Int {
+        val raw = text.startsWith("\"\"\"", start)
+        var i = start + if (raw) 3 else 1
+        while (i < text.length) {
+            val c = text[i]
+            if (!raw && c == '\\') { i += 2; continue }
+            if (raw && text.startsWith("\"\"\"", i)) return i + 3
+            if (!raw && c == '"') return i + 1
+            if (c == '$' && i + 1 < text.length && text[i + 1] == '{') { i = skipBlock(text, i + 1); continue }
+            i++
+        }
+        return text.length
+    }
+
+    // Index just past the block whose opening bracket is at [open].
+    private fun skipBlock(text: String, open: Int): Int {
+        val opening = text[open]
+        val closing = if (opening == '{') '}' else ')'
+        var depth = 0
+        var i = open
+        while (i < text.length) {
+            val c = text[i]
+            when {
+                c == '"' -> { i = skipString(text, i); continue }
+                c == '\'' && i + 2 < text.length -> {
+                    // Char literal: '{', '"', '\n'.
+                    val end = text.indexOf('\'', i + if (text[i + 1] == '\\') 3 else 2)
+                    if (end in (i + 2)..(i + 8)) { i = end + 1; continue }
+                }
+                c == opening -> depth++
+                c == closing -> { depth--; if (depth == 0) return i + 1 }
+            }
+            i++
+        }
+        return text.length
+    }
+
+    private fun parseFunctions(text: String): List<Fn> {
+        val out = ArrayList<Fn>()
+        val header = Regex("""\bfun\s+(?:<[^>]*>\s*)?(?:[\w.]+\.)?(\w+)\s*\(""")
+        var from = 0
+        while (true) {
+            val m = header.find(text, from) ?: break
+            val paramsEnd = skipBlock(text, m.range.last)
+            var i = paramsEnd
+            // Skip a return type up to the body.
+            while (i < text.length && text[i] != '{' && text[i] != '=' && text[i] != '\n') i++
+            if (i < text.length && text[i] == '{') {
+                val end = skipBlock(text, i)
+                out.add(Fn(m.groupValues[1], text.substring(i, end)))
+                from = i + 1 // nested local functions are found too
+            } else {
+                from = paramsEnd
+            }
+        }
+        return out
+    }
+}
+val settingsSearchIndex = tasks.register<SettingsSearchIndexTask>("generateSettingsSearchIndex") {
+    sourceDirectory.set(layout.projectDirectory.dir("src/main/kotlin/com/rawr/camera/settings"))
+    outputDirectory.set(layout.buildDirectory.dir("generated/settingsSearch"))
+}
 // Rawr 17U: both builds install as their own app, next to the official Rawr
 // (com.rawr.camera, signed by its author) and its debug build
 // (com.rawr.camera.debug), so a tester can carry Ed's and this fork's at once.
@@ -70,6 +287,7 @@ androidComponents {
     }
     onVariants { variant ->
         variant.sources.assets?.addGeneratedSourceDirectory(filmAssets, FilmAssetsTask::outputDirectory)
+        variant.sources.java?.addGeneratedSourceDirectory(settingsSearchIndex, SettingsSearchIndexTask::outputDirectory)
     }
 }
 

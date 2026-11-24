@@ -11,6 +11,12 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.background
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.ui.graphics.Color
+import kotlinx.coroutines.delay
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -107,6 +113,32 @@ internal fun controlTag(kind: String, name: String, explicit: String? = null): S
     return "settings_${kind}_${page}_${SettingsTestTags.slug(name)}"
 }
 
+/**
+ * Rawr 17U fork: tint and scroll into view the row a settings search result asked for ([LocalSettingsHighlight]),
+ * then clear the request.
+ */
+@Composable
+@OptIn(ExperimentalFoundationApi::class)
+internal fun settingsHighlightModifier(title: String?): Modifier {
+    val highlight = LocalSettingsHighlight.current
+    val target = highlight?.title
+    val on = title != null && target != null && target.equals(title, ignoreCase = true)
+    val requester = remember { BringIntoViewRequester() }
+    val color by animateColorAsState(
+        if (on) MaterialTheme.colorScheme.primary.copy(alpha = .2f) else Color.Transparent,
+        animationSpec = tween(durationMillis = 400)
+    )
+    LaunchedEffect(on) {
+        if (on) {
+            delay(150)
+            requester.bringIntoView()
+            delay(2600)
+            if (highlight?.title.equals(title, ignoreCase = true)) highlight?.title = null
+        }
+    }
+    return Modifier.bringIntoViewRequester(requester).background(color)
+}
+
 @Composable
 internal fun SettingsPageContainer(
     modifier: Modifier = Modifier,
@@ -149,7 +181,7 @@ internal fun SettingsGroup(
         if (title != null) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(start = SettingsRowHorizontalPadding)
+                modifier = Modifier.fillMaxWidth().then(settingsHighlightModifier(title)).padding(start = SettingsRowHorizontalPadding)
             ) {
                 // Rawr 17U fork: grey section titles and values - the accent is kept for what is on or chosen
                 Text(
@@ -195,6 +227,7 @@ internal fun SettingsRow(
         modifier =
             Modifier
                 .fillMaxWidth()
+                .then(settingsHighlightModifier(title))
                 .testTag(tag)
                 .then(if (onClick != null && enabled) Modifier.clickable(onClick = onClick) else Modifier)
                 .heightIn(min = SettingsRowMinHeight)
@@ -369,6 +402,7 @@ internal fun StandaloneNumericSliderRow(
     CompositionLocalProvider(LocalSettingsControlTag provides tag) {
     Column(
         Modifier.fillMaxWidth()
+            .then(settingsHighlightModifier(label))
             .testTag(tag)
             .padding(
                 start = SettingsSliderHorizontalPadding,

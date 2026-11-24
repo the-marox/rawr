@@ -10,6 +10,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -114,17 +115,21 @@ fun SettingsScreen(
         // Each destination keeps its own scroll offset (in-memory accessory
         // state), so Back returns to the previous scroll position.
         val scrollMemory = androidx.compose.runtime.remember { SettingsScrollMemory() }
+        // Rawr 17U fork: settings search - the query survives opening a result; the highlight marks its row.
+        val highlight = androidx.compose.runtime.remember { SettingsHighlight() }
+        var searchQuery by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf("") }
         Box(
             Modifier.fillMaxSize().padding(padding).testTag(settingsDestinationKey(state.presentation.destination)),
             contentAlignment = Alignment.TopCenter
         ) {
             CompositionLocalProvider(
                 LocalSettingsScrollSession provides
-                    SettingsScrollSession(settingsDestinationKey(state.presentation.destination), scrollMemory)
+                    SettingsScrollSession(settingsDestinationKey(state.presentation.destination), scrollMemory),
+                LocalSettingsHighlight provides highlight
             ) {
             when (val destination = state.presentation.destination) {
                 SettingsDestination.Home -> {
-                    SettingsHome(dispatch)
+                    SettingsHome(dispatch, searchQuery) { searchQuery = it }
                 }
 
                 is SettingsDestination.Section -> {
@@ -184,7 +189,7 @@ private fun destinationTitle(destination: SettingsDestination): String = when (d
 }
 
 @Composable
-private fun SettingsHome(dispatch: SettingsDispatch) {
+private fun SettingsHome(dispatch: SettingsDispatch, searchQuery: String, onSearchQueryChange: (String) -> Unit) {
     // Rawr 17U fork: grouped by what the user wants to do. Photo, Look, RAW development and System are hubs
     // (SettingsHubs.kt) linking to Ed's pages; Video, Viewfinder & controls and Lenses open their page directly.
     val entries =
@@ -198,6 +203,11 @@ private fun SettingsHome(dispatch: SettingsDispatch) {
             SettingsHomeEntry(SettingsSection.SystemHub, Icons.Rounded.Info, "System", "Renderer, experimental, debug, backup and about")
         )
     SettingsPageContainer(testTag = SettingsTestTags.SCREEN_HOME) {
+        SettingsSearchField(searchQuery, onSearchQueryChange)
+        if (searchQuery.isNotBlank()) {
+            SettingsSearchResults(searchQuery, dispatch)
+            return@SettingsPageContainer
+        }
         SettingsGroup {
             entries.forEachIndexed { index, entry ->
                 SettingsRow(
