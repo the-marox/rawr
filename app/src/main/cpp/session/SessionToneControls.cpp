@@ -64,8 +64,8 @@ void SessionEngine::setViewfinderDivisor(uint32_t divisor) { look_.setViewfinder
 
 void SessionEngine::setFilmSimLook(const spektrafilm_native::FilmLook& look) { look_.setFilmSimLook(look); }
 
-void SessionEngine::setFilmCompareLook(const spektrafilm_native::FilmLook* look, bool full) {
-    look_.setFilmCompare(look, full);
+void SessionEngine::setFilmCompareLook(const spektrafilm_native::FilmLook* look, int mode) {
+    look_.setFilmCompare(look, mode);
 }
 
 void SessionEngine::setQuickToneNativeValue(int target, float value) { look_.setQuickToneNativeValue(target, value); }

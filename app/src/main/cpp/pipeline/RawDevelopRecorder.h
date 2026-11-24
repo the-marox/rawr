@@ -142,7 +142,7 @@ class RawDevelopRecorder final {
     struct FilmCompare {
         std::shared_ptr<spektrafilm_native::SpektraFilm> engine;
         spektrafilm_native::FilmLook look{};
-        bool full = false;
+        int mode = 0;  // 0 second half, 1 whole viewfinder, 2 grain loupe (see PreviewLookController::FilmCompare)
     };
     void setFilmCompareSource(std::function<FilmCompare()> source) { acquireCompare_ = std::move(source); }
     void recordSceneExposure(VkCommandBuffer command, uint32_t frameSlot, VkImageView view, uint32_t width,

@@ -62,6 +62,19 @@ import kotlin.math.abs
 /** A change to the look: what a card does when tapped (kept) or held (preview only). */
 typealias LookEdit = (FilmSimLook) -> FilmSimLook
 
+/**
+ * Rawr 17U fork: a held card - its change to the look and how the viewfinder shows it: [FilmCompareMode.SPLIT]
+ * (the card on the right half), [FilmCompareMode.FULL] (whole viewfinder, halation) or [FilmCompareMode.LOUPE]
+ * (grain: the middle of the frame enlarged to about the photo's pixel size).
+ */
+class HeldLook(val edit: LookEdit, val mode: Int)
+
+object FilmCompareMode {
+    const val SPLIT = 0
+    const val FULL = 1
+    const val LOUPE = 2
+}
+
 private class Card(
     val key: String,
     val top: String,
@@ -89,10 +102,10 @@ private val FujiFilms = setOf(13, 14, 15, 18, 19)
 
 /**
  * Rawr 17U fork: what the viewfinder shows while a card is held, for [FilmCompareOverlay]: the look in use on the
- * left half and the held card on the right (the split falls on the middle of the screen, measured on the 17U), or
- * the held card over the whole viewfinder ([full]: grain and halation).
+ * left half and the held card on the right (the split falls on the middle of the screen, measured on the 17U), the
+ * held card over the whole viewfinder (halation), or the grain loupe (the middle of the frame enlarged).
  */
-internal data class FilmCompareHold(val current: String, val held: String, val full: Boolean)
+internal data class FilmCompareHold(val current: String, val held: String, val mode: Int)
 
 internal object FilmCompareOverlayState {
     var hold by mutableStateOf<FilmCompareHold?>(null)
@@ -103,7 +116,7 @@ internal object FilmCompareOverlayState {
 internal fun FilmCompareOverlay(modifier: Modifier) {
     val hold = FilmCompareOverlayState.hold ?: return
     Box(modifier) {
-        if (!hold.full) {
+        if (hold.mode == FilmCompareMode.SPLIT) {
             Box(
                 Modifier
                     .align(Alignment.Center)
@@ -116,7 +129,8 @@ internal fun FilmCompareOverlay(modifier: Modifier) {
                 Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { CompareLabel(hold.held) }
             }
         } else {
-            Box(Modifier.align(Alignment.TopCenter).padding(top = 10.dp)) { CompareLabel(hold.held) }
+            val label = if (hold.mode == FilmCompareMode.LOUPE) "${hold.held} · grain loupe ×4" else hold.held
+            Box(Modifier.align(Alignment.TopCenter).padding(top = 10.dp)) { CompareLabel(label) }
         }
     }
 }
@@ -246,7 +260,7 @@ internal fun FilmSheetPanel(
     onClose: () -> Unit,
     onSelectPreset: (String) -> Unit,
     onApply: (LookEdit) -> Unit,
-    onHold: (LookEdit?) -> Unit,
+    onHold: (HeldLook?) -> Unit,
     /** The PARAMS quick card limited to one group (by its label), or nothing for a tab without one. */
     groupCard: @Composable (String) -> Unit
 ) {
@@ -290,7 +304,7 @@ internal fun FilmStockSheet(
     /** Keep a change to the look. */
     onApply: (LookEdit) -> Unit,
     /** Show a change on the viewfinder only while a card is held; null on release. */
-    onHold: (LookEdit?) -> Unit,
+    onHold: (HeldLook?) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val haptics = LocalCaptureHaptics.current
@@ -439,12 +453,17 @@ internal fun FilmStockSheet(
                         if (preset != null) onSelectPreset(preset) else onApply(card.edit)
                     },
                     onHold = { down ->
+                        val mode = when (tab) {
+                            FilmSheetTab.Grain -> FilmCompareMode.LOUPE
+                            FilmSheetTab.Halation -> FilmCompareMode.FULL
+                            else -> FilmCompareMode.SPLIT
+                        }
                         FilmCompareOverlayState.hold = if (down) FilmCompareHold(
                             current = cards.firstOrNull { it.selected }?.name ?: "In use",
                             held = card.name,
-                            full = tab == FilmSheetTab.Grain || tab == FilmSheetTab.Halation
+                            mode = mode
                         ) else null
-                        onHold(if (down) card.edit else null)
+                        onHold(if (down) HeldLook(card.edit, mode) else null)
                     }
                 )
             }

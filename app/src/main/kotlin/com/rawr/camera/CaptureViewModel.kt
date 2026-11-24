@@ -275,20 +275,14 @@ class CaptureViewModel(application: Application) : AndroidViewModel(application)
     fun onFilmEvent(event: com.rawr.camera.architecture.CaptureFilmEvent) {
         if (event is com.rawr.camera.architecture.CaptureFilmEvent.HoldLook) {
             // Rawr 17U fork: preview only - the held card renders the second half of the viewfinder (split
-            // compare), the settings and the first half stay as they are; null ends the compare. A card that only
-            // changes grain or halation covers the whole viewfinder: both are fine-grained and hard to judge side
-            // by side, so lifting the finger is the comparison there.
+            // compare), the settings and the first half stay as they are; null ends the compare. Halation cards
+            // cover the whole viewfinder (mode 1) and grain cards show the grain loupe (mode 2, the middle of the
+            // frame enlarged so the grain is rendered at about the photo's pixel size).
             val current = latestSettings.filmSimLook
             val look = event.edit?.invoke(current)
-            val full = look != null && look != current && look.copy(
-                grainEnabled = current.grainEnabled,
-                grainAmount = current.grainAmount,
-                halationEnabled = current.halationEnabled,
-                halationAmount = current.halationAmount
-            ) == current
             android.util.Log.i("RawrFilmSheet", if (look == null) "HOLD_LOOK end" else
-                "HOLD_LOOK film=${look.film} paper=${look.paper} process=${look.process} full=$full current=${current.film}")
-            previewCoordinator.setFilmCompareLook(look?.toFloatArray(), look?.toIntArray(), full)
+                "HOLD_LOOK film=${look.film} paper=${look.paper} process=${look.process} mode=${event.mode} current=${current.film}")
+            previewCoordinator.setFilmCompareLook(look?.toFloatArray(), look?.toIntArray(), event.mode)
             return
         }
         val next = settingsEditor.update { current ->

@@ -120,5 +120,5 @@ void setFilmSimEnabled(EngineHandle handle, bool enabled) noexcept;
 void setViewfinderDivisor(EngineHandle handle, uint32_t divisor) noexcept;
 void setFilmSimLook(EngineHandle handle, spektrafilm_native::FilmLook look) noexcept;
 // Rawr 17U fork: split compare of the film sheet; null ends it.
-void setFilmCompareLook(EngineHandle handle, const spektrafilm_native::FilmLook* look, bool full) noexcept;
+void setFilmCompareLook(EngineHandle handle, const spektrafilm_native::FilmLook* look, int mode) noexcept;
 }  // namespace rawrcam::session

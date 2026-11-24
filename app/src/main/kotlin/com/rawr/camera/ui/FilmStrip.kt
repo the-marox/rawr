@@ -67,7 +67,7 @@ internal fun FilmStrip(
     /** Rawr 17U fork: keep a card's change to the look (FilmStockSheet.kt). */
     onApplyLook: (LookEdit) -> Unit = {},
     /** Rawr 17U fork: a card held - its change on the viewfinder only; null on release. */
-    onHoldLook: (LookEdit?) -> Unit = {}
+    onHoldLook: (HeldLook?) -> Unit = {}
 ) {
     // Rawr 17U fork: film on opens the film sheet straight away (✕ goes back to FILM and PARAMS).
     var mode by remember { mutableStateOf(FilmStripMode.Profiles) }

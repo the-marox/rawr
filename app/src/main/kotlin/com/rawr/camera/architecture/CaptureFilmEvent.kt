@@ -16,7 +16,8 @@ sealed interface CaptureFilmEvent {
     data class ApplyLook(val edit: (FilmSimLook) -> FilmSimLook) : CaptureFilmEvent
     /**
      * Rawr 17U fork: a card of the film sheet held - the viewfinder shows [edit] applied to the settings' look
-     * while it is held, without changing the settings; null puts the viewfinder back on the settings' look.
+     * while it is held, without changing the settings; null puts the viewfinder back on the settings' look. [mode]:
+     * 0 the right half of the viewfinder, 1 the whole viewfinder, 2 grain loupe (ui.FilmCompareMode).
      */
-    data class HoldLook(val edit: ((FilmSimLook) -> FilmSimLook)?) : CaptureFilmEvent
+    data class HoldLook(val edit: ((FilmSimLook) -> FilmSimLook)?, val mode: Int = 0) : CaptureFilmEvent
 }

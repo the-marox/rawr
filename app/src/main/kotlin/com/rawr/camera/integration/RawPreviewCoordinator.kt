@@ -410,13 +410,13 @@ class RawPreviewCoordinator(application: Application) : AutoCloseable {
     }
 
     /**
-     * Rawr 17U fork: split compare while a film-sheet card is held (no debounce); null ends it. [full] puts the
-     * held look over the whole viewfinder instead of its second half.
+     * Rawr 17U fork: split compare while a film-sheet card is held (no debounce); null ends it. [mode]: 0 the held
+     * look on the second half of the viewfinder, 1 over the whole viewfinder, 2 grain loupe (the middle enlarged).
      */
-    fun setFilmCompareLook(values: FloatArray?, enums: IntArray?, full: Boolean = false) {
+    fun setFilmCompareLook(values: FloatArray?, enums: IntArray?, mode: Int = 0) {
         val valuesCopy = values?.copyOf()
         val enumsCopy = enums?.copyOf()
-        postNative { native.setFilmCompareLook(nativeHandle, valuesCopy, enumsCopy, full) }
+        postNative { native.setFilmCompareLook(nativeHandle, valuesCopy, enumsCopy, mode) }
     }
 
     fun setFilmSimLook(values: FloatArray, enums: IntArray) {

@@ -93,6 +93,37 @@ void recordSecondHalfBlit(VkCommandBuffer command, VkImage src, uint32_t srcWidt
                          0, nullptr, 2, after);
 }
 
+// Rawr 17U fork: grain loupe - blits the centred region [cropWidth x cropHeight] of src over the whole of dst
+// (linear filter). Same barriers as recordScaledBlit.
+void recordCenterCropBlit(VkCommandBuffer command, VkImage src, uint32_t srcWidth, uint32_t srcHeight,
+                          uint32_t cropWidth, uint32_t cropHeight, VkAccessFlags srcAccess, VkImage dst,
+                          uint32_t dstWidth, uint32_t dstHeight, VkAccessFlags dstAccess) {
+    const VkImageMemoryBarrier before[2] = {generalImageBarrier(src, srcAccess, VK_ACCESS_TRANSFER_READ_BIT),
+                                            generalImageBarrier(dst, dstAccess, VK_ACCESS_TRANSFER_WRITE_BIT)};
+    vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr,
+                         0, nullptr, 2, before);
+    const uint32_t x0 = (srcWidth - std::min(cropWidth, srcWidth)) / 2u;
+    const uint32_t y0 = (srcHeight - std::min(cropHeight, srcHeight)) / 2u;
+    VkImageBlit blit{};
+    blit.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+    blit.srcOffsets[0] = {static_cast<int32_t>(x0), static_cast<int32_t>(y0), 0};
+    blit.srcOffsets[1] = {static_cast<int32_t>(x0 + std::min(cropWidth, srcWidth)),
+                          static_cast<int32_t>(y0 + std::min(cropHeight, srcHeight)), 1};
+    blit.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+    blit.dstOffsets[1] = {static_cast<int32_t>(dstWidth), static_cast<int32_t>(dstHeight), 1};
+    vkCmdBlitImage(command, src, VK_IMAGE_LAYOUT_GENERAL, dst, VK_IMAGE_LAYOUT_GENERAL, 1, &blit, VK_FILTER_LINEAR);
+    const VkImageMemoryBarrier after[2] = {
+        generalImageBarrier(dst, VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT),
+        generalImageBarrier(src, VK_ACCESS_TRANSFER_READ_BIT, VK_ACCESS_SHADER_READ_BIT)};
+    vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr,
+                         0, nullptr, 2, after);
+}
+
+// Grain loupe: the film runs on the middle of the frame enlarged so that one output pixel is about one pixel of a
+// 4096-wide photo (the 12.6 MP JPEG), at least x2. The film model sees it as an enlarger magnification
+// (enlargerScale), so grain, halation and diffusion are sized for that print.
+constexpr float kLoupePhotoLongEdge = 4096.0f;
+
 }  // namespace
 
 RawDevelopRecorder::RawDevelopRecorder(raw_preview::RawPreview& rawPreview, tonemap::TonemapEngine& tonemap,
@@ -562,9 +593,22 @@ RawDevelopRecordResult RawDevelopRecorder::record(const RawDevelopRecordInput& i
                     compareRecord.look.filmExposureEv = rawrcam::color::filmExposureEv(
                         compare.look, in.tonemapParams.aePostGain, in.tonemapParams.exposureEV);
                     try {
+                        if (compare.mode == 2) {
+                            // grain loupe: the film input becomes the middle of the frame, enlarged
+                            const float zoom = std::max(2.0f, kLoupePhotoLongEdge /
+                                                                  static_cast<float>(std::max(lookWidth, lookHeight)));
+                            const uint32_t cropW = std::max(1u, static_cast<uint32_t>(in.previewWidth / zoom));
+                            const uint32_t cropH = std::max(1u, static_cast<uint32_t>(in.previewHeight / zoom));
+                            recordCenterCropBlit(slot.command, displayImage, in.previewWidth, in.previewHeight, cropW,
+                                                 cropH, VK_ACCESS_SHADER_WRITE_BIT, slot.lookScaledLinear.image,
+                                                 lookWidth, lookHeight, VK_ACCESS_SHADER_READ_BIT);
+                            compareRecord.look.enlargerScale = std::clamp(compare.look.enlargerScale * zoom, 1.0f, 32.0f);
+                            compareRecord.look.enlargerOffsetXPercent = 0.0f;
+                            compareRecord.look.enlargerOffsetYPercent = 0.0f;
+                        }
                         compare.engine->record(compareRecord);
-                        // full (grain, halation): the held look over the whole frame
-                        if (compare.full)
+                        // whole viewfinder (halation) or loupe: the held look over the whole frame
+                        if (compare.mode != 0)
                             recordScaledBlit(slot.command, slot.lookScaledOut.image, lookWidth, lookHeight,
                                              VK_ACCESS_SHADER_WRITE_BIT, slot.tonemapped.image, in.previewWidth,
                                              in.previewHeight, VK_ACCESS_SHADER_READ_BIT);

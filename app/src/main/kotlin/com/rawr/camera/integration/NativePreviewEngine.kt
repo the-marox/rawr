@@ -101,7 +101,7 @@ class NativePreviewEngine {
     external fun setFilmSimLook(handle: Long, values: FloatArray, enums: IntArray)
 
     /** Rawr 17U fork: split compare while a film-sheet card is held; null arrays end it. */
-    external fun setFilmCompareLook(handle: Long, values: FloatArray?, enums: IntArray?, full: Boolean)
+    external fun setFilmCompareLook(handle: Long, values: FloatArray?, enums: IntArray?, mode: Int)
 
     external fun setLensShadingCorrectionEnabled(handle: Long, enabled: Boolean)
 
