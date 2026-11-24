@@ -27,13 +27,16 @@ import com.rawr.camera.model.*
 @Composable
 internal fun ScopeLayer(state: CaptureUiState, dispatch: CaptureDispatch, preview: CapturePreview) {
     val haptics = LocalCaptureHaptics.current
+    // Rawr 17U fork: hidden while a film-sheet card is held - the scopes would mix the two halves of the split
+    // (or show the grain loupe) and their card covers the right half's name.
+    val activeScopes = if (FilmCompareOverlayState.hold != null) emptyList() else state.activeScopes
     BoxWithConstraints(Modifier.fillMaxSize()) {
         fun geometry(index: Int, expanded: Boolean): ScopeGeometry = calculateScopeGeometry(
             maxWidth, maxHeight, state.orientation == Orientation.Landscape,
-            state.activeScopes.size, index, expanded, preview.deviceRotationDegrees
+            activeScopes.size, index, expanded, preview.deviceRotationDegrees
         )
-        val geometries = state.activeScopes.mapIndexed { index, scope -> geometry(index, state.expandedScope == scope) }
-        val presentation = state.activeScopes.take(3).mapIndexed { index, scope ->
+        val geometries = activeScopes.mapIndexed { index, scope -> geometry(index, state.expandedScope == scope) }
+        val presentation = activeScopes.take(3).mapIndexed { index, scope ->
             val g = geometries[index]
             ScopePresentation(
                 type = scope,
@@ -50,7 +53,7 @@ internal fun ScopeLayer(state: CaptureUiState, dispatch: CaptureDispatch, previe
         androidx.compose.runtime.LaunchedEffect(presentation) {
             onPresentation.value(presentation)
         }
-        state.activeScopes.forEachIndexed { index, scope ->
+        activeScopes.forEachIndexed { index, scope ->
             val expanded = state.expandedScope == scope
             val g = geometries[index]
             ScopeCard(

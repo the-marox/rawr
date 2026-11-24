@@ -459,7 +459,8 @@ internal fun FilmStockSheet(
                             else -> FilmCompareMode.SPLIT
                         }
                         FilmCompareOverlayState.hold = if (down) FilmCompareHold(
-                            current = cards.firstOrNull { it.selected }?.name ?: "In use",
+                            // the tab's card in use, else the stock in use (e.g. a cinema card held over a Portra)
+                            current = cards.firstOrNull { it.selected }?.name ?: FilmStocks.films.getOrNull(film) ?: "In use",
                             held = card.name,
                             mode = mode
                         ) else null
