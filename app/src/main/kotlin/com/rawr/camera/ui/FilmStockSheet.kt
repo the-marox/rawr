@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -47,6 +48,7 @@ import com.rawr.camera.settings.model.FilmSimLook
 import com.rawr.camera.settings.model.FilmSimNumericParameter
 import com.rawr.camera.settings.model.FilmSimSpecs
 import com.rawr.camera.settings.model.FilmStocks
+import com.rawr.camera.settings.model.FilmFactoryPresets
 import kotlin.math.abs
 
 /*
@@ -295,6 +297,12 @@ internal fun FilmStockSheet(
     val showHelp = rememberControlHelp()
     val film = quick.discretes["Film"]?.selectedIndex ?: -1
     val tabs = Tab.entries.filter { it != Tab.Paper || film !in FilmStocks.positiveFilmIndices }
+    // Reset: back to the preset in use (its saved look), or to Rawr's default look when no preset is in use. The look
+    // it replaced is kept for a few seconds, while the chip reads UNDO.
+    val resetTarget = quick.selectedPresetId?.let { quick.presetLooks[it] } ?: FilmFactoryPresets.baseLook
+    val resetName = quick.selectedPresetId?.let { id -> quick.presets.firstOrNull { it.id == id }?.label }
+    var undoLook by remember { mutableStateOf<FilmSimLook?>(null) }
+    LaunchedEffect(undoLook) { if (undoLook != null) { kotlinx.coroutines.delay(5000); undoLook = null } }
     Column(
         modifier
             .fillMaxWidth()
@@ -327,6 +335,49 @@ internal fun FilmStockSheet(
                     contentAlignment = Alignment.Center
                 ) {
                     Text("✕", color = Color.White.copy(alpha = .85f), fontSize = 11.sp, style = ViewfinderTextStyle)
+                }
+            }
+            item(key = "reset") {
+                val undo = undoLook
+                Box(
+                    Modifier
+                        .height(26.dp)
+                        .viewfinderChip(active = undo != null)
+                        .captureCombinedClickable(
+                            shape = CaptureTextRippleShape,
+                            onLongClickLabel = "Explain",
+                            onLongClick = {
+                                showHelp(
+                                    if (resetName != null) "Reset: back to the preset $resetName as saved, undoing the changes made since. UNDO brings them back for 5 seconds."
+                                    else "Reset: back to Rawr's default film look (no preset in use). UNDO brings the previous look back for 5 seconds."
+                                )
+                            }
+                        ) {
+                            haptics.selection()
+                            if (undo != null) {
+                                onApply { undo }
+                                undoLook = null
+                            } else {
+                                onApply { current ->
+                                    if (current != resetTarget) undoLook = current
+                                    resetTarget
+                                }
+                            }
+                        }
+                        .padding(horizontal = 8.dp)
+                        .semantics { contentDescription = if (undo != null) "Undo the reset" else "Reset the film look" }
+                        .testTag("film_sheet_reset"),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        if (undo != null) "UNDO" else "RESET",
+                        color = if (undo != null) CaptureColors.Accent else Color.White.copy(alpha = .8f),
+                        fontFamily = CaptureMono,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 10.sp,
+                        maxLines = 1,
+                        style = ViewfinderTextStyle
+                    )
                 }
             }
             items(tabs.size, key = { tabs[it].name }) { i ->
