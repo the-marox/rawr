@@ -4,6 +4,32 @@ Fork of [Rawr](https://github.com/adityawarmanfw/rawr) for the Xiaomi 17 Ultra.
 Releases follow Ed's version: `0.5.1-17u.N`. Test work lands on `yuv-probe`
 first and moves to `xiaomi-17u` once verified.
 
+## 0.5.1-17u.10
+
+Ed's #152 (faster stills with less memory), checked on the Xiaomi 17 Ultra.
+
+### From upstream Rawr (Ed): #152 and #136
+
+- #152 still perf: still render memory down by about a third (Ed's
+  numbers: 50 MP 2450 -> 1560 MB), faster UltraHDR gain map fit, gain map
+  encoded 4:2:0 (luma stays full resolution), Rexture merge faster on large
+  frames (the next frame loads while the GPU merges), faster wavelet
+  denoise. Merged without conflicts; the fork's 3:2/16:9 crop of the JPEG
+  and gain map is kept.
+  Checked on the 17U against 17u.9: three 30-frame 1x 50 MP bursts in a row
+  merged 30/30 in 13.0/11.0/10.3 s (was 18.3/15.8/18.0 s), and from the
+  first press to the third photo saved 59 s (was 80 s, with the shots taken
+  closer together this time). 200 MP single frame 7.2 s (was 7.6 s); 16:9
+  crop of the JPEG and gain map unchanged. Android still closes background
+  apps for memory during the three bursts (Rawr is not closed).
+- #136 vivo X200 Ultra high-res (separate photo session, keepTemplateEntries);
+  lenses without these fields, the 17U's included, run as before.
+
+### CI
+
+- Test builds from `yuv-probe` save the Gradle cache too, and the benchmark
+  test build skips lint (test builds about 8 min instead of 12).
+
 ## 0.5.1-17u.9
 
 Ed's #151 (full-size bursts keep their frames when the camera falls behind)
