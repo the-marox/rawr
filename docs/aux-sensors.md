@@ -69,10 +69,11 @@ on its back. Aimed at an overcast sky [0] still gives 1.7–2.8 m, with status 2
 The Xiaomi 17 Ultra's `xiaomi.sensor.tof` is an ST "L8 TOF Sensor" with another layout: [0..7] four
 distance/status pairs, one per horizontal band of the frame from the top (portrait), [8..15] unset. A flat wall
 reads 993/1018/1040/1072 mm; a hand over the top half changes bands 0 and 1 only. Rawr picks the layout from the
-sensor's name (`tofLayoutFor`) and focuses at the nearer of the two middle bands. At open sky every band reports
-a made-up 520–630 mm with status 0, so the status cannot tell; `tofDistanceForFocus` drops the distance when AF
-confirms focus at 3 m or farther while every band with a target reads under 1 m. The TOF cell, the light-meter
-pill and the capture metadata all take the distance from there.
+sensor's name (`tofLayoutFor`) and focuses at the nearer of the two middle bands. In bright light the L8 reports
+a made-up 0.4–0.65 m with status 0: at open sky every band reads 520–630 mm, and sunlit paving or a car at
+1.2–1.9 m read the same. So `tofDistanceForFocus` drops the distance when the camera's AF confirms focus and the
+ToF is more than max(0.5 D, half the AF diopters) nearer than it; with manual focus or AF not focused the
+reading stays. The TOF cell, the light-meter pill and the capture metadata all take the distance from there.
 
 Flicker is confirmed after three readings in a row within one bin of 100 or 120 Hz and released after
 16 readings in a row that are not, about two seconds (`FlickerClassifier`).

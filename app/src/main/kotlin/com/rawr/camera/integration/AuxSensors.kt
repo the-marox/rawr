@@ -34,7 +34,8 @@ import kotlin.math.abs
  *   Xiaomi 17 Ultra (ST "L8 TOF Sensor", measured by utalpt): [0..7] four distance/status pairs, one per
  *   horizontal band of the frame from top to bottom (portrait), [8..15] unset. A flat wall reads
  *   993/1018/1040/1072 mm, a hand over the top half changes only bands 0 and 1. Aimed at open sky all four
- *   report 520-630 mm with status 0, so the status cannot tell "no target" there (see tofDistanceForFocus).
+ *   report 520-630 mm with status 0, and sunlit surfaces at 1.2-1.9 m read 0.4-0.65 m too, so the status
+ *   cannot tell (see tofDistanceForFocus).
  * - `TYPE_PRESSURE`: [0] hPa. `TYPE_ROTATION_VECTOR`: quaternion, heading from magnetic north.
  * - Front, beside the display (ams TCS3720): `xiaomi.sensor.front_cct_strm` (continuous) [0] CCT K, [8] lux;
  *   `xiaomi.sensor.front_cct` (on change) [0] CCT K, [3] lux; any phone's `TYPE_LIGHT` [0] lux.
@@ -101,7 +102,6 @@ class AuxSensors(
     @Volatile private var flickerPwmHz: Float? = null
     @Volatile private var flickerAtNanos = 0L
     @Volatile private var tofDistanceMm: Float? = null
-    @Volatile private var tofFarthestMm: Float? = null
     @Volatile private var tofAtNanos = 0L
     @Volatile private var pressureHpa: Float? = null
     @Volatile private var pressureAtNanos = 0L
@@ -143,7 +143,6 @@ class AuxSensors(
             flickerPwmHz = null
             flickerAtNanos = 0L
             tofDistanceMm = null
-            tofFarthestMm = null
             tofAtNanos = 0L
             pressureHpa = null
             pressureAtNanos = 0L
@@ -202,7 +201,6 @@ class AuxSensors(
             flickerSensor = flickerFresh,
             flickerPwmHz = flickerPwmHz.takeIf { flickerFresh },
             tofDistanceMm = tofDistanceMm.takeIf { tofFresh && !frontCamera },
-            tofFarthestMm = tofFarthestMm.takeIf { tofFresh && !frontCamera },
             pressureHpa = pressureHpa.takeIf { pressureFresh },
             headingMagneticDeg = headingDeg.takeIf { headingFresh }
         )
@@ -242,9 +240,7 @@ class AuxSensors(
 
     private fun tofListener() = object : SensorEventListener {
         override fun onSensorChanged(event: SensorEvent) {
-            val sample = tofSample(event.values, tofLayout)
-            tofDistanceMm = sample?.distanceMm
-            tofFarthestMm = sample?.farthestMm
+            tofDistanceMm = tofDistanceMm(event.values, tofLayout)
             tofAtNanos = nowNanos()
             publish()
         }
@@ -285,16 +281,14 @@ class AuxSensors(
             flickerRawHz = flickerRawHz,
             flickerSensor = flickerSensor != null,
             flickerPwmHz = flickerPwmHz,
-            tofDistanceMm = tofDistanceMm.takeUnless { frontCamera },
-            tofFarthestMm = tofFarthestMm.takeUnless { frontCamera }
+            tofDistanceMm = tofDistanceMm.takeUnless { frontCamera }
         )
         val shown = mutableReading.value
         if (force || shown == null || shown.flicker != next.flicker || shown.flickerSensor != next.flickerSensor ||
             (shown.flickerPwmHz == null) != (next.flickerPwmHz == null) ||
             movedEnough(shown.flickerPwmHz, next.flickerPwmHz, PWM_STEP_HZ) ||
             movedEnough(shown.lux, next.lux, LUX_STEP) || movedEnough(shown.cctK, next.cctK, CCT_STEP) ||
-            movedEnough(shown.tofDistanceMm, next.tofDistanceMm, TOF_STEP) ||
-            movedEnough(shown.tofFarthestMm, next.tofFarthestMm, TOF_STEP)
+            movedEnough(shown.tofDistanceMm, next.tofDistanceMm, TOF_STEP)
         ) mutableReading.value = next
     }
 
@@ -341,31 +335,24 @@ class AuxSensors(
             else TofLayout.Single
 
         /**
-         * What a ToF event saw, or null when no zone has a real target (out of range, or a status other
-         * than valid). An event without a status (one value) is taken at its distance.
+         * The distance of a ToF event, or null when no zone in use has a real target (out of range, or a
+         * status other than valid). An event without a status (one value) is taken at its distance.
          *
          * Single zone: that distance. Bands: the nearer of the two middle bands, which hold the centre of
-         * the frame in portrait and landscape alike (the top and bottom bands often see the floor or a
-         * desk); [TofSample.farthestMm] is the farthest band with a real target.
+         * the frame in portrait and landscape alike (the top and bottom bands often see the floor, a desk or
+         * a corridor behind the subject).
          */
-        internal fun tofSample(values: FloatArray, layout: TofLayout): TofSample? {
+        internal fun tofDistanceMm(values: FloatArray, layout: TofLayout = TofLayout.Single): Float? {
             fun zone(index: Int): Float? {
                 val status = values.getOrNull(index * 2 + 1)
                 if (status != null && status != TOF_STATUS_VALID) return null
                 return values.getOrNull(index * 2)?.takeIf { it.isFinite() && it in MIN_TOF_MM..MAX_TOF_MM }
             }
             return when (layout) {
-                TofLayout.Single -> zone(0)?.let { TofSample(it, it) }
-                TofLayout.Bands -> {
-                    val bands = (0 until TOF_BANDS).map(::zone)
-                    val centre = listOfNotNull(bands[1], bands[2]).minOrNull() ?: return null
-                    TofSample(centre, bands.filterNotNull().max())
-                }
+                TofLayout.Single -> zone(0)
+                TofLayout.Bands -> listOfNotNull(zone(1), zone(2)).minOrNull()
             }
         }
-
-        /** The distance of a single-zone ToF event (the VI5300's layout), or null with no real target. */
-        internal fun tofDistanceMm(values: FloatArray): Float? = tofSample(values, TofLayout.Single)?.distanceMm
         const val MAX_CCT_K = 25_000f
 
         /** Below this the colour channels are mostly noise and the CCT is not worth showing. */
@@ -400,6 +387,3 @@ internal enum class TofLayout {
     /** Four distance/status pairs, horizontal bands from the top of the frame: the Xiaomi 17 Ultra's ST L8. */
     Bands
 }
-
-/** A ToF event: the distance to focus at, and the farthest zone with a real target (millimetres). */
-internal data class TofSample(val distanceMm: Float, val farthestMm: Float)

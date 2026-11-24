@@ -28,6 +28,7 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -433,12 +434,16 @@ private fun FocusModeSelector(
                     },
                 contentAlignment = Alignment.Center
             ) {
+                // Turned upright in landscape the label runs along the bar's height: "TOF 1.1m" on one line
+                // ran past the screen edge (17U), two lines of at most four characters fit.
                 Text(
-                    label,
+                    if (orientation == Orientation.Landscape) label.replaceFirst(' ', '\n') else label,
                     color = Color.White.copy(alpha = .72f),
                     fontFamily = CaptureMono,
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 10.sp,
+                    lineHeight = 11.sp,
+                    textAlign = TextAlign.Center,
                     modifier = Modifier.uprightInLandscape(orientation)
                 )
             }

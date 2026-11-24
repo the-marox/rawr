@@ -41,11 +41,6 @@ data class AuxSensorReading(
     val flickerPwmHz: Float? = null,
     /** Distance to what the laser AF time-of-flight sensor sees, millimetres. */
     val tofDistanceMm: Float? = null,
-    /**
-     * The farthest ToF zone with a real target, millimetres: [tofDistanceMm] for a single-zone sensor,
-     * the farthest of the bands for a multi-zone one. Null with [tofDistanceMm].
-     */
-    val tofFarthestMm: Float? = null,
     /** Barometric pressure, hectopascals. */
     val pressureHpa: Float? = null,
     /** Compass direction of the rear lens axis from magnetic north, degrees (capture metadata only). */
@@ -238,19 +233,23 @@ object FlickerBanding {
     }
 }
 
-/** AF focus confirmed this far or farther (diopters: 3 m) ... */
-private const val TOF_NO_TARGET_AF_DIOPTERS = 1f / 3f
-/** ... while every ToF zone with a target reads closer than this: the laser is taken to see nothing. */
-private const val TOF_NO_TARGET_MAX_MM = 1_000f
+/** A ToF reading this much nearer than a confirmed AF focus, in diopters, disagrees with the image ... */
+private const val TOF_AF_GAP_DIOPTERS = 0.5f
+/** ... or this share of the AF diopters, whichever is larger, so close up (where both read in many diopters) it scales. */
+private const val TOF_AF_GAP_SHARE = 0.5f
 
 /**
- * The ToF distance to show and focus at, or null when there is none or the laser seems to see no real
- * target. The Xiaomi 17 Ultra's ST L8 reports open sky as a valid 0.5-0.6 m in every band (the Xiaomi 15's
- * VI5300 flags the same case by its status). So when the camera's AF has placed the lens and confirms focus
- * at 3 m or farther while every ToF zone with a target reads under 1 m, the reading is not offered: it is
- * the sky, or a window pane in front of the scene. Manual focus, a scanning or failed AF, or a lens whose
- * focus distance is not calibrated leave the reading as it is. The TOF cell, the light-meter pill and the
- * capture metadata (rawr:TofDistance) all take the distance from here.
+ * The ToF distance to show and focus at, or null when there is none or it contradicts the image.
+ *
+ * The Xiaomi 17 Ultra's ST L8 reports a valid-looking 0.4-0.65 m in bright light that is not there: at
+ * open sky (AF at 11-20 m) and on sunlit paving or a car (AF at 1.2-1.9 m, utalpt's tests). Indoors it agrees
+ * with AF (a backpack at 1.2 m reads 1.1-1.2 m). The Xiaomi 15's VI5300 flags the sky by its status.
+ * So when the camera's AF has placed the lens and confirms focus, a ToF distance more than
+ * max(0.5 D, half the AF diopters) nearer than that focus is not offered. A focus confirmed by contrast on the
+ * image outweighs the laser then; the cost is a real near object AF did not pick (a hand in front of the
+ * subject), which manual focus still reaches. Manual focus, a scanning or failed AF, or a lens whose focus
+ * distance is not calibrated leave the reading as it is: that is where the ToF helps. The TOF cell, the
+ * light-meter pill and the capture metadata (rawr:TofDistance) all take the distance from here.
  */
 internal fun tofDistanceForFocus(
     reading: AuxSensorReading?,
@@ -258,9 +257,10 @@ internal fun tofDistanceForFocus(
     capability: ManualFocusCapability
 ): Float? {
     val distance = reading?.tofDistanceMm ?: return null
-    val farthest = reading.tofFarthestMm ?: distance
     val afDiopters = focus.appliedFocusDiopters
-    val afFocusedFar = focus.mode != FocusMode.Mf && focus.afFocused && capability.distanceReadoutTrustworthy &&
-        afDiopters != null && afDiopters.isFinite() && afDiopters <= TOF_NO_TARGET_AF_DIOPTERS
-    return distance.takeUnless { afFocusedFar && farthest < TOF_NO_TARGET_MAX_MM }
+    val afConfirmed = focus.mode != FocusMode.Mf && focus.afFocused && capability.distanceReadoutTrustworthy &&
+        afDiopters != null && afDiopters.isFinite() && afDiopters >= 0f
+    if (!afConfirmed) return distance
+    val gap = 1000f / distance - afDiopters!!
+    return distance.takeUnless { gap > maxOf(TOF_AF_GAP_DIOPTERS, TOF_AF_GAP_SHARE * afDiopters) }
 }
