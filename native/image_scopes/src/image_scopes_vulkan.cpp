@@ -100,7 +100,7 @@ void validateVectorscopeRenderParams(const VectorscopeRenderParams& p) {
             "image_scopes: V22 vectorscope presentation is frozen to Logarithmic densityScale and pointSpreadBins=1");
 }
 void validateWaveformMode(WaveformMode mode) {
-    if (mode != WaveformMode::Luma && mode != WaveformMode::RgbOverlay)
+    if (mode != WaveformMode::Luma && mode != WaveformMode::RgbOverlay && mode != WaveformMode::RgbParade)
         throw std::invalid_argument("image_scopes: unsupported waveform mode");
 }
 void validateWaveformRenderParams(const WaveformRenderParams& p) {

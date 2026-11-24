@@ -171,9 +171,13 @@ void main() {
     light += vec3(pow(clamp(dense, 0.0, 1.0), 3.8) * .30);
     light *= pc.gain * pc.opacity;
 
-    vec3 col = pc.showBg != 0u ? vec3(.0025) : vec3(0.0);
+    // Rawr 17U fork: translucent card, premultiplied like the waveform (rgb the light added over the viewfinder).
+    vec3 col = vec3(0.0);
     col += 1.0 - exp(-light * 1.15);
     col = max(col, graticule(vec2(ip) + .5, sz));
+    col = clamp(col, 0.0, 1.0);
+    float a = pc.showBg != 0u ? .45 : 0.0;
+    a = clamp(a + (1.0 - a) * max(col.r, max(col.g, col.b)), 0.0, 1.0);
 
-    imageStore(dst, ip, vec4(clamp(col, 0.0, 1.0), 1.0));
+    imageStore(dst, ip, vec4(col, a));
 }

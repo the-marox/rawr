@@ -58,15 +58,18 @@ void main(){
         }
     }
 
+    // Rawr 17U fork: the scope cards are translucent (premultiplied alpha, blended over the viewfinder), so
+    // their letterbox is the card's own translucent black, not opaque bars.
+    vec4 bars = pc.diagnosticMode >= 100u ? vec4(0,0,0,0.45) : vec4(0,0,0,1);
     vec2 q=uv;
     if(pc.dstAspect > pc.srcAspect){
         float w=pc.srcAspect/pc.dstAspect;
         q.x=(uv.x-0.5)/w+0.5;
-        if(q.x<0.0||q.x>1.0){outColor=vec4(0,0,0,1);return;}
+        if(q.x<0.0||q.x>1.0){outColor=bars;return;}
     } else {
         float h=pc.dstAspect/pc.srcAspect;
         q.y=(uv.y-0.5)/h+0.5;
-        if(q.y<0.0||q.y>1.0){outColor=vec4(0,0,0,1);return;}
+        if(q.y<0.0||q.y>1.0){outColor=bars;return;}
     }
     // Idle video-mode crop: the display spans the record window, not the full
     // source. The CPU passes the window in rotated-frame fractions so this
@@ -122,5 +125,6 @@ void main(){
         vec4 o=texture(overlayImage,s);
         sampled.rgb=o.rgb+sampled.rgb*(1.0-o.a);
     }
-    outColor=sampled;
+    // opaque: the swapchain pipeline blends premultiplied alpha (for the scope cards)
+    outColor=vec4(sampled.rgb,1.0);
 }

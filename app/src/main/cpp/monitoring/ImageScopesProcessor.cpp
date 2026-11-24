@@ -238,8 +238,10 @@ void ImageScopesProcessor::record(VkCommandBuffer command, uint32_t frameSlot, V
             info.renderTarget = target;
             info.frameSlot = frameSlot;
             info.samplingMode = sampling;
-            info.render.mode = state_.placements[i].variant == 1u ? image_scopes::WaveformMode::RgbOverlay
-                                                                  : image_scopes::WaveformMode::Luma;
+            // variant 1 RGB overlay, 2 RGB parade (Rawr 17U fork), else luma
+            info.render.mode = state_.placements[i].variant == 1u   ? image_scopes::WaveformMode::RgbOverlay
+                               : state_.placements[i].variant == 2u ? image_scopes::WaveformMode::RgbParade
+                                                                    : image_scopes::WaveformMode::Luma;
             // The input remains the native WxH display buffer. Only waveform positional X
             // needs the authoritative sensor->display mapping; vectorscope never does.
             // This does not rotate/reallocate the source image or change measurement geometry.

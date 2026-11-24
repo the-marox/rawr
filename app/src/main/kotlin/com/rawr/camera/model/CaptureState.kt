@@ -25,7 +25,8 @@ enum class OverlayMode { Peaking, RawHighlights, TonemapShadows, FalseColor }
 
 enum class ScopeType { Waveform, Vectorscope }
 
-enum class WaveformMode { Luma, RgbOverlay }
+// RgbParade: Rawr 17U fork (R, G and B side by side)
+enum class WaveformMode { Luma, RgbOverlay, RgbParade }
 
 enum class TargetStatus { Hidden, Settling, Settled, Failed }
 

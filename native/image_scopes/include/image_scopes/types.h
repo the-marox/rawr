@@ -22,7 +22,7 @@ enum class SamplingMode : std::uint32_t {
     Production25 = 2,
 };
 
-enum class WaveformMode : std::uint32_t { Luma = 0, RgbOverlay = 1 };
+enum class WaveformMode : std::uint32_t { Luma = 0, RgbOverlay = 1, RgbParade = 2 };  // RgbParade: Rawr 17U fork
 enum class RawWaveformMode : std::uint32_t { PhysicalOverlay = 0, R = 1, G1 = 2, G2 = 3, B = 4 };
 
 // 128 is a production candidate that must earn release through visual/perf testing.

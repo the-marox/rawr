@@ -1,6 +1,5 @@
 package com.rawr.camera.ui
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -62,7 +61,11 @@ internal fun ScopeLayer(state: CaptureUiState, dispatch: CaptureDispatch, previe
                 nativeContent = preview.nativeContent,
                 variantLabel =
                     when (scope) {
-                        ScopeType.Waveform -> if (state.waveformMode == WaveformMode.RgbOverlay) "RGB" else "LUMA"
+                        ScopeType.Waveform -> when (state.waveformMode) {
+                            WaveformMode.Luma -> "LUMA"
+                            WaveformMode.RgbOverlay -> "RGB"
+                            WaveformMode.RgbParade -> "PARADE"
+                        }
                         ScopeType.Vectorscope -> null
                     },
                 orientation = state.orientation,
@@ -113,7 +116,8 @@ private fun ScopeCard(
                 },
         shape = scopeShape,
         color = Color.Transparent,
-        border = if (nativeContent) BorderStroke(1.dp, Color.White.copy(alpha = .10f)) else null
+        // Rawr 17U fork: the native card is translucent and borderless, like the viewfinder's other overlays
+        border = null
     ) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Column(
@@ -122,13 +126,15 @@ private fun ScopeCard(
                     .uprightInLandscape(orientation)
                     .padding(if (expanded) 10.dp else 7.dp)
             ) {
+                // Rawr 17U fork: just the mode, small, in the top-right corner (LUMA / RGB / PARADE / VECTOR)
                 Text(
-                    if (variantLabel == null) type.name.uppercase() else "${type.name.uppercase()} · $variantLabel",
-                    color = Color.White.copy(alpha = .62f),
+                    variantLabel ?: if (type == ScopeType.Vectorscope) "VECTOR" else type.name.uppercase(),
+                    color = Color.White.copy(alpha = .5f),
                     fontFamily = CaptureMono,
                     fontWeight = FontWeight.Bold,
-                    fontSize = if (expanded) 9.sp else 8.sp,
-                    letterSpacing = 1.sp
+                    fontSize = if (expanded) 8.sp else 7.sp,
+                    letterSpacing = 1.sp,
+                    modifier = Modifier.align(Alignment.End)
                 )
                 if (!nativeContent) {
                     when (type) {

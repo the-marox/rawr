@@ -193,14 +193,13 @@ object CaptureReducer {
         }
 
         ToggleWaveformMode -> {
+            // Rawr 17U fork: luma -> RGB -> parade -> luma
             state.copy(
                 waveformMode =
-                    if (state.waveformMode ==
-                        WaveformMode.Luma
-                    ) {
-                        WaveformMode.RgbOverlay
-                    } else {
-                        WaveformMode.Luma
+                    when (state.waveformMode) {
+                        WaveformMode.Luma -> WaveformMode.RgbOverlay
+                        WaveformMode.RgbOverlay -> WaveformMode.RgbParade
+                        WaveformMode.RgbParade -> WaveformMode.Luma
                     }
             )
         }
