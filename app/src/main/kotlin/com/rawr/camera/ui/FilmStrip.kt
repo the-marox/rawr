@@ -63,7 +63,9 @@ internal fun FilmStrip(
     onResetParam: (String) -> Unit,
     onScrubDiscrete: (String, Int) -> Unit,
     onToggleFlag: (String, Boolean) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** Rawr 17U fork: a stock card held (field name, position), or (null, null) on release - preview only. */
+    onHoldPreview: (String?, Int?) -> Unit = { _, _ -> }
 ) {
     var mode by remember { mutableStateOf(FilmStripMode.Collapsed) }
     var sectionKey by remember { mutableStateOf(quick.sections.firstOrNull()?.key ?: "film") }
@@ -98,7 +100,9 @@ internal fun FilmStrip(
                     },
                     // Stays open after a pick (sticky) for quick A/B comparison; tap FILM to close.
                     onSelect = onSelectPreset,
-                    onOpenParams = { mode = FilmStripMode.Quick }
+                    onOpenParams = { mode = FilmStripMode.Quick },
+                    onPickStock = onScrubDiscrete,
+                    onHoldStock = onHoldPreview
                 )
             }
             FilmStripMode.Quick -> {
@@ -168,7 +172,9 @@ private fun FilmFixedColumn(
     onOpenParams: () -> Unit,
     paramsActive: Boolean = false,
     /** Card shown above FILM (the PARAMS quick card), given the grid width. */
-    card: (@Composable () -> Unit)? = null
+    card: (@Composable () -> Unit)? = null,
+    onPickStock: (String, Int) -> Unit = { _, _ -> },
+    onHoldStock: (String?, Int?) -> Unit = { _, _ -> }
 ) {
     val haptics = LocalCaptureHaptics.current
     val showHelp = rememberControlHelp()
@@ -186,51 +192,13 @@ private fun FilmFixedColumn(
             verticalArrangement = Arrangement.spacedBy(gap)
         ) {
             if (presetsOpen) {
-                val gridWidth = cells[1] + cells[2] + cells[3] + cells[4] + gap * 3
-                val cellWidth = (gridWidth - gap * 2) / 3
-                Column(
-                    Modifier
-                        .width(gridWidth)
-                        .background(Color.Black.copy(alpha = .62f), androidx.compose.foundation.shape.RoundedCornerShape(14.dp))
-                        .padding(gap),
-                    verticalArrangement = Arrangement.spacedBy(gap)
-                ) {
-                    quick.presets.chunked(3).forEach { rowPresets ->
-                        Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
-                            rowPresets.forEach { preset ->
-                                val isSelected = preset.id == quick.selectedPresetId
-                                Box(
-                                    Modifier
-                                        .width(cellWidth)
-                                        .height(CaptureDimens.CompactParamRowHeight)
-                                        .viewfinderChip(active = isSelected)
-                                        .testTag(CaptureTestTags.filmPreset(preset.id))
-                                        .captureClickable(shape = CaptureTextRippleShape) {
-                                            haptics.selection()
-                                            onSelect(preset.id)
-                                        }.semantics {
-                                            contentDescription = "Film preset ${preset.label}" +
-                                                if (isSelected) ", active" else ""
-                                            role = Role.RadioButton
-                                            selected = isSelected
-                                        }.padding(horizontal = 6.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        preset.label,
-                                        color = if (isSelected) CaptureColors.Accent else Color.White.copy(alpha = .85f),
-                                        fontFamily = CaptureMono,
-                                        fontWeight = FontWeight.SemiBold,
-                                        fontSize = 10.sp,
-                                        maxLines = 1,
-                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                        style = ViewfinderTextStyle
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
+                // Rawr 17U fork: presets and the film / paper stocks as cards (FilmStockSheet.kt).
+                FilmStockSheet(
+                    quick = quick,
+                    onSelectPreset = onSelect,
+                    onPick = onPickStock,
+                    onHold = onHoldStock
+                )
             }
             card?.let { content ->
                 Box(Modifier.width(cells[1] + cells[2] + cells[3] + cells[4] + gap * 3)) { content() }

@@ -11,4 +11,9 @@ sealed interface CaptureFilmEvent {
     data class ResetNumeric(val parameter: FilmSimNumericParameter) : CaptureFilmEvent
     data class ScrubDiscrete(val field: FilmSimDiscreteField, val index: Int) : CaptureFilmEvent
     data class SetFlag(val flag: FilmSimFlag, val enabled: Boolean) : CaptureFilmEvent
+    /**
+     * Rawr 17U fork: a stock card held in the film sheet - the viewfinder shows [field] at [index] while it is
+     * held, without changing the settings; [field] null puts the viewfinder back on the settings' look.
+     */
+    data class HoldPreview(val field: FilmSimDiscreteField?, val index: Int) : CaptureFilmEvent
 }
