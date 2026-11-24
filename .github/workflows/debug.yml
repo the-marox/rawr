@@ -25,10 +25,15 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # Repository variable RUNNER=self-hosted sends the job to the self-hosted runner (mini PC, WSL2); delete the
+    # variable to go back to GitHub's runners. Pull requests always use GitHub's runners.
+    runs-on: ${{ github.event_name != 'pull_request' && vars.RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 60
     steps:
+      # Self-hosted: keep the previous checkout's build outputs (incremental Gradle/CMake build).
       - uses: actions/checkout@v4
+        with:
+          clean: ${{ vars.RUNNER != 'self-hosted' }}
 
       # Fixed debug key kept as a repo secret (base64), so every CI APK installs
       # over the previous one. Without the secret the default debug key is used.
@@ -41,7 +46,9 @@ jobs:
           fi
 
       # The NDK download (~1 GB) dominates setup: keep it between runs.
+      # (GitHub's runners only: the self-hosted runner keeps its SDK/NDK on disk)
       - uses: actions/cache@v4
+        if: vars.RUNNER != 'self-hosted'
         with:
           path: /usr/local/lib/android/sdk/ndk/29.0.14206865
           key: ndk-29.0.14206865
@@ -62,12 +69,16 @@ jobs:
 
       # Saves the Gradle cache from every branch (by default only the default branch, main, saves it, so test
       # builds from yuv-probe started each time with an empty Gradle home).
+      # Self-hosted: no GitHub cache, the Gradle home stays on the runner.
       - uses: gradle/actions/setup-gradle@v4
         with:
           cache-read-only: false
+          cache-disabled: ${{ vars.RUNNER == 'self-hosted' }}
 
       # Compiler cache for the native code: unchanged C++ files are not rebuilt.
+      # Self-hosted: ccache is installed and its directory stays on the runner, so the action is skipped.
       - uses: hendrikmuhs/ccache-action@v1.2
+        if: vars.RUNNER != 'self-hosted'
         with:
           key: native-arm64
           max-size: 2G
@@ -85,6 +96,8 @@ jobs:
           SKIP_TESTS: ${{ github.event.inputs.skip_tests == 'true' || contains(github.event.head_commit.message, '[skip tests]') }}
           VARIANT: ${{ github.event.inputs.variant || 'debug' }}
         run: |
+          # Kept checkout: drop APKs from earlier builds so only this build's APK is published.
+          rm -rf app/build/outputs/apk
           if [ "$VARIANT" = "benchmark" ]; then
             # Test build: skips lint (about a minute); the debug builds and releases still run it.
             ./gradlew :app:assembleBenchmark -x lintVitalAnalyzeBenchmark -x lintVitalReportBenchmark -x lintVitalBenchmark
@@ -108,7 +121,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          mkdir -p test-apk && cp app/build/outputs/apk/*/*.apk test-apk/
+          rm -rf test-apk && mkdir -p test-apk && cp app/build/outputs/apk/*/*.apk test-apk/
           gh release delete test-build --cleanup-tag --yes || true
           gh release create test-build test-apk/*.apk --prerelease --target "$GITHUB_SHA" \
             --title "Test build" --notes "CI build of ${GITHUB_SHA} (${GITHUB_REF_NAME})."
@@ -117,7 +130,7 @@ jobs:
       # the Adreno Offline Compiler (_debug\aoc.bat).
       - name: Collect shader SPIR-V
         run: |
-          mkdir -p shaders-spv
+          rm -rf shaders-spv && mkdir -p shaders-spv
           find app/.cxx app/build -path '*arm64-v8a*' -name '*.spv' 2>/dev/null | while read -r f; do
             cp -f "$f" "shaders-spv/$(basename "$f" .spv).comp.spv"
           done
