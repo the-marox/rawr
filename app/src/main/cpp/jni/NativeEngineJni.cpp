@@ -1089,12 +1089,13 @@ extern "C" JNIEXPORT void JNICALL Java_com_rawr_camera_integration_NativePreview
 
 // Rawr 17U fork: split compare while a film-sheet card is held; null arrays end it.
 extern "C" JNIEXPORT void JNICALL Java_com_rawr_camera_integration_NativePreviewEngine_setFilmCompareLook(
-    JNIEnv* env, jobject, jlong h, jfloatArray values, jintArray enums) {
+    JNIEnv* env, jobject, jlong h, jfloatArray values, jintArray enums, jboolean full) {
     if (!values || !enums) {
-        rawrcam::session::setFilmCompareLook(handle(h), nullptr);
+        rawrcam::session::setFilmCompareLook(handle(h), nullptr, false);
         return;
     }
-    if (auto look = decodeFilmLook(env, values, enums)) rawrcam::session::setFilmCompareLook(handle(h), &*look);
+    if (auto look = decodeFilmLook(env, values, enums))
+        rawrcam::session::setFilmCompareLook(handle(h), &*look, full == JNI_TRUE);
 }
 
 extern "C" JNIEXPORT void JNICALL Java_com_rawr_camera_integration_InternalTraceNative_recordZslArtifactPublished(

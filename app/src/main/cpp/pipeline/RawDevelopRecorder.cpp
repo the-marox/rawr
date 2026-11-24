@@ -556,14 +556,19 @@ RawDevelopRecordResult RawDevelopRecorder::record(const RawDevelopRecordInput& i
             // half goes over the second half of the frame (its own frame slots, so both looks stay intact).
             if (acquireCompare_) {
                 const auto compare = acquireCompare_();
-                if (compare.first) {
+                if (compare.engine) {
                     auto compareRecord = filmRecord;
-                    compareRecord.look = compare.second;
+                    compareRecord.look = compare.look;
                     compareRecord.look.filmExposureEv = rawrcam::color::filmExposureEv(
-                        compare.second, in.tonemapParams.aePostGain, in.tonemapParams.exposureEV);
+                        compare.look, in.tonemapParams.aePostGain, in.tonemapParams.exposureEV);
                     try {
-                        compare.first->record(compareRecord);
-                        recordSecondHalfBlit(slot.command, slot.lookScaledOut.image, lookWidth, lookHeight,
+                        compare.engine->record(compareRecord);
+                        // full (grain, halation): the held look over the whole frame
+                        if (compare.full)
+                            recordScaledBlit(slot.command, slot.lookScaledOut.image, lookWidth, lookHeight,
+                                             VK_ACCESS_SHADER_WRITE_BIT, slot.tonemapped.image, in.previewWidth,
+                                             in.previewHeight, VK_ACCESS_SHADER_READ_BIT);
+                        else recordSecondHalfBlit(slot.command, slot.lookScaledOut.image, lookWidth, lookHeight,
                                              VK_ACCESS_SHADER_WRITE_BIT, slot.tonemapped.image, in.previewWidth,
                                              in.previewHeight, VK_ACCESS_SHADER_READ_BIT);
                     } catch (const std::exception& e) {

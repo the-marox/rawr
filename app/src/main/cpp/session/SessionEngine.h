@@ -93,7 +93,7 @@ class SessionEngine {
     void setFilmSimEnabled(bool enabled);
     void setViewfinderDivisor(uint32_t divisor);
     void setFilmSimLook(const spektrafilm_native::FilmLook& look);
-    void setFilmCompareLook(const spektrafilm_native::FilmLook* look);
+    void setFilmCompareLook(const spektrafilm_native::FilmLook* look, bool full);
     void setAssetManager(AAssetManager* assetManager);
     void setColorRenderProfile(uint32_t profileId, std::string importedProfileId);
     void setMonitoringOverlay(uint32_t mode, float focusSensitivity);

@@ -47,8 +47,15 @@ class PreviewLookController final {
     std::shared_ptr<spektrafilm_native::SpektraFilm> acquireFilm() const;
     // Rawr 17U fork: split compare while a film-sheet card is held. setFilmCompare(look) prepares (or takes from
     // the engine cache) an engine for the held look; null ends the compare and keeps the engine in the cache.
-    void setFilmCompare(const spektrafilm_native::FilmLook* look);
-    std::pair<std::shared_ptr<spektrafilm_native::SpektraFilm>, spektrafilm_native::FilmLook> acquireCompare() const;
+    // full: the held look covers the whole viewfinder instead of its second half (grain and halation, which are
+    // hard to judge side by side).
+    struct FilmCompare {
+        std::shared_ptr<spektrafilm_native::SpektraFilm> engine;
+        spektrafilm_native::FilmLook look{};
+        bool full = false;
+    };
+    void setFilmCompare(const spektrafilm_native::FilmLook* look, bool full = false);
+    FilmCompare acquireCompare() const;
     // Configuration/profile/suppression methods require the session transition gate.
     bool selectProfile(tonemap_integration::ColorRenderProfile profile, std::string importedProfileId);
     void suppressForVideo(bool suppressed);
@@ -118,6 +125,7 @@ class PreviewLookController final {
     PreparedFilm compare_{};
     spektrafilm_native::FilmLook compareLook_{};
     bool compareActive_ = false;
+    bool compareFull_ = false;
     uint64_t compareGeneration_ = 0;
     std::optional<FilmBuildRequest> pendingCompareBuild_;
 };

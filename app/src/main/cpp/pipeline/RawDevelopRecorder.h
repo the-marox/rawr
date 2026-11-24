@@ -139,7 +139,11 @@ class RawDevelopRecorder final {
     RawDevelopRecordResult record(const RawDevelopRecordInput& input, uint32_t auditSubmitCount) const;
     // Rawr 17U fork: split compare in the film sheet - while a card is held, the second half of the film frame
     // is rendered by this engine and look instead (null engine: no compare).
-    using FilmCompare = std::pair<std::shared_ptr<spektrafilm_native::SpektraFilm>, spektrafilm_native::FilmLook>;
+    struct FilmCompare {
+        std::shared_ptr<spektrafilm_native::SpektraFilm> engine;
+        spektrafilm_native::FilmLook look{};
+        bool full = false;
+    };
     void setFilmCompareSource(std::function<FilmCompare()> source) { acquireCompare_ = std::move(source); }
     void recordSceneExposure(VkCommandBuffer command, uint32_t frameSlot, VkImageView view, uint32_t width,
                              uint32_t height, const std::array<float, 9>& sensorToSrgb,

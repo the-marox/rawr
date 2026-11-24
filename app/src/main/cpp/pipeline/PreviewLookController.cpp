@@ -85,11 +85,10 @@ std::shared_ptr<spektrafilm_native::SpektraFilm> PreviewLookController::acquireF
     std::lock_guard<std::mutex> lock(filmMutex_);
     return film_;
 }
-std::pair<std::shared_ptr<spektrafilm_native::SpektraFilm>, spektrafilm_native::FilmLook>
-PreviewLookController::acquireCompare() const {
+PreviewLookController::FilmCompare PreviewLookController::acquireCompare() const {
     std::lock_guard<std::mutex> lock(filmMutex_);
     if (!compareActive_ || !compare_.engine) return {};
-    return {compare_.engine, compareLook_};
+    return {compare_.engine, compareLook_, compareFull_};
 }
 
 void PreviewLookController::installCompareFilm(PreparedFilm prepared) {
@@ -103,7 +102,7 @@ void PreviewLookController::installCompareFilm(PreparedFilm prepared) {
     SESSION_LOGI("FILM_COMPARE_READY film=%d paper=%d", compare_.look.film, compare_.look.paper);
 }
 
-void PreviewLookController::setFilmCompare(const spektrafilm_native::FilmLook* look) {
+void PreviewLookController::setFilmCompare(const spektrafilm_native::FilmLook* look, bool full) {
     std::lock_guard<std::mutex> lock(transitionMutex_);
     ++compareGeneration_;
     if (!look) {
@@ -124,8 +123,11 @@ void PreviewLookController::setFilmCompare(const spektrafilm_native::FilmLook* l
         std::lock_guard<std::mutex> filmLock(filmMutex_);
         compareLook_ = *look;
         compareActive_ = true;
+        compareFull_ = full;
     }
-    SESSION_LOGI("FILM_COMPARE_BEGIN film=%d paper=%d", look->film, look->paper);
+    SESSION_LOGI("FILM_COMPARE_BEGIN film=%d paper=%d full=%d grain=%d/%.2f halation=%d/%.2f", look->film, look->paper,
+                 full ? 1 : 0, look->grainEnabled ? 1 : 0, look->grainAmount, look->halationEnabled ? 1 : 0,
+                 look->halationAmount);
     if (compare_.engine && sameBakedFilm(compare_.look, *look) && preparedFilmFits(compare_)) return;
     if (auto cached = takeCachedFilm(*look)) {
         SESSION_LOGI("FILM_COMPARE_CACHE_HIT film=%d paper=%d", look->film, look->paper);

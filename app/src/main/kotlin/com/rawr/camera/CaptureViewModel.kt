@@ -275,9 +275,18 @@ class CaptureViewModel(application: Application) : AndroidViewModel(application)
     fun onFilmEvent(event: com.rawr.camera.architecture.CaptureFilmEvent) {
         if (event is com.rawr.camera.architecture.CaptureFilmEvent.HoldLook) {
             // Rawr 17U fork: preview only - the held card renders the second half of the viewfinder (split
-            // compare), the settings and the first half stay as they are; null ends the compare.
-            val look = event.edit?.invoke(latestSettings.filmSimLook)
-            previewCoordinator.setFilmCompareLook(look?.toFloatArray(), look?.toIntArray())
+            // compare), the settings and the first half stay as they are; null ends the compare. A card that only
+            // changes grain or halation covers the whole viewfinder: both are fine-grained and hard to judge side
+            // by side, so lifting the finger is the comparison there.
+            val current = latestSettings.filmSimLook
+            val look = event.edit?.invoke(current)
+            val full = look != null && look != current && look.copy(
+                grainEnabled = current.grainEnabled,
+                grainAmount = current.grainAmount,
+                halationEnabled = current.halationEnabled,
+                halationAmount = current.halationAmount
+            ) == current
+            previewCoordinator.setFilmCompareLook(look?.toFloatArray(), look?.toIntArray(), full)
             return
         }
         val next = settingsEditor.update { current ->

@@ -167,7 +167,10 @@ void RealtimePipeline::createFrameProcessor() {
             if (audit_) audit_(line);
         },
         localTone_.get());
-    frameProcessor_->setFilmCompareSource([this] { return look_.acquireCompare(); });
+    frameProcessor_->setFilmCompareSource([this] {
+        auto compare = look_.acquireCompare();
+        return RawDevelopRecorder::FilmCompare{std::move(compare.engine), compare.look, compare.full};
+    });
 }
 bool RealtimePipeline::setColorRenderProfile(tonemap_integration::ColorRenderProfile profile,
                                              std::string importedProfileId) {
