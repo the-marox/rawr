@@ -41,6 +41,8 @@ import com.rawr.camera.settings.architecture.SetFilmSimDiscreteValue
 import com.rawr.camera.settings.architecture.withDiscrete
 import com.rawr.camera.settings.model.FilmSimDiscreteField
 import com.rawr.camera.settings.model.FilmSimLook
+import com.rawr.camera.settings.model.FilmSimNumericParameter
+import com.rawr.camera.settings.model.FilmSimSpecs
 import com.rawr.camera.settings.model.FilmStocks
 import kotlin.math.abs
 
@@ -92,7 +94,34 @@ internal fun filmSheetTabOf(film: Int): FilmSheetTab = when (film) {
 // Filter strengths as on the glass (1/8 to 2), grain and halation in three steps.
 private val FilterStrengths = listOf(0.125f to "1/8", 0.25f to "1/4", 0.5f to "1/2", 1f to "1", 2f to "2")
 private val GrainSteps = listOf(0.5f to "Light", 1f to "Medium", 2f to "Strong")
-private val HalationSteps = listOf(0.5f to "Low", 1f to "Medium", 2f to "High")
+// Halation shows only around bright lights; 1 is the stock default, so the steps go up from there (max 4).
+private val HalationSteps = listOf(1f to "Low", 2f to "Medium", 4f to "High")
+
+/** Long-press help for the sheet's tabs. */
+private fun tabHelp(tab: FilmSheetTab): String = when (tab) {
+    FilmSheetTab.Presets -> "Presets: saved film looks (stock, paper and settings). Tap a card to use one; hold it to see it on the viewfinder."
+    FilmSheetTab.Negative -> "Negative film: colour negative stocks, printed on the paper chosen in PAPER. Tap to use, hold to see it on the viewfinder."
+    FilmSheetTab.Cinema -> "Cinema film: Kodak motion picture negatives - Vision3 daylight (D) and tungsten (T), and Verita - printed on the paper chosen in PAPER."
+    FilmSheetTab.Slide -> "Slide film: reversal stocks, scanned directly with no print, so PAPER goes away while one is in use."
+    FilmSheetTab.Paper -> "Print paper: the paper the negative is printed on; it sets the print's contrast and colour. 2383 and 2393 are cinema print films."
+    FilmSheetTab.Filter -> "Filter: a diffusion filter in front of the lens, a glow around the highlights. Pick the filter, then its strength from 1/8 to 2, as on the glass."
+    FilmSheetTab.Grain -> "Grain: the film's grain over the picture. Light, medium or strong; amount and size in the settings above."
+    FilmSheetTab.Halation -> "Halation: the red glow of light bouncing back through the film base around bright lights. Best seen on lamps, the sun or reflections; a flat scene shows little."
+}
+
+/** Long-press help for the settings shown above the sheet (the PARAMS quick-card keys). */
+internal fun filmSheetSettingHelp(key: String): String? = when (key) {
+    "GrainEnabled" -> "Grain: film grain on or off."
+    "HalationEnabled" -> "Halation: the red glow around bright lights, on or off."
+    "CameraDiffusionEnabled" -> "Camera filter: the diffusion filter in front of the lens, on or off (its type is in the FILTER cards)."
+    "PrintDiffusionEnabled" -> "Print diffusion: a soft glow added at the print stage, on or off."
+    "CameraUvEnabled" -> "UV filter: cuts ultraviolet before the film."
+    "CameraIrEnabled" -> "IR filter: cuts infrared before the film."
+    else -> runCatching { FilmSimNumericParameter.valueOf(key) }.getOrNull()?.let { parameter ->
+        val spec = FilmSimSpecs.forParameter(parameter)
+        "${spec.label}: ${spec.supportingText}. Drag up/down to adjust; double-tap resets."
+    }
+}
 
 private fun near(a: Float, b: Float) = abs(a - b) < 0.02f
 
@@ -208,6 +237,7 @@ internal fun FilmStockSheet(
     modifier: Modifier = Modifier
 ) {
     val haptics = LocalCaptureHaptics.current
+    val showHelp = rememberControlHelp()
     val film = quick.discretes["Film"]?.selectedIndex ?: -1
     val tabs = Tab.entries.filter { it != Tab.Paper || film !in FilmStocks.positiveFilmIndices }
     Column(
@@ -228,7 +258,11 @@ internal fun FilmStockSheet(
                     Modifier
                         .height(26.dp)
                         .viewfinderChip(active = false)
-                        .captureClickable(shape = CaptureTextRippleShape) {
+                        .captureCombinedClickable(
+                            shape = CaptureTextRippleShape,
+                            onLongClickLabel = "Explain",
+                            onLongClick = { showHelp("Close: back to the FILM and PARAMS buttons.") }
+                        ) {
                             haptics.selection()
                             onClose()
                         }
@@ -247,7 +281,11 @@ internal fun FilmStockSheet(
                     Modifier
                         .height(26.dp)
                         .viewfinderChip(active = on)
-                        .captureClickable(shape = CaptureTextRippleShape) {
+                        .captureCombinedClickable(
+                            shape = CaptureTextRippleShape,
+                            onLongClickLabel = "Explain",
+                            onLongClick = { showHelp(tabHelp(t)) }
+                        ) {
                             haptics.selection()
                             onTab(t)
                         }

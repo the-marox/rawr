@@ -69,7 +69,8 @@ internal fun FilmStrip(
     /** Rawr 17U fork: a card held - its change on the viewfinder only; null on release. */
     onHoldLook: (LookEdit?) -> Unit = {}
 ) {
-    var mode by remember { mutableStateOf(FilmStripMode.Collapsed) }
+    // Rawr 17U fork: film on opens the film sheet straight away (✕ goes back to FILM and PARAMS).
+    var mode by remember { mutableStateOf(FilmStripMode.Profiles) }
     var sectionKey by remember { mutableStateOf(quick.sections.firstOrNull()?.key ?: "film") }
     var subsectionKey by remember { mutableStateOf<String?>(null) }
     // L4 drill into a discrete's option list. Cleared whenever the section
@@ -79,7 +80,7 @@ internal fun FilmStrip(
     // OFF hides the whole strip (caller gate); always restart collapsed so a
     // stale expanded mode never greets the next ON.
     LaunchedEffect(quick.presets.isEmpty()) {
-        if (quick.presets.isEmpty()) mode = FilmStripMode.Collapsed
+        if (quick.presets.isEmpty()) mode = FilmStripMode.Profiles
     }
     val section = quick.sections.firstOrNull { it.key == sectionKey }
         ?: quick.sections.firstOrNull()
@@ -118,7 +119,8 @@ internal fun FilmStrip(
                             onResetParam = onResetParam,
                             onToggleFlag = onToggleFlag,
                             onAdvanced = { mode = FilmStripMode.Config },
-                            groups = groups
+                            groups = groups,
+                            helpFor = ::filmSheetSettingHelp
                         )
                     }
                 )
@@ -316,7 +318,8 @@ internal fun FilmQuickCard(
                                     shortLabel = entry.label,
                                     enabled = flag.enabled,
                                     onToggle = { onToggleFlag(entry.key, it) },
-                                    modifier = Modifier.width(cell)
+                                    modifier = Modifier.width(cell),
+                                    help = helpFor(entry.key)
                                 )
                             }
                             is FilmQuickEntry.Num -> {
@@ -862,9 +865,12 @@ private fun FilmFlagItem(
     shortLabel: String,
     enabled: Boolean,
     onToggle: (Boolean) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** Long-press text (Rawr 17U fork); null: no long press, as before. */
+    help: String? = null
 ) {
     val haptics = LocalCaptureHaptics.current
+    val showHelp = rememberControlHelp()
     Box(
         modifier
             .widthIn(min = StripDimens.ParamMinWidth)
@@ -872,7 +878,11 @@ private fun FilmFlagItem(
             .viewfinderChip()
             .testTag(CaptureTestTags.filmParam(key))
             .systemGestureExclusion()
-            .captureClickable(shape = CaptureTextRippleShape) {
+            .captureCombinedClickable(
+                shape = CaptureTextRippleShape,
+                onLongClickLabel = if (help != null) "Explain" else null,
+                onLongClick = help?.let { text -> { showHelp(text) } }
+            ) {
                 haptics.selection()
                 onToggle(!enabled)
             }.semantics {
