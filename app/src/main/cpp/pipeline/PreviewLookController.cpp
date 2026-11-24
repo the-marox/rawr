@@ -69,7 +69,10 @@ PreviewLookController::PreviewLookController(vulkan::VulkanContext& context, std
       publish_(std::move(publish)),
       publishTone_(std::move(publishTone)),
       publishDivisor_(std::move(publishDivisor)) {}
-PreviewLookController::~PreviewLookController() { stop(); }
+PreviewLookController::~PreviewLookController() {
+    stop();
+    clearFilmCache();
+}
 void PreviewLookController::start() {
     filmBuildThread_ = std::thread([this] { filmBuildLoop(); });
 }
@@ -111,6 +114,7 @@ void PreviewLookController::clearProcessing(bool teardownFilm) {
     ++filmBuildGeneration_;
     tonemap_.reset();
     if (teardownFilm) {
+        clearFilmCache();
         std::lock_guard<std::mutex> lock(filmMutex_);
         film_.reset();
         filmArenaW_ = filmArenaH_ = 0;
@@ -173,16 +177,59 @@ bool PreviewLookController::canPrepareFilm() const noexcept {
     return assetManager_ && previewWidth_ && previewHeight_ && vulkanContext_.device();
 }
 
+bool PreviewLookController::sameBakedFilm(const spektrafilm_native::FilmLook& a,
+                                          const spektrafilm_native::FilmLook& b) noexcept {
+    return a.film == b.film && a.paper == b.paper && a.rgbToRawMethod == b.rgbToRawMethod &&
+           a.inputColorSpace == b.inputColorSpace && a.outputColorSpace == b.outputColorSpace &&
+           a.grainModel == b.grainModel && a.cameraUvFilterEnabled == b.cameraUvFilterEnabled &&
+           a.cameraUvCutNm == b.cameraUvCutNm && a.cameraIrFilterEnabled == b.cameraIrFilterEnabled &&
+           a.cameraIrCutNm == b.cameraIrCutNm;
+}
+
 bool PreviewLookController::needsFilmRebuild(const spektrafilm_native::FilmLook& look) const noexcept {
-    return !film_ || look.film != filmLookBaked_.film || look.paper != filmLookBaked_.paper ||
-           look.rgbToRawMethod != filmLookBaked_.rgbToRawMethod ||
-           look.inputColorSpace != filmLookBaked_.inputColorSpace ||
-           look.outputColorSpace != filmLookBaked_.outputColorSpace || look.grainModel != filmLookBaked_.grainModel ||
-           look.cameraUvFilterEnabled != filmLookBaked_.cameraUvFilterEnabled ||
-           look.cameraUvCutNm != filmLookBaked_.cameraUvCutNm ||
-           look.cameraIrFilterEnabled != filmLookBaked_.cameraIrFilterEnabled ||
-           look.cameraIrCutNm != filmLookBaked_.cameraIrCutNm || filmArenaDim(previewWidth_) > filmArenaW_ ||
+    return !film_ || !sameBakedFilm(look, filmLookBaked_) || filmArenaDim(previewWidth_) > filmArenaW_ ||
            filmArenaDim(previewHeight_) > filmArenaH_;
+}
+
+namespace {
+// Rawr 17U fork: engines kept besides the one in use (each holds its quarter-res arena with every effect's
+// scratch, so the cache stays small).
+constexpr size_t kFilmCacheMax = 2;
+}  // namespace
+
+void PreviewLookController::stashFilm(PreparedFilm prepared) {
+    if (!prepared.engine) return;
+    std::lock_guard<std::mutex> lock(filmCacheMutex_);
+    filmCache_.erase(std::remove_if(filmCache_.begin(), filmCache_.end(),
+                                    [&](const PreparedFilm& p) { return sameBakedFilm(p.look, prepared.look); }),
+                     filmCache_.end());
+    filmCache_.insert(filmCache_.begin(), std::move(prepared));
+    if (filmCache_.size() > kFilmCacheMax) filmCache_.resize(kFilmCacheMax);
+}
+
+std::optional<PreviewLookController::PreparedFilm> PreviewLookController::takeCachedFilm(
+    const spektrafilm_native::FilmLook& look) {
+    std::lock_guard<std::mutex> lock(filmCacheMutex_);
+    for (auto it = filmCache_.begin(); it != filmCache_.end(); ++it) {
+        if (sameBakedFilm(it->look, look) && preparedFilmFits(*it)) {
+            PreparedFilm found = std::move(*it);
+            filmCache_.erase(it);
+            return found;
+        }
+    }
+    return std::nullopt;
+}
+
+void PreviewLookController::clearFilmCache() {
+    std::vector<PreparedFilm> dropped;
+    {
+        std::lock_guard<std::mutex> lock(filmCacheMutex_);
+        dropped.swap(filmCache_);
+    }
+    if (dropped.empty() || !vulkanContext_.device()) return;
+    // A cached engine was used by frames before it was swapped out; let the queue drain before freeing it.
+    std::lock_guard<std::mutex> queueLock(queueSubmitMutex_);
+    vkQueueWaitIdle(vulkanContext_.queue());
 }
 
 PreviewLookController::PreparedFilm PreviewLookController::prepareFilm(const spektrafilm_native::FilmLook& look,
@@ -284,9 +331,18 @@ void PreviewLookController::installPreparedFilm(PreparedFilm prepared) {
         std::lock_guard<std::mutex> queueLock(queueSubmitMutex_);
         vkCheck(vkQueueWaitIdle(vulkanContext_.queue()), "vkQueueWaitIdle film handoff");
     }
+    PreparedFilm outgoing{};
     {
         std::lock_guard<std::mutex> filmLock(filmMutex_);
+        outgoing.engine = std::move(film_);
         film_ = std::move(prepared.engine);
+    }
+    // Rawr 17U fork: the engine going out is kept for a quick way back (stashFilm).
+    if (outgoing.engine && filmArenaW_ && filmArenaH_) {
+        outgoing.look = filmLookBaked_;
+        outgoing.arenaWidth = filmArenaW_;
+        outgoing.arenaHeight = filmArenaH_;
+        stashFilm(std::move(outgoing));
     }
     filmLookBaked_ = prepared.look;
     filmArenaW_ = prepared.arenaWidth;
@@ -391,6 +447,21 @@ void PreviewLookController::setFilmSimLook(const spektrafilm_native::FilmLook& l
     ++filmBuildGeneration_;
     if (videoSuppressed_) return;
     if (requestedFilmEnabled_ && canPrepareFilm() && needsFilmRebuild(look)) {
+        // Rawr 17U fork: a recently used engine for this stock swaps in at once.
+        if (film_ && filmArenaDim(previewWidth_) <= filmArenaW_ && filmArenaDim(previewHeight_) <= filmArenaH_) {
+            if (auto cached = takeCachedFilm(look)) {
+                try {
+                    installPreparedFilm(std::move(*cached));
+                    SESSION_LOGI("FILM_SIM_CACHE_HIT film=%d paper=%d", look.film, look.paper);
+                    publish_(true, look);
+                    if (!applyFilmSimState(true, look, /*isLookUpdate=*/true))
+                        emit("FILM_SIM look rejected (see FILM_SIM_FAILURE)");
+                    return;
+                } catch (const std::exception& e) {
+                    emit(std::string("FILM_SIM_CACHE_FAILURE error=") + e.what());
+                }
+            }
+        }
         // The recorder retains the last compatible look and engine while a
         // new baked stock/paper/method is prepared on the film worker.
         scheduleFilmBuildLocked();
@@ -424,7 +495,13 @@ void PreviewLookController::filmBuildLoop() {
         try {
             auto prepared = prepareFilm(request.look, request.width, request.height);
             std::lock_guard<std::mutex> lock(transitionMutex_);
-            if (filmBuildStop_.load() || request.generation != filmBuildGeneration_) continue;
+            if (filmBuildStop_.load()) continue;
+            if (request.generation != filmBuildGeneration_) {
+                // Rawr 17U fork: overtaken by a newer look, but kept - the user may come back to it.
+                // Only while a film engine is installed (not after the camera resources were torn down).
+                if (film_ && preparedFilmFits(prepared)) stashFilm(std::move(prepared));
+                continue;
+            }
             if (!preparedFilmFits(prepared)) {
                 scheduleFilmBuildLocked();
                 continue;

@@ -65,10 +65,14 @@ private class Card(
     val presetId: String? = null
 )
 
-private enum class Tab(val label: String) {
-    Presets("PRESETS"), Negative("NEGATIVE"), Cinema("CINEMA"), Slide("SLIDE"), Paper("PAPER"),
-    Filter("FILTER"), Grain("GRAIN"), Halation("HALATION")
+/** The sheet's tabs; [quickGroup] names the PARAMS quick-card group shown above the sheet for the tab. */
+internal enum class FilmSheetTab(val label: String, val quickGroup: String?) {
+    Presets("PRESETS", null), Negative("NEGATIVE", "EXPOSURE"), Cinema("CINEMA", "EXPOSURE"),
+    Slide("SLIDE", "EXPOSURE"), Paper("PAPER", "EXPOSURE"), Filter("FILTER", "DIFFUSION"),
+    Grain("GRAIN", "GRAIN"), Halation("HALATION", "HALATION")
 }
+
+private typealias Tab = FilmSheetTab
 
 // Positions in FilmStocks.films (the native profile order).
 private val NegativeFilms = listOf(2, 1, 3, 4, 5, 0, 6, 7, 13, 14, 15)
@@ -79,7 +83,7 @@ private val FujiFilms = setOf(13, 14, 15, 18, 19)
 private fun stockEdit(field: FilmSimDiscreteField, index: Int): LookEdit =
     { it.withDiscrete(SetFilmSimDiscreteValue(field, index)) }
 
-private fun tabOf(film: Int): Tab = when (film) {
+internal fun filmSheetTabOf(film: Int): FilmSheetTab = when (film) {
     in CinemaFilms -> Tab.Cinema
     in SlideFilms -> Tab.Slide
     else -> Tab.Negative
@@ -146,9 +150,56 @@ private fun cardsFor(tab: Tab, quick: FilmSimQuickState): List<Card> {
     }
 }
 
+/**
+ * The film sheet in place of FILM and PARAMS: the PARAMS quick-card group of the open tab above the tabs and
+ * cards. The whole panel fades out while a card is held, so the whole viewfinder shows it.
+ */
+@Composable
+internal fun FilmSheetPanel(
+    quick: FilmSimQuickState,
+    onClose: () -> Unit,
+    onSelectPreset: (String) -> Unit,
+    onApply: (LookEdit) -> Unit,
+    onHold: (LookEdit?) -> Unit,
+    /** The PARAMS quick card limited to one group (by its label), or nothing for a tab without one. */
+    groupCard: @Composable (String) -> Unit
+) {
+    val film = quick.discretes["Film"]?.selectedIndex ?: -1
+    var tab by remember { mutableStateOf(filmSheetTabOf(film)) }
+    // A slide film has no paper: leave the paper tab if it goes away.
+    if (tab == FilmSheetTab.Paper && film in FilmStocks.positiveFilmIndices) tab = filmSheetTabOf(film)
+    var holding by remember { mutableStateOf(false) }
+    val panelAlpha by animateFloatAsState(if (holding) 0f else 1f, tween(120), label = "filmPanelAlpha")
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = CaptureDimens.CompactParamRowEdgeInset)
+            .padding(bottom = CaptureDimens.ControlGap)
+            .alpha(panelAlpha),
+        verticalArrangement = Arrangement.spacedBy(CaptureDimens.ControlGap)
+    ) {
+        tab.quickGroup?.let { groupCard(it) }
+        FilmStockSheet(
+            quick = quick,
+            tab = tab,
+            onTab = { tab = it },
+            onClose = onClose,
+            onSelectPreset = onSelectPreset,
+            onApply = onApply,
+            onHold = { edit ->
+                holding = edit != null
+                onHold(edit)
+            }
+        )
+    }
+}
+
 @Composable
 internal fun FilmStockSheet(
     quick: FilmSimQuickState,
+    tab: FilmSheetTab,
+    onTab: (FilmSheetTab) -> Unit,
+    onClose: () -> Unit,
     onSelectPreset: (String) -> Unit,
     /** Keep a change to the look. */
     onApply: (LookEdit) -> Unit,
@@ -158,15 +209,10 @@ internal fun FilmStockSheet(
 ) {
     val haptics = LocalCaptureHaptics.current
     val film = quick.discretes["Film"]?.selectedIndex ?: -1
-    var tab by remember { mutableStateOf(tabOf(film)) }
-    var holding by remember { mutableStateOf(false) }
-    // Held: the sheet fades out so the whole viewfinder shows the held card.
-    val sheetAlpha by animateFloatAsState(if (holding) 0f else 1f, tween(120), label = "filmSheetAlpha")
     val tabs = Tab.entries.filter { it != Tab.Paper || film !in FilmStocks.positiveFilmIndices }
     Column(
         modifier
             .fillMaxWidth()
-            .alpha(sheetAlpha)
             .background(Color.Black.copy(alpha = .62f), RoundedCornerShape(14.dp))
             .padding(vertical = 6.dp)
             .testTag("film_stock_sheet"),
@@ -176,6 +222,24 @@ internal fun FilmStockSheet(
             contentPadding = PaddingValues(horizontal = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
+            // Closes the sheet (FILM and PARAMS come back).
+            item(key = "close") {
+                Box(
+                    Modifier
+                        .height(26.dp)
+                        .viewfinderChip(active = false)
+                        .captureClickable(shape = CaptureTextRippleShape) {
+                            haptics.selection()
+                            onClose()
+                        }
+                        .padding(horizontal = 10.dp)
+                        .semantics { contentDescription = "Close the film sheet" }
+                        .testTag("film_sheet_close"),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("✕", color = Color.White.copy(alpha = .85f), fontSize = 11.sp, style = ViewfinderTextStyle)
+                }
+            }
             items(tabs.size, key = { tabs[it].name }) { i ->
                 val t = tabs[i]
                 val on = t == tab
@@ -185,7 +249,7 @@ internal fun FilmStockSheet(
                         .viewfinderChip(active = on)
                         .captureClickable(shape = CaptureTextRippleShape) {
                             haptics.selection()
-                            tab = t
+                            onTab(t)
                         }
                         .padding(horizontal = 8.dp)
                         .testTag("film_sheet_tab:${t.name}"),
@@ -220,10 +284,7 @@ internal fun FilmStockSheet(
                         val preset = card.presetId
                         if (preset != null) onSelectPreset(preset) else onApply(card.edit)
                     },
-                    onHold = { down ->
-                        holding = down
-                        onHold(if (down) card.edit else null)
-                    }
+                    onHold = { down -> onHold(if (down) card.edit else null) }
                 )
             }
         }

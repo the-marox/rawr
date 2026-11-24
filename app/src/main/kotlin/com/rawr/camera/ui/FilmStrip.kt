@@ -92,19 +92,35 @@ internal fun FilmStrip(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         when (mode) {
-            FilmStripMode.Collapsed, FilmStripMode.Profiles -> {
-                // Same layout as LOOK/PARAMS: FILM above PARAMS; FILM opens a preset grid above it.
+            FilmStripMode.Collapsed -> {
+                // Same layout as LOOK/PARAMS: FILM above PARAMS; FILM opens the film sheet in their place.
                 FilmFixedColumn(
                     quick = quick,
-                    presetsOpen = mode == FilmStripMode.Profiles,
-                    onToggleProfiles = {
-                        mode = if (mode == FilmStripMode.Profiles) FilmStripMode.Collapsed else FilmStripMode.Profiles
-                    },
-                    // Stays open after a pick (sticky) for quick A/B comparison; tap FILM to close.
-                    onSelect = onSelectPreset,
-                    onOpenParams = { mode = FilmStripMode.Quick },
-                    onApplyLook = onApplyLook,
-                    onHoldLook = onHoldLook
+                    presetsOpen = false,
+                    onToggleProfiles = { mode = FilmStripMode.Profiles },
+                    onOpenParams = { mode = FilmStripMode.Quick }
+                )
+            }
+            FilmStripMode.Profiles -> {
+                // Rawr 17U fork: the film sheet (FilmStockSheet.kt) takes the place of FILM and PARAMS; it stays
+                // open after a pick for quick A/B comparison, ✕ closes it.
+                FilmSheetPanel(
+                    quick = quick,
+                    onClose = { mode = FilmStripMode.Collapsed },
+                    onSelectPreset = onSelectPreset,
+                    onApply = onApplyLook,
+                    onHold = onHoldLook,
+                    groupCard = { group ->
+                        val groups = FilmQuickGroups.filter { it.first == group }
+                        if (groups.isNotEmpty()) FilmQuickCard(
+                            quick = quick,
+                            onScrubParam = onScrubParam,
+                            onResetParam = onResetParam,
+                            onToggleFlag = onToggleFlag,
+                            onAdvanced = { mode = FilmStripMode.Config },
+                            groups = groups
+                        )
+                    }
                 )
             }
             FilmStripMode.Quick -> {
@@ -112,7 +128,6 @@ internal fun FilmStrip(
                     quick = quick,
                     presetsOpen = false,
                     onToggleProfiles = { mode = FilmStripMode.Profiles },
-                    onSelect = onSelectPreset,
                     onOpenParams = { mode = FilmStripMode.Collapsed },
                     paramsActive = true,
                     card = {
@@ -170,13 +185,10 @@ private fun FilmFixedColumn(
     quick: FilmSimQuickState,
     presetsOpen: Boolean,
     onToggleProfiles: () -> Unit,
-    onSelect: (String) -> Unit,
     onOpenParams: () -> Unit,
     paramsActive: Boolean = false,
     /** Card shown above FILM (the PARAMS quick card), given the grid width. */
-    card: (@Composable () -> Unit)? = null,
-    onApplyLook: (LookEdit) -> Unit = {},
-    onHoldLook: (LookEdit?) -> Unit = {}
+    card: (@Composable () -> Unit)? = null
 ) {
     val haptics = LocalCaptureHaptics.current
     val showHelp = rememberControlHelp()
@@ -193,15 +205,6 @@ private fun FilmFixedColumn(
             horizontalAlignment = Alignment.End,
             verticalArrangement = Arrangement.spacedBy(gap)
         ) {
-            if (presetsOpen) {
-                // Rawr 17U fork: presets and the film / paper stocks as cards (FilmStockSheet.kt).
-                FilmStockSheet(
-                    quick = quick,
-                    onSelectPreset = onSelect,
-                    onApply = onApplyLook,
-                    onHold = onHoldLook
-                )
-            }
             card?.let { content ->
                 Box(Modifier.width(cells[1] + cells[2] + cells[3] + cells[4] + gap * 3)) { content() }
             }

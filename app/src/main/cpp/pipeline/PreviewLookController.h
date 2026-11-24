@@ -11,6 +11,7 @@
 #include <mutex>
 #include <optional>
 #include <thread>
+#include <vector>
 
 #include "tonemap/ColorRenderProfile.h"
 #include "vulkan/VulkanContext.h"
@@ -61,7 +62,13 @@ class PreviewLookController final {
         uint64_t generation;
     };
     bool canPrepareFilm() const noexcept;
+    static bool sameBakedFilm(const spektrafilm_native::FilmLook& a, const spektrafilm_native::FilmLook& b) noexcept;
     bool needsFilmRebuild(const spektrafilm_native::FilmLook& look) const noexcept;
+    // Rawr 17U fork: recently used engines kept ready, so going back to a stock (or holding a card in the film
+    // sheet and letting go) swaps engines at once instead of rebuilding. Cleared with the camera resources.
+    void stashFilm(PreparedFilm prepared);
+    std::optional<PreparedFilm> takeCachedFilm(const spektrafilm_native::FilmLook& look);
+    void clearFilmCache();
     PreparedFilm prepareFilm(const spektrafilm_native::FilmLook& look, uint32_t width, uint32_t height) const;
     bool preparedFilmFits(const PreparedFilm& prepared) const noexcept;
     void installPreparedFilm(PreparedFilm prepared);
@@ -97,5 +104,9 @@ class PreviewLookController final {
     std::atomic<bool> filmBuildStop_{false};
     uint64_t filmBuildGeneration_ = 0;
     std::thread filmBuildThread_;
+    // Rawr 17U fork: engine cache (stashFilm). Compiled pipelines are already shared through the device
+    // pipeline cache (vulkan/VulkanDispatch.h), so a rebuild costs the stock's tables and arena, not shaders.
+    std::mutex filmCacheMutex_;
+    std::vector<PreparedFilm> filmCache_;
 };
 }  // namespace rawrcam::pipeline
