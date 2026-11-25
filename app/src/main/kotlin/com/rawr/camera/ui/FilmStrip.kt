@@ -67,7 +67,13 @@ internal fun FilmStrip(
     /** Rawr 17U fork: keep a card's change to the look (FilmStockSheet.kt). */
     onApplyLook: (LookEdit) -> Unit = {},
     /** Rawr 17U fork: a card held - its change on the viewfinder only; null on release. */
-    onHoldLook: (HeldLook?) -> Unit = {}
+    onHoldLook: (HeldLook?) -> Unit = {},
+    /**
+     * Rawr 17U fork: with [onCloseSheet] set, the LOOK button next to the shutter owns the sheet (LookSheet.kt): the
+     * strip shows the film sheet only while [open], and ✕ calls [onCloseSheet] instead of showing FILM and PARAMS.
+     */
+    open: Boolean = true,
+    onCloseSheet: (() -> Unit)? = null
 ) {
     // Rawr 17U fork: film on opens the film sheet straight away (✕ goes back to FILM and PARAMS).
     var mode by remember { mutableStateOf(FilmStripMode.Profiles) }
@@ -88,6 +94,12 @@ internal fun FilmStrip(
     val subsection = section?.subsections?.firstOrNull { it.key == subsectionKey }
         ?: section?.subsections?.firstOrNull()
     if (subsection != null && subsection.key != subsectionKey) subsectionKey = subsection.key
+    if (onCloseSheet != null) {
+        if (!open) return
+        // Opened from the LOOK button: the film sheet, never the FILM and PARAMS chips.
+        if (mode == FilmStripMode.Collapsed || mode == FilmStripMode.Quick) mode = FilmStripMode.Profiles
+    }
+    val closeSheet: () -> Unit = { onCloseSheet?.invoke() ?: run { mode = FilmStripMode.Collapsed } }
     Column(
         modifier.testTag(CaptureTestTags.FILM_STRIP),
         horizontalAlignment = Alignment.CenterHorizontally
@@ -107,7 +119,7 @@ internal fun FilmStrip(
                 // open after a pick for quick A/B comparison, ✕ closes it.
                 FilmSheetPanel(
                     quick = quick,
-                    onClose = { mode = FilmStripMode.Collapsed },
+                    onClose = closeSheet,
                     onSelectPreset = onSelectPreset,
                     onApply = onApplyLook,
                     onHold = onHoldLook,
@@ -167,7 +179,7 @@ internal fun FilmStrip(
                     },
                     onCloseParams = {
                         l4Key = null
-                        mode = FilmStripMode.Collapsed
+                        closeSheet()
                     },
                     l4Key = l4Key,
                     onOpenDiscrete = { l4Key = it },

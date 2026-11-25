@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.material3.Text
 import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -117,9 +119,29 @@ private fun CompactStripStack(
         // share the same strip language and the same bottom slot geometry.
         // Video mode always shows the tonemap strip (film controls hidden).
         // VF CONTROLS (eye panel / Settings › Display) can hide the look strip and the exposure row.
-        if (!quick.showLook) {
-            // hidden
-        } else if (state.filmSimEnabled && filmQuick != null && !forceTonemapStrip) {
+        // Rawr 17U fork: the LOOK button next to the shutter opens the sheet (LookSheet.kt); the viewfinder shows no
+        // LOOK or PARAMS chips. Film on: the film sheet; otherwise the look sheet. Turning Film on or off opens or
+        // closes it, as Ed's strip opened the film sheet when Film came on.
+        val filmOwner = state.filmSimEnabled && filmQuick != null && !forceTonemapStrip
+        val filmOn = state.filmSimEnabled && !forceTonemapStrip
+        var lastFilmOn by remember { mutableStateOf(filmOn) }
+        LaunchedEffect(filmOn) {
+            if (filmOn != lastFilmOn) {
+                lastFilmOn = filmOn
+                LookSheetState.open = filmOn
+            }
+        }
+        val lookLabel = if (filmOwner) filmQuick!!.activePresetName
+            else renderProfiles.options.firstOrNull { it.id == renderProfiles.selectedId }?.label ?: "RAWR NTRL"
+        val lookModified = if (filmOwner) filmQuick!!.modified else !renderProfiles.log && (state.renderExposureTenths != 0 ||
+            com.rawr.camera.model.TonemapCatalog.tone.any {
+                !com.rawr.camera.model.TonemapCatalog.isDefault(state, requireNotNull(it.param))
+            } || renderProfiles.agx?.modified == true)
+        SideEffect {
+            LookSheetState.label = lookLabel
+            LookSheetState.modified = lookModified
+        }
+        if (filmOwner) {
             FilmStrip(
                 quick = filmQuick,
                 onSelectPreset = { onFilmEvent(CaptureFilmEvent.SelectPreset(it)) },
@@ -133,14 +155,17 @@ private fun CompactStripStack(
                     com.rawr.camera.settings.model.FilmSimFlag.valueOf(key), enabled)) },
                 modifier = Modifier.fillMaxWidth(),
                 onApplyLook = { edit -> onFilmEvent(CaptureFilmEvent.ApplyLook(edit)) },
-                onHoldLook = { held -> onFilmEvent(CaptureFilmEvent.HoldLook(held?.edit, held?.mode ?: 0)) }
+                onHoldLook = { held -> onFilmEvent(CaptureFilmEvent.HoldLook(held?.edit, held?.mode ?: 0)) },
+                open = LookSheetState.open,
+                onCloseSheet = { LookSheetState.open = false }
             )
-        } else if (!state.filmSimEnabled || forceTonemapStrip) {
-            TonemapStrip(
+        } else if ((!state.filmSimEnabled || forceTonemapStrip) && LookSheetState.open) {
+            LookSheetPanel(
                 profiles = renderProfiles,
                 state = state,
                 onSelectProfile = onSelectRenderProfile,
                 dispatch = dispatch,
+                onClose = { LookSheetState.open = false },
                 modifier = Modifier.fillMaxWidth()
             )
         }

@@ -126,14 +126,22 @@ internal fun CaptureControls(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                    if (!isVideo) {
-                        Thumbnail(
-                            state = state,
-                            imageUri = latestImageUri,
-                            onClick = onOpenLatestImage,
-                            onLongClick = onOpenRenderer,
-                            modifier = Modifier
-                        )
+                    // Rawr 17U fork: LOOK next to the shutter (LookSheet.kt), the gallery further out, mirroring
+                    // multiframe and FILM on the other side; video has LOOK alone.
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (!isVideo) {
+                            Thumbnail(
+                                state = state,
+                                imageUri = latestImageUri,
+                                onClick = onOpenLatestImage,
+                                onLongClick = onOpenRenderer,
+                                modifier = Modifier
+                            )
+                        }
+                        LookSheetButton(Modifier.graphicsLayer { alpha = selectorsAlpha })
                     }
                 }
                 if (isVideo) {
@@ -389,11 +397,13 @@ internal fun ModeSelectorStrip(
     enabled: Boolean = true
 ) {
     val haptics = LocalCaptureHaptics.current
+    // Rawr 17U fork: PHOTO / VIDEO as a capsule with the active mode filled in the accent colour (was two text labels).
     Row(
         modifier
             .testTag(CaptureTestTags.MODE_SELECTOR)
-            .padding(horizontal = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(28.dp, Alignment.CenterHorizontally),
+            .background(Color(0xFF1A1A1A), RoundedCornerShape(50))
+            .padding(3.dp),
+        horizontalArrangement = Arrangement.spacedBy(0.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically
     ) {
         CaptureMode.entries.forEach { mode ->
@@ -402,6 +412,17 @@ internal fun ModeSelectorStrip(
             Box(
                 Modifier
                     .height(28.dp)
+                    .then(
+                        if (isSelected) {
+                            Modifier.background(
+                                if (enabled) CaptureColors.Accent else CaptureColors.Accent.copy(alpha = .45f),
+                                RoundedCornerShape(50)
+                            )
+                        } else {
+                            Modifier
+                        }
+                    )
+                    .padding(horizontal = 16.dp)
                     .testTag(CaptureTestTags.captureMode(mode.name))
                     .then(
                         if (enabled) {
@@ -427,9 +448,9 @@ internal fun ModeSelectorStrip(
                 Text(
                     label,
                     color = if (isSelected) {
-                        if (enabled) CaptureColors.Accent else CaptureColors.Accent.copy(alpha = .45f)
+                        Color.White.copy(alpha = if (enabled) 1f else .6f)
                     } else {
-                        Color.White.copy(alpha = if (enabled) .38f else .18f)
+                        Color.White.copy(alpha = if (enabled) .45f else .18f)
                     },
                     fontFamily = CaptureMono,
                     fontWeight = FontWeight.Bold,

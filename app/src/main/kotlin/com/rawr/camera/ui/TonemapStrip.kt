@@ -1,6 +1,9 @@
 package com.rawr.camera.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.ui.draw.clip
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -522,3 +525,350 @@ private fun dispatchAgx(dispatch: CaptureDispatch, key: String, value: Float?) {
 }
 
 private fun signedTone(value: Int): String = if (value >= 0) "+$value" else "$value"
+
+/**
+ * Rawr 17U fork: the look sheet opened by the LOOK button next to the shutter ([LookSheetState]), in the film sheet's
+ * format (FilmStockSheet.kt): a row of chips - close, RESET/UNDO, LOOKS and the PARAMS groups - over the looks as
+ * swipeable cards. A PARAMS group opens its controls in a card above the sheet: the tone controls by stage (TONE,
+ * COLOUR, OUTPUT), or the AgX quick groups (RANGE, CURVE, LOOK) with ADV for every AgX parameter. It reuses Ed's
+ * controls ([TonemapParamItem], [RenderExposureParamItem], [FilmQuickCard], [FilmAdvCard]); only the layout is new.
+ */
+@Composable
+internal fun LookSheetPanel(
+    profiles: RenderProfileQuickState,
+    state: CaptureUiState,
+    onSelectProfile: (com.rawr.camera.model.RenderProfileSelection) -> Unit,
+    dispatch: CaptureDispatch,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val haptics = LocalCaptureHaptics.current
+    val showHelp = rememberControlHelp()
+    val gap = CaptureDimens.ControlGap
+    val profileLabel = profiles.options.firstOrNull { it.id == profiles.selectedId }?.label ?: "RAWR NTRL"
+    val agxQuick = profiles.agx?.let { agxStripState(it, state.renderExposureTenths, profileLabel) }
+    val paramTabs: List<String> = when {
+        profiles.log -> emptyList()
+        agxQuick != null -> AgxQuickGroups.map { it.first } + LOOK_SHEET_ADV
+        else -> LookToneTabs.map { it.first }
+    }
+    var tab by remember { mutableStateOf(LOOK_SHEET_LOOKS) }
+    if (tab != LOOK_SHEET_LOOKS && tab !in paramTabs) tab = LOOK_SHEET_LOOKS
+    var agxSection by remember { mutableStateOf<String?>(null) }
+    var agxSubsection by remember { mutableStateOf<String?>(null) }
+    val modified = !profiles.log && (state.renderExposureTenths != 0 ||
+        TonemapCatalog.tone.any { !TonemapCatalog.isDefault(state, requireNotNull(it.param)) } ||
+        profiles.agx?.modified == true)
+    // RESET: every tone control (and the AgX controls of an AgX look) back to its default; the values it replaced are
+    // kept for 5 seconds, while the chip reads UNDO.
+    var undo by remember { mutableStateOf<LookSnapshot?>(null) }
+    LaunchedEffect(undo) {
+        if (undo != null) {
+            kotlinx.coroutines.delay(5000)
+            undo = null
+        }
+    }
+    Column(
+        modifier
+            .fillMaxWidth()
+            .padding(horizontal = CaptureDimens.CompactParamRowEdgeInset)
+            .padding(bottom = gap),
+        verticalArrangement = Arrangement.spacedBy(gap)
+    ) {
+        // The open PARAMS group, above the sheet.
+        val toneGroup = LookToneTabs.firstOrNull { it.first == tab }
+        if (toneGroup != null && agxQuick == null && !profiles.log) {
+            BoxWithConstraints(
+                Modifier
+                    .fillMaxWidth()
+                    .background(Color.Black.copy(alpha = .62f), RoundedCornerShape(14.dp))
+                    .padding(gap)
+            ) {
+                val widths = paramsCellWidths(maxWidth)
+                LazyRow(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(StripDimens.ParamRowHeight)
+                        .testTag(CaptureTestTags.TONEMAP_STRIP_PARAMS),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(gap)
+                ) {
+                    itemsIndexed(toneGroup.second, key = { _, item -> item.jsonKey }) { index, descriptor ->
+                        val cell = Modifier.width(widths[index % widths.size])
+                        if (descriptor.param == null) {
+                            RenderExposureParamItem(descriptor, state, dispatch, cell)
+                        } else {
+                            TonemapParamItem(descriptor, state, dispatch, cell)
+                        }
+                    }
+                }
+            }
+        } else if (agxQuick != null && tab == LOOK_SHEET_ADV) {
+            val section = agxQuick.sections.firstOrNull { it.key == agxSection } ?: agxQuick.sections.firstOrNull()
+            val subsection = section?.let { sec -> sec.subsections.firstOrNull { it.key == agxSubsection } ?: sec.subsections.firstOrNull() }
+            BoxWithConstraints(Modifier.fillMaxWidth()) {
+                val widths = paramsCellWidths(maxWidth)
+                Column(verticalArrangement = Arrangement.spacedBy(gap)) {
+                    FilmAdvCard(
+                        quick = agxQuick,
+                        sectionKey = section?.key,
+                        subsectionKey = subsection?.key,
+                        cardWidth = maxWidth,
+                        onSection = {
+                            agxSection = it
+                            agxSubsection = null
+                        },
+                        onSubsection = { agxSubsection = it },
+                        onBackToQuick = { tab = AgxQuickGroups.first().first },
+                        sectionTag = { "capture_agx_section_$it" },
+                        subsectionTag = { sec, sub -> "capture_agx_subsection_${sec}_$sub" },
+                        backTag = "agx_adv_back"
+                    )
+                    if (subsection != null) {
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .height(StripDimens.ParamRowHeight)
+                        ) {
+                            FilmNumericRow(
+                                quick = agxQuick,
+                                items = subsection.items,
+                                widths = widths,
+                                onScrubParam = { key, value -> dispatchAgx(dispatch, key, value) },
+                                onResetParam = { key -> dispatchAgx(dispatch, key, null) },
+                                modifier = Modifier.fillMaxSize(),
+                                helpFor = ::agxHelp
+                            )
+                        }
+                    }
+                }
+            }
+        } else if (agxQuick != null && tab != LOOK_SHEET_LOOKS) {
+            FilmQuickCard(
+                quick = agxQuick,
+                onScrubParam = { key, value -> dispatchAgx(dispatch, key, value) },
+                onResetParam = { key -> dispatchAgx(dispatch, key, null) },
+                onToggleFlag = { _, _ -> },
+                onAdvanced = { tab = LOOK_SHEET_ADV },
+                groups = AgxQuickGroups.filter { it.first == tab },
+                tagPrefix = "agx",
+                advDescription = "All AgX parameters",
+                helpFor = ::agxHelp
+            )
+        }
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .background(Color.Black.copy(alpha = .62f), RoundedCornerShape(14.dp))
+                .padding(vertical = 6.dp)
+                .testTag(CaptureTestTags.TONEMAP_STRIP),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                item(key = "close") {
+                    LookSheetChip("✕", active = false, tag = "look_sheet_close", help = "Close: hides the look sheet; LOOK opens it again.", onHelp = showHelp) {
+                        haptics.selection()
+                        onClose()
+                    }
+                }
+                val pending = undo
+                if (modified || pending != null) {
+                    item(key = "reset") {
+                        LookSheetChip(
+                            if (pending != null) "UNDO" else "RESET",
+                            active = pending != null,
+                            tag = "look_sheet_reset",
+                            help = "Reset: the parameters of $profileLabel back to its defaults (the look stays). " +
+                                "UNDO brings the previous values back for 5 seconds.",
+                            onHelp = showHelp
+                        ) {
+                            haptics.selection()
+                            if (pending != null) {
+                                pending.restore(dispatch)
+                                undo = null
+                            } else {
+                                undo = LookSnapshot.of(state, agxQuick)
+                                resetLook(state, agxQuick, dispatch)
+                            }
+                        }
+                    }
+                }
+                val tabs = listOf(LOOK_SHEET_LOOKS) + paramTabs
+                items(tabs.size, key = { "tab_${tabs[it]}" }) { i ->
+                    val t = tabs[i]
+                    LookSheetChip(
+                        t,
+                        active = t == tab,
+                        tag = "look_sheet_tab:$t",
+                        help = if (t == LOOK_SHEET_LOOKS) "Looks: the render profile (tone curve and colour) for the JPEG and preview. Tap a card to use it."
+                        else "$t: the look's parameters for this stage. Drag a value to change it; double-tap resets it.",
+                        onHelp = showHelp
+                    ) {
+                        haptics.selection()
+                        tab = t
+                    }
+                }
+            }
+            val options = profiles.options
+            val start = options.indexOfFirst { it.id == profiles.selectedId }.coerceAtLeast(0)
+            val list = remember { androidx.compose.foundation.lazy.LazyListState((start - 1).coerceAtLeast(0)) }
+            LazyRow(
+                state = list,
+                contentPadding = PaddingValues(horizontal = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                items(options.size, key = { options[it].id.key }) { i ->
+                    val option = options[i]
+                    LookCard(
+                        top = lookCardKind(option.id),
+                        name = option.label,
+                        selected = option.id == profiles.selectedId,
+                        enabled = !profiles.locked,
+                        tag = CaptureTestTags.renderProfile(option.id.key)
+                    ) {
+                        haptics.selection()
+                        onSelectProfile(option.id)
+                    }
+                }
+            }
+        }
+    }
+}
+
+private const val LOOK_SHEET_LOOKS = "LOOKS"
+private const val LOOK_SHEET_ADV = "ADV"
+
+/** The tone controls by stage, as the look sheet's PARAMS tabs (catalog order inside each). */
+private val LookToneTabs: List<Pair<String, List<TonemapParam>>> = listOf(
+    "TONE" to listOf(
+        TonemapCatalog.renderExposure,
+        TonemapCatalog.highlights,
+        TonemapCatalog.shadows,
+        TonemapCatalog.midtones,
+        TonemapCatalog.contrast
+    ),
+    "COLOUR" to listOf(TonemapCatalog.saturation, TonemapCatalog.vibrance),
+    "OUTPUT" to listOf(TonemapCatalog.whites, TonemapCatalog.blacks)
+)
+
+private fun lookCardKind(id: com.rawr.camera.model.RenderProfileSelection): String = when (id) {
+    is com.rawr.camera.model.RenderProfileSelection.Imported -> "LUT"
+    is com.rawr.camera.model.RenderProfileSelection.Agx, is com.rawr.camera.model.RenderProfileSelection.SavedAgx -> "AGX"
+    is com.rawr.camera.model.RenderProfileSelection.Log -> "LOG"
+    is com.rawr.camera.model.RenderProfileSelection.BuiltIn -> "RAWR"
+}
+
+/** The values RESET replaced: tone controls, render exposure and (AgX look) the AgX controls by strip key. */
+private class LookSnapshot(
+    val tone: Map<com.rawr.camera.model.ToneParameter, Int>,
+    val renderExposureTenths: Int,
+    val agx: Map<String, Float>
+) {
+    fun restore(dispatch: CaptureDispatch) {
+        // RESET left every tone control at its default, so the way back is the saved value minus the default.
+        tone.forEach { (parameter, value) ->
+            val neutral = TonemapCatalog.forParameter(parameter).defaultValue.roundToInt()
+            if (value != neutral) dispatch(ScrubTone(parameter, value - neutral))
+        }
+        agx.forEach { (key, value) -> if (key != AGX_STRIP_EXPOSURE_KEY) dispatchAgx(dispatch, key, value) }
+        dispatch(SetRenderExposureTenths(renderExposureTenths))
+    }
+
+    companion object {
+        fun of(state: CaptureUiState, agxQuick: com.rawr.camera.model.FilmSimQuickState?) = LookSnapshot(
+            tone = TonemapCatalog.tone.associate { requireNotNull(it.param) to TonemapCatalog.valueOf(state, requireNotNull(it.param)) },
+            renderExposureTenths = state.renderExposureTenths,
+            agx = agxQuick?.params?.mapValues { it.value.value }.orEmpty()
+        )
+    }
+}
+
+private fun resetLook(state: CaptureUiState, agxQuick: com.rawr.camera.model.FilmSimQuickState?, dispatch: CaptureDispatch) {
+    TonemapCatalog.tone.forEach { descriptor ->
+        val parameter = requireNotNull(descriptor.param)
+        val current = TonemapCatalog.valueOf(state, parameter)
+        val neutral = descriptor.defaultValue.roundToInt()
+        if (current != neutral) dispatch(ScrubTone(parameter, neutral - current))
+    }
+    agxQuick?.params?.keys?.forEach { key -> if (key != AGX_STRIP_EXPOSURE_KEY) dispatchAgx(dispatch, key, null) }
+    dispatch(SetRenderExposureTenths(0))
+}
+
+@Composable
+private fun LookSheetChip(
+    text: String,
+    active: Boolean,
+    tag: String,
+    help: String,
+    onHelp: (String) -> Unit,
+    onClick: () -> Unit
+) {
+    Box(
+        Modifier
+            .height(26.dp)
+            .viewfinderChip(active = active)
+            .captureCombinedClickable(
+                shape = CaptureTextRippleShape,
+                onLongClickLabel = "Explain",
+                onLongClick = { onHelp(help) }
+            ) { onClick() }
+            .padding(horizontal = if (text == "✕") 10.dp else 8.dp)
+            .testTag(tag),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text,
+            color = if (active) CaptureColors.Accent else Color.White.copy(alpha = .8f),
+            fontFamily = CaptureMono,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = if (text == "✕") 11.sp else 10.sp,
+            maxLines = 1,
+            style = ViewfinderTextStyle
+        )
+    }
+}
+
+/** A look as a card, in the film sheet's card format: its kind on top, its name below. */
+@Composable
+private fun LookCard(top: String, name: String, selected: Boolean, enabled: Boolean, tag: String, onTap: () -> Unit) {
+    val shape = RoundedCornerShape(8.dp)
+    Column(
+        Modifier
+            .width(84.dp)
+            .height(46.dp)
+            .clip(shape)
+            .background(Color(0xFF1C1C1C))
+            .border(if (selected) 2.dp else 1.dp, if (selected) CaptureColors.Accent else CaptureColors.Outline, shape)
+            .captureClickable(shape = CaptureTextRippleShape, enabled = enabled) { onTap() }
+            .semantics {
+                contentDescription = "Render profile $name" + if (selected) ", active" else ""
+                role = Role.RadioButton
+                this.selected = selected
+            }
+            .testTag(tag)
+            .padding(horizontal = 7.dp, vertical = 5.dp),
+        verticalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            top,
+            color = if (selected) CaptureColors.AccentSoft else Color.White.copy(alpha = .5f),
+            fontFamily = CaptureMono,
+            fontSize = 8.sp,
+            maxLines = 1,
+            style = ViewfinderTextStyle
+        )
+        Text(
+            name,
+            color = if (selected) Color.White else Color.White.copy(alpha = .85f),
+            fontFamily = CaptureMono,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            fontSize = 11.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            style = ViewfinderTextStyle
+        )
+    }
+}
