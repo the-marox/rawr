@@ -87,13 +87,13 @@ Above a set light level the L8's distance is withheld altogether: `debug.rawr.to
 15 000-57 000 range where utalpt saw the invented distance, a starting point for the sweep and not a
 calibration: targets at 0.3, 0.5, 1, 2 and 3 m at 0, 100, 1 000, 15 000 and 57 000 lux decide whether a
 single ceiling is right, whether it has to be a ramp, and whether the sensor is simply unusable above it.
+The window and the ceiling are off on every other phone, and the VI5300 keeps its status as the only guard.
 
 The sweep has an instrument of its own: `debug.rawr.tof_log 1`, then `adb logcat -s RawrTof` prints a
 `TOF_SAMPLE` line per reading (distance, the band statuses, lux, CCT, monotonic ms) and a `TOF_SUMMARY`
 line every ten with the median, the median absolute deviation, min/max and how many readings had no
 target, so each cell of the sweep is a number instead of an impression. The property is read again every
 ten readings; nothing is logged while it is off, on any phone.
-The window and the ceiling are off on every other phone, and the VI5300 keeps its status as the only guard.
 
 Flicker is confirmed after three readings in a row within one bin of 100 or 120 Hz and released after
 16 readings in a row that are not, about two seconds (`FlickerClassifier`).
