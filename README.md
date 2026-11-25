@@ -24,9 +24,9 @@
   ([release page](https://github.com/utalpt/rawr/releases/tag/debug)). Every push to `xiaomi-17u` rebuilds it;
   install it over the previous one.
 - Lens setup (50 MP, 200 MP tele, vendor keys, merge limits) is built into the APK. If you restored an older
-  backup or edited lenses, use **Settings > Capture > Lens > Reset to device default** (bottom of the list) to get the current profile.
+  backup or edited lenses, use **Settings > Lenses > Reset to device default** (bottom of the list) to get the current profile.
 - Optional recommended settings: [`presets/Rawr17U-recommended.zip`](presets/Rawr17U-recommended.zip). Import it
-  with **Settings > About > Backup > Import Backup**. It holds settings only (no lens profiles):
+  with **Settings > System > About > Backup > Import Backup**. It holds settings only (no lens profiles):
   - Multiframe on (Rexture, 17 frames, Chroma Denoise on)
   - RAWR look contrast +61, capture sharpening Medium
   - Highlight recovery off, distortion correction off, AgX preset Default
@@ -35,7 +35,7 @@
 
 Everything the fork adds, kept here also once Ed has taken it into Rawr: those items say *(Already in
 Rawr: Ed's #N)*, with the pull request it came in. Entry by entry, with how each was checked:
-[CHANGELOG.md](CHANGELOG.md). Synced with Ed's main up to #155 (24 Nov 2026).
+[CHANGELOG.md](CHANGELOG.md). Synced with Ed's main up to #158 (25 Nov 2026).
 
 **Photo: 50 and 200 MP**
 - **50 MP RAW** on the main, tele and ultra-wide cameras: the viewfinder streams the binned 4:3 RAW at 30 fps
@@ -67,7 +67,7 @@ Rawr: Ed's #N)*, with the pull request it came in. Entry by entry, with how each
   variant picker: `Normal`, `50MP`, `200>50` / `200>25` / `200 SF`, `ISZ` (in-sensor zoom) and the dual-gain
   readouts `DCG`, `DSG`, `DAG` (14-bit, with a per-lens ISO cap).
 - Lens bar grouping (Auto / Grouped / All) and button size (Compact / Normal / Large), from the eye panel.
-- **Exposure memory** (Settings > Control Style): **Per camera**, each lens keeps its own exposure mode,
+- **Exposure memory** (Settings > Viewfinder & controls > Control Style): **Per camera**, each lens keeps its own exposure mode,
   ISO, shutter, EV and WB, or **Shared**, one set for every lens (focus stays per lens).
 - Each lens can keep its own frame count, look, tone and film.
 - Manual ISO shows the standard numbers on the third stops (80, 160, 320, 640, 1250 instead of 79, 159,
@@ -86,6 +86,20 @@ Rawr: Ed's #N)*, with the pull request it came in. Entry by entry, with how each
 - **RESET** back to the preset in use (or the default look), with UNDO for 5 seconds; switching back to one of
   the last two stocks is instant (the film engines are kept).
 - Themes (Leica, Mono, Steel, Sage, Custom), button shapes, and a layout that stays upright in landscape.
+
+**Viewfinder and settings**
+- **Clean viewfinder:** no look chips over the picture. A **LOOK button** left of the shutter (the gallery
+  further out) shows the look in use, with a dot when its parameters were changed; a long press opens the Look
+  settings. It opens a **look sheet** in the film sheet's format: the looks as swipeable cards, the parameters
+  as tabs (TONE, COLOUR, OUTPUT; AgX RANGE, CURVE, LOOK and ADV) with RESET/UNDO; with Film on it opens the
+  film sheet. PHOTO / VIDEO is a capsule.
+- **Scopes:** translucent, borderless cards with the mode in the corner (LUMA, RGB, PARADE, VECTOR), lines at
+  0/50/100% and clipping in red, and an **RGB PARADE** waveform mode; they hide while a film card is held.
+- **Scrub readout:** a slim capsule near the top of the viewfinder while a control is scrubbed.
+- **Settings by intent:** Photo, Look, RAW development, Video, Viewfinder & controls, Lenses, System, with a
+  **search** whose index is generated at build time from the settings pages (a result opens its page with
+  the setting highlighted). The lens editor keeps the basics on the lens page and the sensor tuning under
+  Advanced.
 
 **White balance**
 - **Pick neutral** (WB panel > PICK NEUTRAL, then tap something truly white or grey): Rawr measures that
@@ -127,7 +141,7 @@ Rawr: Ed's #N)*, with the pull request it came in. Entry by entry, with how each
 **Renderer**
 - Sensor CFA (RAW tab): Auto finds a Quad Bayer block mosaic tagged as Bayer (for example 50 MP Xiaomi 15
   Ultra DNGs from other apps) and remosaics it; large uncompressed DNGs open; optional Renderer icon in the
-  app drawer and Settings > Renderer.
+  app drawer and Settings > System > Renderer.
 
 ### How 50 and 200 MP are reached
 

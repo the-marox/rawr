@@ -4,6 +4,64 @@ Fork of [Rawr](https://github.com/adityawarmanfw/rawr) for the Xiaomi 17 Ultra.
 Releases follow Ed's version: `0.5.1-17u.N`. Test work lands on `yuv-probe`
 first and moves to `xiaomi-17u` once verified.
 
+## 0.5.1-17u.12
+
+A clean viewfinder (LOOK next to the shutter), restyled scopes, the settings grouped with a search, and Ed's
+#156 and #158, checked on the Xiaomi 17 Ultra.
+
+### Viewfinder
+
+- Clean viewfinder: the LOOK and PARAMS chips left the picture. A LOOK button sits left of the shutter (gallery
+  further out, mirroring multiframe and FILM), with the look in use on two lines ("RAWR" over "NTRL") at a fixed
+  size and a dot when its parameters changed; a long press opens the Look settings (Film settings while Film is
+  on). In video it is alone left of the record button.
+- LOOK opens a sheet over the bottom of the viewfinder in the film sheet's format: the looks as swipeable cards
+  and the PARAMS groups as tabs (TONE, COLOUR, OUTPUT; for AgX RANGE, CURVE, LOOK and ADV), each opening its
+  controls above the sheet, with RESET/UNDO (5 s) for the look's parameters. While Film is on, LOOK opens the
+  film sheet; turning Film on opens it. Ed's controls, new layout.
+- PHOTO / VIDEO is a capsule with the active mode filled in red. The gallery thumbnail is 52 dp beside the
+  other buttons.
+- VF CONTROLS (eye panel) and Settings > Viewfinder & controls no longer have the LOOK switch. The look sheet
+  still hides with the clean recording view.
+- Scopes: translucent, borderless cards (the scope blended over the picture), the mode as a small corner label
+  (LUMA, RGB, PARADE, VECTOR), dashed lines at 0, 50 and 100% and the top of the scale in the accent red. New
+  waveform mode PARADE (R, G and B side by side); a long press on WAVE cycles LUMA, RGB, PARADE; RGB stays the
+  default. The trace itself (Ed's image_scopes rendering) is unchanged.
+- Scopes hide while a film card is held for a compare; the compare's left label names the stock in use when
+  the tab has no card for it.
+- The readout of a scrubbed control is a slim capsule near the top of the viewfinder (title and value on one
+  line over a tick ruler).
+- Checked on the 17U: looks switched from the cards, RESET/UNDO, AgX tabs and ADV, the film sheet from LOOK,
+  the long presses, video; logs with no crash.
+
+### Settings
+
+- Home grouped by intent: Photo, Look, RAW development, Video, Viewfinder & controls, Lenses, System; the hubs
+  only link to Ed's pages, so options added upstream show up with no change. Section titles and values are
+  grey; the accent red stays for what is on or chosen.
+- Search on the home: part of a setting's name (or of its page, e.g. "denoise strength"); a result opens its
+  page with the setting highlighted. The index is generated at build time from the settings sources.
+- Lens editor: the lens page keeps the basics (name, camera, mirror, capture, DCP profiles); sensor tuning
+  (extended exposure, vendor mode and keys, levels, sensor layout, edge crop) is under Advanced, above Ed's
+  automatic settings.
+- The Look page's LUT Profile row opens the chosen LUT, or Tone & Color when none is chosen (same for a LUT
+  search result); Back with no history goes to the page's hub.
+- Checked on the 17U: every page reached from the home (a unit test checks it too), search results and the
+  highlight, the lens editor saved unchanged.
+
+### From upstream Rawr (Ed): #156 and #158
+
+- #156 HDR+ Quality: a tile where a frame moved keeps merging each frequency bin within 2x its noise, so moving
+  subjects are clean with no ghosts (before: the reference alone, with blotchy grain); alignment's upsampling
+  correction in one pass, 22% faster in Ed's numbers. Merged without conflicts. Checked on the 17U: 17-frame
+  merges of a TV with moving runners - solid subjects, no ghosts or blotches at 100%; merge 2.5-2.9 s. No
+  pre-#156 shot of the scene, so the gain was not measured.
+- #158 Rexture Native RGB without false colour: red and blue rebuilt from their own CFA sites, green re-estimated
+  where few frames merged. Native RGB and Rexturation are on by default for new installs and reset settings;
+  saved settings are kept. Merged without conflicts. Checked on the 17U: with Native RGB the JPEG input is
+  ready in 0-13 ms against 440-550 ms for AMaZE in the same session; fine textures (wicker, engraving) show no
+  false colour or moire at 100%.
+
 ## 0.5.1-17u.11
 
 The film stocks as cards, with hold-to-compare and a grain loupe, and Ed's #155, checked on the Xiaomi 17
