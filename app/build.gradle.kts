@@ -384,7 +384,7 @@ abstract class I18nTemplateTask : DefaultTask() {
     }
 
     @TaskAction fun generate() {
-        val keys = java.util.TreeSet<String>()
+        val keys = sortedSetOf<String>()
         sourceDirectories.files.sortedBy { it.path }.forEach { dir ->
             dir.walkTopDown().filter { it.isFile && it.extension == "kt" }.sortedBy { it.path }.forEach { file ->
                 val lexer = Lexer(file.readText())
