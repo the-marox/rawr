@@ -21,7 +21,7 @@ The value is capped at 5 ms and is ignored on every other device. The default is
 adb shell su -c 'setprop debug.rawr.video_acquire_wait_ms 0'
 ```
 
-The YUV feeder keeps four encoder buffers dequeued ahead by default on every device. On `dada` only, `debug.rawr.video_yuv_ready=6` opts into six at the next recording start; unset, `0`, `4` or invalid values keep four. The writer limit remains 16. No reduction in drops from this experiment has been established.
+The YUV feeder keeps four encoder buffers dequeued ahead by default on every device. On `dada` only, `debug.rawr.video_yuv_ready=6` opts into six at the next recording start; unset, `0`, `4` or invalid values keep four. The writer limit remains 16. Four is the validated default: the A/B below found no drop reduction from six at 4K24, and six moved the startup loss inside the file instead of ahead of it.
 
 For a controlled 24 fps run, collect:
 
@@ -53,3 +53,40 @@ Both journals ended with `ok=true` and `published`. Final YUV log for the second
 The wait property was disabled (`0`) after testing, and the debug app was stopped. No release app settings were modified.
 
 Timing caveats: dequeue timing includes buffer import, not just ImageWriter blocking. Fence timing is the CPU duration of each wait call, not total GPU execution time. The revised mean divides by wait calls, including timeouts. Timing writers and snapshots now use the same mutex; the earlier APK did not fully synchronize these metrics.
+
+## `sensorGaps` semantics
+
+`RAW_READER_STATS` reports `sensorGaps` for a rolling window, and the comparison interval is the *shortest* frame interval observed in that window (`RawFrameIngress::recordReaderStats`, `RawFrameIngress.cpp:188`, field defined in `RawFrameIngress.h:54`). The counter therefore does not mean "frames the sensor did not deliver" in absolute terms.
+
+This matters at mode changes. A window that covers the last Photo preview frames (96 fps, `frameMs=10.44`) and the first Video frames (24 fps, `frameMs=41.62`) measures every video frame against the 10.44 ms minimum, so all of them count as late: the 2026-11-25 Photo to Video transition reported `sensorGaps=119` with `longestMs=42.024` in a window where nothing was actually lost. The same run reported `sensorGaps=1` with `longestMs=228.845` and `244.946` in the following pure-video windows, which is the startup gap described below.
+
+Rules of thumb:
+
+- read `sensorGaps` only inside a window that stays on a single sensor mode;
+- compare windows of the same mode, never the window that spans the transition;
+- a value close to `windowDuration / frameMs` is a sign of a mixed-mode window, not of lost frames.
+
+## A/B: `debug.rawr.video_yuv_ready` 4 vs 6, 2026-11-25
+
+Same session, same scene, Xiaomi 15 `dada`, 23 mm Open Gate, 4096x3072, 24 fps, nominal 25 s per clip. The property is read at every `startYuv()` (`VideoOutput.cpp:465-466`), so the second clip needed no app restart. Final state: `debug.rawr.video_yuv_ready=4`, `debug.rawr.video_acquire_wait_ms=0`.
+
+| Metric | target 4 | target 6 |
+|---|---:|---:|
+| `VIDEO_YUV_STATS buffers` | 8 | 10 |
+| `VIDEO_YUV_FLOW` | `ready=4 outstanding=4` | `ready=6 outstanding=6` |
+| `noReady/noImage/noBuffer` | 0/0/0 | 0/0/0 |
+| `encodedFrames` | 832 | 783 |
+| `encodedFrameGaps` | 0 | 5 |
+| `targetFrameShortfall` | 7 | 11 |
+| `currentFps` | 23.800381 | 23.800381 |
+| first-to-last PTS span | 34.922 s | 33.055 s |
+| `encoderLatencyMs` mean/max | 177.06/245.36 | 170.36/239.68 |
+| `dequeueMax`/`fenceMax` ms | 5.81/4.57 | 7.58/5.55 |
+| submitted/dropped/images | 811/0/6 | 762/0/6 |
+| published | yes | yes |
+
+Both runs recorded zero YUV acquisition drops, so the feeder was not starving in either configuration, and the frame rate was identical. Six buffers only add work at the start (higher dequeue and fence maxima) and they do not remove the startup loss: they relocate it. With four, the loss sits ahead of the first encoded frame and the file is simply shorter; with six, six frames are lost inside the file as `encodedFrameGaps=5`, which is a visible freeze of about 208 ms. Neither number proves a missing camera frame; `encodedFrameGaps` is inferred from encoder timestamps.
+
+The startup loss measured separately is about 245 ms and starts before `CAMERA_RECORDING_FPS`, i.e. at the shutter tap, not in the YUV feeder. A four-buffer target with a non-blocking acquire is therefore the configuration to keep, and the remaining work belongs in the window between the tap and the first video frame.
+
+Caveat: one clip per configuration, sequential, not thermally or scene controlled. The conclusion rests on identical frame rates and identical zero-drop counters, plus the placement of the loss in the file.
