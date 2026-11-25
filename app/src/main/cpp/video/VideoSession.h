@@ -100,6 +100,8 @@ class VideoSession final {
     // wait stays short because it holds the frame submit path.
     bool acquire(uint32_t frameSlot, uint32_t* imageIndex);
     uint32_t encoderImageCount() const noexcept { return output_.encoderImageCount(); }
+    uint64_t encoderNoReadyDrops() const noexcept { return output_.yuvNoReadyDrops(); }
+    uint64_t encoderNoImageDrops() const noexcept { return output_.yuvNoImageDrops(); }
     void record(VkCommandBuffer command, uint32_t frameSlot, uint32_t imageIndex, uint32_t rawWidth, uint32_t rawHeight,
                 const VideoDemosaic::Frame& rawFrame, const std::array<float, 9>& cameraToAp1,
                 const tonemap::TonemapParams& params, rawrcam::diagnostics::GpuTimingTracker& timing,

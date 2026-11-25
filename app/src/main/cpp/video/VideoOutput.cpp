@@ -8,6 +8,8 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdlib>
+#include <cstring>
 #include <stdexcept>
 #include <string>
 #include <ctime>
@@ -32,6 +34,18 @@ int64_t monotonicNs() {
     timespec now{};
     clock_gettime(CLOCK_MONOTONIC, &now);
     return int64_t(now.tv_sec) * 1'000'000'000 + now.tv_nsec;
+}
+
+uint32_t acquireWaitMs() noexcept {
+    char device[PROP_VALUE_MAX] = {};
+    char setting[PROP_VALUE_MAX] = {};
+    __system_property_get("ro.product.device", device);
+    __system_property_get("debug.rawr.video_acquire_wait_ms", setting);
+    if (std::strcmp(device, "dada") != 0 || setting[0] == '\0') return 0;
+    char* end = nullptr;
+    const long value = std::strtol(setting, &end, 10);
+    if (end == setting || *end != '\0' || value <= 0) return 0;
+    return static_cast<uint32_t>(std::min<long>(value, 5));
 }
 bool clearException(JNIEnv* env) {
     if (!env->ExceptionCheck()) return false;
@@ -209,20 +223,37 @@ void VideoOutput::stop() noexcept {
 bool VideoOutput::acquire(uint32_t frameSlot, uint32_t* imageIndex) {
     if (!ready() || frameSlot >= available_.size()) return false;
     if (yuv_) {
-        std::lock_guard<std::mutex> lock(yuvMutex_);
-        uint32_t index = kYuvImages;
-        for (uint32_t k = 0; k < kYuvImages; ++k) {
-            const uint32_t candidate = (nextYuvIndex_ + k) % kYuvImages;
-            if (!yuvFrames_[candidate].inUse) {
-                index = candidate;
-                break;
+        std::unique_lock<std::mutex> lock(yuvMutex_);
+        const auto findFree = [this] {
+            for (uint32_t k = 0; k < kYuvImages; ++k) {
+                const uint32_t candidate = (nextYuvIndex_ + k) % kYuvImages;
+                if (!yuvFrames_[candidate].inUse) return candidate;
             }
-        }
+            return kYuvImages;
+        };
+        uint32_t index = findFree();
         ++yuvAcquires_;
+        const uint32_t waitMs = acquireWaitMs();
+        if ((readyImages_.empty() || index == kYuvImages) && waitMs > 0) {
+            yuvCv_.wait_for(lock, std::chrono::milliseconds(waitMs), [&] {
+                index = findFree();
+                return !readyImages_.empty() && index != kYuvImages;
+            });
+        }
         if (readyImages_.empty() || index == kYuvImages) {
-            // No encoder buffer in hand: drop this frame now instead of waiting.
+            // A short wait is opt-in and limited to the validated dada device.
+            // Classify the miss so a recording can distinguish feeder starvation
+            // from all GPU output images still being in flight.
             yuvNoBuffer_.fetch_add(1, std::memory_order_relaxed);
-            if (index == kYuvImages) ++yuvNoImage_; else ++yuvNoReady_;
+            if (index == kYuvImages) {
+                ++yuvNoImage_;
+                YLOG("VIDEO_YUV_ACQUIRE_DROP reason=noImage waitMs=%u ready=%zu pending=%zu outstanding=%u",
+                     waitMs, readyImages_.size(), pendingImages_.size(), outstandingImages_);
+            } else {
+                ++yuvNoReady_;
+                YLOG("VIDEO_YUV_ACQUIRE_DROP reason=noReady waitMs=%u ready=%zu pending=%zu outstanding=%u",
+                     waitMs, readyImages_.size(), pendingImages_.size(), outstandingImages_);
+            }
             yuvCv_.notify_one();
             return false;
         }
@@ -522,6 +553,7 @@ bool VideoOutput::dequeueEncoderImage(JNIEnv* env) {
     env->DeleteLocalRef(image);
     std::lock_guard<std::mutex> lock(yuvMutex_);
     readyImages_.push_back({global, buffer});
+    yuvCv_.notify_all();
     return true;
 }
 
@@ -577,6 +609,7 @@ void VideoOutput::feederLoop() {
                 pendingImages_.pop_front();
                 yuvFrames_[index] = {};
                 --outstandingImages_;
+                yuvCv_.notify_all();
             }
             continue;
         }

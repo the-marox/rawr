@@ -41,6 +41,14 @@ class VideoOutput final {
     // after the tonemap, with the image in GENERAL layout.
     void recordYuvPack(VkCommandBuffer command, uint32_t imageIndex);
     uint64_t yuvNoBufferDrops() const noexcept { return yuvNoBuffer_.load(std::memory_order_relaxed); }
+    uint64_t yuvNoReadyDrops() const noexcept {
+        std::lock_guard<std::mutex> lock(yuvMutex_);
+        return yuvNoReady_;
+    }
+    uint64_t yuvNoImageDrops() const noexcept {
+        std::lock_guard<std::mutex> lock(yuvMutex_);
+        return yuvNoImage_;
+    }
     VkExtent2D extent() const noexcept { return extent_; }
     VkFormat format() const noexcept { return outputFormat_; }
     VkFormat preferredFormat(uint32_t bitDepth) const;
@@ -92,7 +100,7 @@ class VideoOutput final {
     // hand. 6 writer images ran dry at 4K60 (~60 drops per 12 s on a warm phone).
     static constexpr uint32_t kYuvImages = 6;       // output images (GPU side)
     static constexpr uint32_t kYuvWriterImages = 16;  // encoder buffers we may hold at once
-    static constexpr uint32_t kYuvReady = 4;        // encoder buffers kept dequeued ahead
+    static constexpr uint32_t kYuvReady = 6;        // encoder buffers kept dequeued ahead
     bool yuv_ = false;
     JavaVM* vm_ = nullptr;
     jobject writer_ = nullptr;
@@ -107,7 +115,7 @@ class VideoOutput final {
     std::deque<uint32_t> pendingImages_;
     uint32_t outstandingImages_ = 0;
     uint32_t nextYuvIndex_ = 0;
-    std::mutex yuvMutex_;
+    mutable std::mutex yuvMutex_;
     std::condition_variable yuvCv_;
     bool yuvStopping_ = false;
     std::thread feeder_;
