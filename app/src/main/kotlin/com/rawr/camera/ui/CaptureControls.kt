@@ -138,7 +138,8 @@ internal fun CaptureControls(
                                 imageUri = latestImageUri,
                                 onClick = onOpenLatestImage,
                                 onLongClick = onOpenRenderer,
-                                modifier = Modifier
+                                modifier = Modifier,
+                                size = 52.dp
                             )
                         }
                         LookSheetButton(Modifier.graphicsLayer { alpha = selectorsAlpha })
@@ -575,7 +576,15 @@ internal fun Shutter(
 }
 
 @Composable
-internal fun Thumbnail(state: CaptureUiState, imageUri: Uri?, onClick: () -> Unit, modifier: Modifier, onLongClick: () -> Unit = {}) {
+internal fun Thumbnail(
+    state: CaptureUiState,
+    imageUri: Uri?,
+    onClick: () -> Unit,
+    modifier: Modifier,
+    onLongClick: () -> Unit = {},
+    /** Rawr 17U fork: 52 dp beside the LOOK, multiframe and FILM buttons in the compact row. */
+    size: Dp = CaptureDimens.Thumbnail
+) {
     val context = LocalContext.current
     var thumbnail by remember(imageUri) { mutableStateOf<android.graphics.Bitmap?>(null) }
     LaunchedEffect(imageUri) {
@@ -634,7 +643,7 @@ internal fun Thumbnail(state: CaptureUiState, imageUri: Uri?, onClick: () -> Uni
     )
 
     Box(
-        modifier.size(CaptureDimens.Thumbnail),
+        modifier.size(size),
         contentAlignment = Alignment.Center
     ) {
         Box(
