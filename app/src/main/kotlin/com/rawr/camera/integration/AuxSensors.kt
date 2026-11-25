@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.util.Log
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -88,6 +89,7 @@ class AuxSensors(
     private val tofSensor: Sensor? = find(TOF_TYPE)
     private val tofLayout: TofLayout = tofLayoutFor(tofSensor?.name)
     private val tofFilter: TofFilter? by lazy { tofFilterFor(Build.DEVICE, tofLayout, SystemPropertiesUtil::get) }
+    private val tofLog: TofLog by lazy { TofLog(SystemPropertiesUtil::get) }
     private val pressureSensor: Sensor? = runCatching { manager?.getDefaultSensor(Sensor.TYPE_PRESSURE) }.getOrNull()
     private val rotationSensor: Sensor? = runCatching { manager?.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR) }.getOrNull()
 
@@ -147,6 +149,7 @@ class AuxSensors(
             tofDistanceMm = null
             tofAtNanos = 0L
             tofFilter?.reset()
+            tofLog.reset()
             pressureHpa = null
             pressureAtNanos = 0L
             headingDeg = null
@@ -243,9 +246,13 @@ class AuxSensors(
 
     private fun tofListener() = object : SensorEventListener {
         override fun onSensorChanged(event: SensorEvent) {
-            val distance = tofDistanceMm(event.values, tofLayout)
-            tofDistanceMm = tofFilter?.update(distance, light?.lux) ?: distance
+            val raw = tofDistanceMm(event.values, tofLayout)
+            val published = tofFilter?.update(raw, light?.lux) ?: raw
+            tofDistanceMm = published
             tofAtNanos = nowNanos()
+            tofLog.record(
+                TofSample(raw, tofStatusText(event.values, tofLayout), light?.lux, light?.cctK, tofAtNanos)
+            ).forEach { Log.i(TOF_LOG_TAG, it) }
             publish()
         }
 
