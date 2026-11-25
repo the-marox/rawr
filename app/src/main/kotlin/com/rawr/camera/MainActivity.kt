@@ -68,6 +68,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        com.rawr.camera.i18n.I18n.init(this) // Rawr 17U fork: UI language
         // Dev/test hooks: win over persisted settings via the startup override
         // (applied when the settings stream emits, so there is no race).
         captureViewModel.applyStartupVideoOverrides(

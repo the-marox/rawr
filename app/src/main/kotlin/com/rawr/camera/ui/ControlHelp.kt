@@ -1,5 +1,6 @@
 package com.rawr.camera.ui
 
+import com.rawr.camera.i18n.tr
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -94,9 +95,10 @@ internal fun ControlHelpOverlay(state: ControlHelpState, orientation: Orientatio
         exit = fadeOut(tween(220)) + scaleOut(tween(220), targetScale = .98f),
         modifier = modifier
     ) {
-        val split = shown.indexOf(": ")
-        val title = if (split in 1..32) shown.substring(0, split) else null
-        val body = if (title != null) shown.substring(split + 2) else shown
+        val localized = tr(shown)
+        val split = localized.indexOf(": ")
+        val title = if (split in 1..32) localized.substring(0, split) else null
+        val body = if (title != null) localized.substring(split + 2) else localized
         Column(
             Modifier
                 .uprightInLandscape(orientation)
@@ -130,7 +132,7 @@ internal fun ControlHelpOverlay(state: ControlHelpState, orientation: Orientatio
             )
             shownAction?.let { label ->
                 Text(
-                    label,
+                    tr(label),
                     color = CaptureColors.AccentSoft,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Bold,

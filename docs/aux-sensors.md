@@ -17,8 +17,9 @@ two standard sensors many phones have, the barometer (`TYPE_PRESSURE`) and the r
   (`log2(lux / 2.5)`), colour temperature, flicker and the ToF distance, and a warning when the shutter time is
   not a whole number of flicker periods (`1/125 will band · try 1/100`).
 - **Capture metadata**: XMP `rawr:AmbientLux`, `rawr:AmbientColorTemperature`, `rawr:LightFlicker`,
-  `rawr:TofDistance` (metres) in the DNG and JPEG, and `com.rawrcam.ambient.*` / `com.rawrcam.tof.distance_mm`
-  entries in the DNG provenance. EXIF SubjectDistance keeps the lens focus distance.
+  `rawr:TofDistance` (metres) in the DNG and an SDR JPEG, and `com.rawrcam.ambient.*` / `com.rawrcam.tof.distance_mm`
+  entries in the DNG provenance. An Ultra HDR JPEG keeps only the EXIF when it is assembled, so it has none of
+  these XMP fields; the DNG has them. EXIF SubjectDistance keeps the lens focus distance.
 - **Barometer**: EXIF 2.31 `Pressure` (0x9402, hPa) in the DNG and JPEG.
 - **Compass**: EXIF `GPSImgDirection` / `GPSImgDirectionRef` (GPS tags 17/16) in the DNG and JPEG, the direction
   the lens pointed. It is part of the location, so it is written only with Location tagging on and a fix; the

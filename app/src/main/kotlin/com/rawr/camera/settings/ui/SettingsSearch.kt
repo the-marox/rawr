@@ -1,5 +1,6 @@
 package com.rawr.camera.settings.ui
 
+import com.rawr.camera.i18n.tr
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -55,11 +56,12 @@ internal fun searchSettings(query: String, entries: List<SettingsSearchEntry> = 
     if (words.isEmpty()) return emptyList()
     val first = words.first()
     return entries
-        .filter { entry -> "${entry.title} ${entry.path}".lowercase(Locale.ROOT).let { text -> words.all { it in text } } }
+        // The translated title and path match too, so a search works in the chosen language.
+        .filter { entry -> entry.searchText().let { text -> words.all { it in text } } }
         .sortedWith(
             compareBy<SettingsSearchEntry>(
-                { entry -> entry.title.lowercase(Locale.ROOT).let { title -> if (words.all { it in title }) 0 else 1 } },
-                { if (it.title.lowercase(Locale.ROOT).startsWith(first)) 0 else 1 },
+                { entry -> entry.titleText().let { title -> if (words.all { it in title }) 0 else 1 } },
+                { entry -> entry.titleText().let { title -> if (title.startsWith(first) || tr(entry.title).lowercase(Locale.ROOT).startsWith(first)) 0 else 1 } },
                 { if (it.isPage) 0 else 1 },
                 { it.title.length }
             )
@@ -69,6 +71,12 @@ internal fun searchSettings(query: String, entries: List<SettingsSearchEntry> = 
 }
 
 /** The row a search result asked for; rows with this title tint and scroll into view, then it clears. */
+private fun SettingsSearchEntry.titleText(): String =
+    (if (tr(title) == title) title else "$title ${tr(title)}").lowercase(Locale.ROOT)
+
+private fun SettingsSearchEntry.searchText(): String =
+    "${titleText()} $path ${if (tr(path) == path) "" else tr(path)}".lowercase(Locale.ROOT)
+
 internal class SettingsHighlight {
     var title by mutableStateOf<String?>(null)
 }
@@ -80,7 +88,7 @@ internal fun SettingsSearchField(query: String, onQueryChange: (String) -> Unit)
     OutlinedTextField(
         value = query,
         onValueChange = { onQueryChange(it.replace("\n", "")) },
-        placeholder = { Text("Search settings") },
+        placeholder = { Text(tr("Search settings")) },
         leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
         trailingIcon = {
             if (query.isNotEmpty()) {
@@ -104,7 +112,7 @@ internal fun SettingsSearchResults(query: String, dispatch: SettingsDispatch, ha
     val results = searchSettings(query)
     Column {
         Text(
-            if (results.isEmpty()) "NO RESULTS" else "${results.size} RESULT${if (results.size == 1) "" else "S"}",
+            if (results.isEmpty()) tr("No results").uppercase() else "${results.size} ${tr(if (results.size == 1) "Result" else "Results")}".uppercase(),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(start = SettingsRowHorizontalPadding, bottom = 4.dp)

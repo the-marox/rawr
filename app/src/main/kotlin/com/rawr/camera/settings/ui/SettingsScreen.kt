@@ -1,5 +1,6 @@
 package com.rawr.camera.settings.ui
 
+import com.rawr.camera.i18n.tr
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.foundation.layout.*
@@ -86,7 +87,7 @@ fun SettingsScreen(
         contentWindowInsets = if (embedded) WindowInsets(0) else ScaffoldDefaults.contentWindowInsets,
         topBar = {
             TopAppBar(
-                title = { Text(destinationTitle(state.presentation.destination)) },
+                title = { Text(tr(destinationTitle(state.presentation.destination))) },
                 windowInsets = if (embedded) WindowInsets(0) else TopAppBarDefaults.windowInsets,
                 navigationIcon = {
                     IconButton(
@@ -185,7 +186,7 @@ private fun destinationTitle(destination: SettingsDestination): String = when (d
     is SettingsDestination.ChoiceSelector -> selectorTitle(destination.kind)
     is SettingsDestination.FilmSimSubPage -> destination.section.title
     is SettingsDestination.FilmSimDetailPage -> destination.detail.title
-    is SettingsDestination.LensEditor -> destination.lensName?.let { "Lens $it" } ?: "New lens"
+    is SettingsDestination.LensEditor -> destination.lensName?.let { "${tr("Lens")} $it" } ?: "New lens"
 }
 
 @Composable
@@ -239,10 +240,10 @@ private data class SettingsHomeEntry(
 private fun ResetConfirmation(target: ResetTarget, dispatch: SettingsDispatch) {
     AlertDialog(
         onDismissRequest = { dispatch.invoke(DismissReset) },
-        title = { Text(resetTitle(target)) },
-        text = { Text("Reset to defaults?") },
-        confirmButton = { TextButton(onClick = { dispatch.invoke(ConfirmReset(target)) }) { Text("Reset") } },
-        dismissButton = { TextButton(onClick = { dispatch.invoke(DismissReset) }) { Text("Cancel") } }
+        title = { Text(tr(resetTitle(target))) },
+        text = { Text(tr("Reset to defaults?")) },
+        confirmButton = { TextButton(onClick = { dispatch.invoke(ConfirmReset(target)) }) { Text(tr("Reset")) } },
+        dismissButton = { TextButton(onClick = { dispatch.invoke(DismissReset) }) { Text(tr("Cancel")) } }
     )
 }
 

@@ -119,6 +119,7 @@ internal fun SystemHubSettings(dispatch: SettingsDispatch) {
             SettingDivider()
             HubRow("About", "Version, licences, backup and restore", SettingsSection.About, dispatch)
         }
+        LanguageSettings()
     }
 }
 

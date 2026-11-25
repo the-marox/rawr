@@ -1,5 +1,6 @@
 package com.rawr.camera.ui
 
+import com.rawr.camera.i18n.tr
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.Orientation as GestureOrientation
@@ -90,7 +91,7 @@ internal fun StripParamsEntry(onOpen: () -> Unit, modifier: Modifier = Modifier,
     ) {
         ContrastIcon(Icons.Outlined.Tune, if (active) CaptureColors.Accent else Color.White.copy(alpha = .62f), 14.dp)
         Text(
-            "PARAMS",
+            tr("PARAMS"),
             color = if (active) CaptureColors.Accent else Color.White.copy(alpha = .62f),
             fontFamily = CaptureMono,
             fontWeight = FontWeight.Bold,
@@ -187,7 +188,7 @@ internal fun StripTwoLineItem(
             style = ViewfinderTextStyle
         )
         Text(
-            labelText,
+            tr(labelText),
             color = Color.White.copy(alpha = .62f),
             fontFamily = CaptureMono,
             fontWeight = FontWeight.Bold,
@@ -458,7 +459,7 @@ internal fun CompactParamShell(
             ) {
                 ContrastIcon(icon, contentColor, 14.dp)
                 Text(
-                    title,
+                    tr(title),
                     color = contentColor,
                     fontFamily = CaptureMono,
                     fontWeight = FontWeight.Bold,
@@ -544,7 +545,7 @@ internal fun CompactSidePill(
         ) {
             Icon(icon, contentDescription = null, tint = contentColor, modifier = Modifier.size(20.dp))
             Text(
-                label,
+                tr(label),
                 color = contentColor,
                 fontFamily = CaptureMono,
                 fontWeight = FontWeight.Bold,

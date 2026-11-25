@@ -254,6 +254,161 @@ val settingsSearchIndex = tasks.register<SettingsSearchIndexTask>("generateSetti
     sourceDirectory.set(layout.projectDirectory.dir("src/main/kotlin/com/rawr/camera/settings"))
     outputDirectory.set(layout.buildDirectory.dir("generated/settingsSearch"))
 }
+// Rawr 17U fork: the UI language template (assets/i18n/template.json) is generated from the UI sources at build
+// time: every plain string literal that reads as UI text, with an empty value. An exported language file starts
+// from it, so texts Ed or the fork add later show up for translators with no change here.
+abstract class I18nTemplateTask : DefaultTask() {
+    @get:InputFiles abstract val sourceDirectories: ConfigurableFileCollection
+    @get:OutputDirectory abstract val outputDirectory: DirectoryProperty
+
+    private class Lexer(val src: String) {
+        val out = ArrayList<String>()
+        private val n = src.length
+
+        /** Code from [start]; with [toBrace] stops after the `}` that closes a `${` template. */
+        fun code(start: Int, toBrace: Boolean): Int {
+            var i = start
+            var depth = 0
+            while (i < n) {
+                val c = src[i]
+                when {
+                    src.startsWith("//", i) -> i = src.indexOf('\n', i).let { if (it < 0) n else it }
+                    src.startsWith("/*", i) -> i = src.indexOf("*/", i + 2).let { if (it < 0) n else it + 2 }
+                    c == '\'' -> {
+                        var j = i + 1
+                        j += if (j < n && src[j] == '\\') 2 else 1
+                        while (j < n && src[j] != '\'') j++
+                        i = j + 1
+                    }
+                    src.startsWith("\"\"\"", i) -> i = chain(i + 3, raw = true)
+                    c == '"' -> i = chain(i + 1, raw = false)
+                    c == '{' -> { depth++; i++ }
+                    c == '}' -> {
+                        if (toBrace && depth == 0) return i + 1
+                        depth--
+                        i++
+                    }
+                    else -> i++
+                }
+            }
+            return i
+        }
+
+        /** A literal and its `+ "..."` continuations, joined into the one text the UI shows. */
+        private fun chain(start: Int, raw: Boolean): Int {
+            var (i, text) = string(start, raw)
+            while (true) {
+                var j = i
+                while (j < n && src[j].isWhitespace()) j++
+                if (j >= n || src[j] != '+') break
+                var k = j + 1
+                while (k < n && src[k].isWhitespace()) k++
+                if (!src.startsWith("\"", k) || src.startsWith("\"\"\"", k)) break
+                val (end, next) = string(k + 1, raw = false)
+                i = end
+                text = if (text == null || next == null) null else text + next
+            }
+            text?.let(out::add)
+            return i
+        }
+
+        /** Returns the end index and the text, or null for a string template. */
+        private fun string(start: Int, raw: Boolean): Pair<Int, String?> {
+            val text = StringBuilder()
+            var template = false
+            var i = start
+            while (i < n) {
+                val c = src[i]
+                if (raw && src.startsWith("\"\"\"", i)) {
+                    var j = i + 3
+                    while (j < n && src[j] == '"') j++
+                    text.append(src, i, j - 3)
+                    return j to text.toString().takeUnless { template }
+                }
+                if (!raw && c == '\\' && i + 1 < n) {
+                    val e = src[i + 1]
+                    if (e == 'u' && i + 5 < n) {
+                        text.append(src.substring(i + 2, i + 6).toInt(16).toChar())
+                        i += 6
+                    } else {
+                        text.append(when (e) { 'n' -> '\n'; 't' -> '\t'; else -> e })
+                        i += 2
+                    }
+                    continue
+                }
+                if (!raw && c == '"') return i + 1 to text.toString().takeUnless { template }
+                if (c == '$' && i + 1 < n && src[i + 1] == '{') {
+                    template = true
+                    i = code(i + 2, toBrace = true)
+                    continue
+                }
+                if (c == '$' && i + 1 < n && (src[i + 1].isLetter() || src[i + 1] == '_')) {
+                    template = true
+                    i++
+                    while (i < n && (src[i].isLetterOrDigit() || src[i] == '_')) i++
+                    continue
+                }
+                text.append(c)
+                i++
+            }
+            return i to null
+        }
+    }
+
+    private val identifier = Regex("[a-z0-9_.:/\\-]+")
+    private val word = Regex("[A-Za-z0-9_]+")
+    private val letters = Regex("[A-Za-z]{2}")
+    private val format = Regex("%[-0-9.]*[dfsx]")
+    private val skippedPrefixes = listOf("com.", "android.", "org.", "http", "image/", "application/", "/", "#",
+        "Rounded.", "Outlined.", "Filled.", "AutoMirrored.", "precision ", "uniform")
+
+    private fun isUiText(s: String): Boolean =
+        s.length >= 2 && letters.containsMatchIn(s) && !identifier.matches(s) &&
+            !(word.matches(s) && ('_' in s || (s[0].isLowerCase() && s.any { it.isUpperCase() }))) &&
+            skippedPrefixes.none { s.startsWith(it) } && !format.containsMatchIn(s) &&
+            !('\n' in s && ('{' in s || ';' in s))
+
+    private fun quote(s: String): String {
+        val b = StringBuilder("\"")
+        for (c in s) {
+            when {
+                c == '"' -> b.append("\\\"")
+                c == '\\' -> b.append("\\\\")
+                c == '\n' -> b.append("\\n")
+                c == '\t' -> b.append("\\t")
+                c < ' ' -> b.append(String.format("\\u%04x", c.code))
+                else -> b.append(c)
+            }
+        }
+        return b.append('"').toString()
+    }
+
+    @TaskAction fun generate() {
+        val keys = java.util.TreeSet<String>()
+        sourceDirectories.files.sortedBy { it.path }.forEach { dir ->
+            dir.walkTopDown().filter { it.isFile && it.extension == "kt" }.sortedBy { it.path }.forEach { file ->
+                val lexer = Lexer(file.readText())
+                lexer.code(0, toBrace = false)
+                lexer.out.filterTo(keys, ::isUiText)
+            }
+        }
+        val target = outputDirectory.file("i18n/template.json").get().asFile
+        target.parentFile.mkdirs()
+        target.writeText(
+            keys.joinToString(",\n", prefix = "{\n\"@note\": \"Generated from the UI sources. Do not edit.\",\n", postfix = "\n}\n") {
+                quote(it) + ": \"\""
+            }
+        )
+    }
+}
+val i18nTemplate = tasks.register<I18nTemplateTask>("generateI18nTemplate") {
+    sourceDirectories.from(
+        layout.projectDirectory.dir("src/main/kotlin/com/rawr/camera/settings"),
+        layout.projectDirectory.dir("src/main/kotlin/com/rawr/camera/ui"),
+        layout.projectDirectory.dir("src/main/kotlin/com/rawr/camera/i18n")
+    )
+    outputDirectory.set(layout.buildDirectory.dir("generated/i18nTemplate"))
+}
 // Rawr 17U: both builds install as their own app, next to the official Rawr
 // (com.rawr.camera, signed by its author) and its debug build
 // (com.rawr.camera.debug), so a tester can carry Ed's and this fork's at once.
@@ -288,6 +443,7 @@ androidComponents {
     onVariants { variant ->
         variant.sources.assets?.addGeneratedSourceDirectory(filmAssets, FilmAssetsTask::outputDirectory)
         variant.sources.java?.addGeneratedSourceDirectory(settingsSearchIndex, SettingsSearchIndexTask::outputDirectory)
+        variant.sources.assets?.addGeneratedSourceDirectory(i18nTemplate, I18nTemplateTask::outputDirectory)
     }
 }
 

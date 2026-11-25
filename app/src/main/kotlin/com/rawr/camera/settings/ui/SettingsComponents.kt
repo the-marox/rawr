@@ -29,6 +29,7 @@ import com.rawr.camera.ui.icons.rounded.ArrowDropDown
 import com.rawr.camera.ui.icons.rounded.Check
 import com.rawr.camera.ui.icons.rounded.ChevronRight
 import androidx.compose.material3.*
+import com.rawr.camera.i18n.tr
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -185,7 +186,7 @@ internal fun SettingsGroup(
             ) {
                 // Rawr 17U fork: grey section titles and values - the accent is kept for what is on or chosen
                 Text(
-                    title.uppercase(),
+                    tr(title).uppercase(),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontWeight = FontWeight.SemiBold
@@ -194,7 +195,7 @@ internal fun SettingsGroup(
             }
         } else if (description != null) {
             Text(
-                description,
+                tr(description),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = SettingsRowHorizontalPadding)
@@ -245,7 +246,7 @@ internal fun SettingsRow(
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    title,
+                    tr(title),
                     style = MaterialTheme.typography.bodyMedium,
                     color =
                         if (enabled) {
@@ -261,7 +262,7 @@ internal fun SettingsRow(
             }
             if (value != null) {
                 Text(
-                    value,
+                    tr(value),
                     style = MaterialTheme.typography.labelMedium,
                     color =
                         if (enabled) {
@@ -416,7 +417,7 @@ internal fun StandaloneNumericSliderRow(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    label,
+                    tr(label),
                     style = MaterialTheme.typography.bodyMedium,
                     color =
                         if (enabled || !dimDisabledText) {
@@ -662,9 +663,9 @@ internal fun SettingsInfoButton(title: String, text: String) {
     if (open) {
         AlertDialog(
             onDismissRequest = { open = false },
-            title = { Text(title) },
-            text = { Text(text) },
-            confirmButton = { TextButton(onClick = { open = false }) { Text("OK") } }
+            title = { Text(tr(title)) },
+            text = { Text(tr(text)) },
+            confirmButton = { TextButton(onClick = { open = false }) { Text(tr("OK")) } }
         )
     }
 }
@@ -766,7 +767,7 @@ private fun CompactSegmentCell(
         contentAlignment = Alignment.Center
     ) {
         Text(
-            text,
+            tr(text),
             style = MaterialTheme.typography.labelMedium,
             fontWeight = if (selected) FontWeight.SemiBold else null,
             color = when {
@@ -809,7 +810,7 @@ internal fun ToggleSubmenuRow(
 @Composable
 internal fun CapabilityUnavailableText(feature: String) {
     Text(
-        "$feature: not on this camera (setting kept)",
+        "${tr(feature)}: ${tr("not on this camera (setting kept)")}",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(horizontal = SettingsRowHorizontalPadding, vertical = SettingsSliderVerticalPadding)
@@ -889,7 +890,7 @@ internal fun <T> DropdownChoiceRow(
             Box {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        label(selected),
+                        tr(label(selected)),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (enabled) 1f else .45f),
                         maxLines = 1
@@ -908,7 +909,7 @@ internal fun <T> DropdownChoiceRow(
                             text = {
                                 Column(Modifier.widthIn(max = 280.dp)) {
                                     Text(
-                                        label(value),
+                                        tr(label(value)),
                                         style = MaterialTheme.typography.bodyMedium,
                                         color =
                                             if (isSelected) {
@@ -919,7 +920,7 @@ internal fun <T> DropdownChoiceRow(
                                     )
                                     if (detail != null) {
                                         Text(
-                                            detail,
+                                            tr(detail),
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )

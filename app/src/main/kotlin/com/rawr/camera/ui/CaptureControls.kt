@@ -1,5 +1,6 @@
 package com.rawr.camera.ui
 
+import com.rawr.camera.i18n.tr
 import android.net.Uri
 import android.util.Size
 import androidx.compose.foundation.Image
@@ -409,7 +410,7 @@ internal fun ModeSelectorStrip(
     ) {
         CaptureMode.entries.forEach { mode ->
             val isSelected = state.captureMode == mode
-            val label = if (mode == CaptureMode.Photo) "PHOTO" else "VIDEO"
+            val label = tr(if (mode == CaptureMode.Photo) "PHOTO" else "VIDEO")
             Box(
                 Modifier
                     .height(28.dp)
