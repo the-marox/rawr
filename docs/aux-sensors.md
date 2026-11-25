@@ -75,6 +75,20 @@ a made-up 0.4–0.65 m with status 0: at open sky every band reads 520–630 mm,
 ToF is more than max(0.5 D, half the AF diopters) nearer than it; with manual focus or AF not focused the
 reading stays. The TOF cell, the light-meter pill and the capture metadata all take the distance from there.
 
+The L8's status cannot tell either, so on that phone the distance is also filtered over time (`TofWindow`):
+nothing is published until three readings agree, the median of the last five is what gets published, and a
+window whose readings span more than max(50 mm, 10 % of the median) is emptied rather than averaged, because
+a target that moves that far in half a second is not one target. A reading with no target (status invalid,
+out of range) ends the window too. `debug.rawr.tof_stability 0` turns the filter off for one session on any
+phone, which is how the same scene is compared with and without it.
+
+Above a set light level the L8's distance is withheld altogether: `debug.rawr.tof_max_lux` overrides the
+15 000 lux the phone uses by default (0 turns the limit off, 40 000 raises it). It is the low end of the
+15 000-57 000 range where utalpt saw the invented distance, a starting point for the sweep and not a
+calibration: targets at 0.3, 0.5, 1, 2 and 3 m at 0, 100, 1 000, 15 000 and 57 000 lux decide whether a
+single ceiling is right, whether it has to be a ramp, and whether the sensor is simply unusable above it.
+The window and the ceiling are off on every other phone, and the VI5300 keeps its status as the only guard.
+
 Flicker is confirmed after three readings in a row within one bin of 100 or 120 Hz and released after
 16 readings in a row that are not, about two seconds (`FlickerClassifier`).
 

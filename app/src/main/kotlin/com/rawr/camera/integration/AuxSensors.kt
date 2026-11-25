@@ -5,6 +5,7 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -86,6 +87,7 @@ class AuxSensors(
     private val flickerSensor: Sensor? = find(FLICKER_TYPE)
     private val tofSensor: Sensor? = find(TOF_TYPE)
     private val tofLayout: TofLayout = tofLayoutFor(tofSensor?.name)
+    private val tofFilter: TofFilter? by lazy { tofFilterFor(Build.DEVICE, tofLayout, SystemPropertiesUtil::get) }
     private val pressureSensor: Sensor? = runCatching { manager?.getDefaultSensor(Sensor.TYPE_PRESSURE) }.getOrNull()
     private val rotationSensor: Sensor? = runCatching { manager?.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR) }.getOrNull()
 
@@ -144,6 +146,7 @@ class AuxSensors(
             flickerAtNanos = 0L
             tofDistanceMm = null
             tofAtNanos = 0L
+            tofFilter?.reset()
             pressureHpa = null
             pressureAtNanos = 0L
             headingDeg = null
@@ -240,7 +243,8 @@ class AuxSensors(
 
     private fun tofListener() = object : SensorEventListener {
         override fun onSensorChanged(event: SensorEvent) {
-            tofDistanceMm = tofDistanceMm(event.values, tofLayout)
+            val distance = tofDistanceMm(event.values, tofLayout)
+            tofDistanceMm = tofFilter?.update(distance, light?.lux) ?: distance
             tofAtNanos = nowNanos()
             publish()
         }
