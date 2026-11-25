@@ -43,6 +43,7 @@
 #include "develop/highlight/LensShadingMapSnapshot.h"
 #include "develop/render/StillImageRenderer.h"
 #include "diagnostics/logging/RuntimeTraceRecorder.h"
+#include "diagnostics/memory/ProcessMemory.h"
 #include "encoding/dng/DngCaptureWriter.h"
 #include "encoding/SoftwareName.h"
 #include "encoding/jpeg/JpegPublicDescription.h"
@@ -205,10 +206,12 @@ void MfsrCaptureJob::runStages(Published& published) {
         const std::uint64_t arenaEstimate = estimateMergeArenaBytes(ctx.rawWidth, mergeRows, work->tuning.mergeAlgorithm);
         const std::uint64_t frameBytes = std::uint64_t(ctx.rawWidth) * mergeRows * sizeof(std::uint16_t);
         LOGI("MULTIFRAME_MEMORY_PLAN raw=%ux%u mergeRows=%u frames=%zu strips=%zu stripMP=%.1f reason=%s "
-             "arena1xMaxMB=%.0f residentFrameMB=%.0f availMB=%.0f",
+             "arena1xMaxMB=%.0f residentFrameMB=%.0f availMB=%.0f rssMB=%.1f hwmMB=%.1f",
              ctx.rawWidth, ctx.rawHeight, mergeRows, job->frames.size(), strips.size(), double(stripPixels) / 1e6,
              stripReason, double(arenaEstimate) / (1024.0 * 1024.0),
-             double(frameBytes * residentFrames) / (1024.0 * 1024.0), double(memAvailable) / (1024.0 * 1024.0));
+             double(frameBytes * residentFrames) / (1024.0 * 1024.0), double(memAvailable) / (1024.0 * 1024.0),
+             diagnostics::megabytes(diagnostics::readRssBytes()),
+             diagnostics::megabytes(diagnostics::readPeakRssBytes()));
     }
     // Both merges work on the RAW grid.
     const auto tuning = [&] {
@@ -264,9 +267,10 @@ void MfsrCaptureJob::runStages(Published& published) {
     const std::string jpegDisplayName = mergedJpeg.output.displayName;
     auto publishDng = [&](const DngWriteCompletion& done) {
         __android_log_print(ANDROID_LOG_INFO, "RawrCamNative",
-            "BURST_DNG_DONE requestId=%llu name=%s success=%d writeMs=%.1f fsyncMs=%.1f",
+            "BURST_DNG_DONE requestId=%llu name=%s success=%d writeMs=%.1f fsyncMs=%.1f rssMB=%.1f hwmMB=%.1f",
             static_cast<unsigned long long>(done.requestId), done.displayName.c_str(),
-            done.success ? 1 : 0, done.writeMs, done.fsyncMs);
+            done.success ? 1 : 0, done.writeMs, done.fsyncMs, diagnostics::megabytes(diagnostics::readRssBytes()),
+            diagnostics::megabytes(diagnostics::readPeakRssBytes()));
         std::ostringstream out;
         out << done.requestId << '\t' << (done.success ? 1 : 0) << '\t' << done.displayName << '\t' << done.error;
         ctx.dngBox.push(out.str());
@@ -387,6 +391,10 @@ void MfsrCaptureJob::runStages(Published& published) {
             rawrcam::capture::persistence::attachFrameRecipes(context, *baseFrame);
             if (work->awaitDurable) work->awaitDurable();  // publishing: the journal must be durable first
             baseStarted = baseWriter.start(baseFrame, std::move(context));
+            LOGI("BURST_DNG_START requestId=%llu name=%s accepted=%d rssMB=%.1f hwmMB=%.1f",
+                 static_cast<unsigned long long>(requestId), baseDisplayName.c_str(), baseStarted ? 1 : 0,
+                 diagnostics::megabytes(diagnostics::readRssBytes()),
+                 diagnostics::megabytes(diagnostics::readPeakRssBytes()));
             if (!baseStarted) {
                 failDng(baseDisplayName, "base_dng_start_rejected");
                 basePublished = true;
@@ -710,6 +718,10 @@ void MfsrCaptureJob::runStages(Published& published) {
                 auto context = std::move(mergedDng);
                 rawrcam::capture::persistence::attachFrameRecipes(context, *mergedFrame);
                 mergedStarted = mergedWriter.start(mergedFrame, std::move(context));
+                LOGI("BURST_DNG_START requestId=%llu name=%s accepted=%d rssMB=%.1f hwmMB=%.1f",
+                     static_cast<unsigned long long>(requestId), mergedDisplayName.c_str(), mergedStarted ? 1 : 0,
+                     diagnostics::megabytes(diagnostics::readRssBytes()),
+                     diagnostics::megabytes(diagnostics::readPeakRssBytes()));
                 if (!mergedStarted) {
                     failDng(mergedDisplayName, "merged_dng_start_rejected");
                     mergedPublished = true;

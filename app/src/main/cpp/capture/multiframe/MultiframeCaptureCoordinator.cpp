@@ -10,6 +10,7 @@
 #include "capture/CaptureRequest.h"
 #include "capture/multiframe/MergeExposure.h"
 #include "diagnostics/logging/RuntimeTraceRecorder.h"
+#include "diagnostics/memory/ProcessMemory.h"
 #include "imaging/FrameLimits.h"
 #include "vulkan/VulkanContext.h"
 namespace rawrcam::capture::multiframe {
@@ -103,9 +104,17 @@ void MultiframeCaptureCoordinator::initializeZslIfNeeded() noexcept {
             multiframeFrameRing_ = std::make_unique<rawrcam::capture::multiframe::MultiframeFrameRing>(
                 vulkanContext_.physicalDevice(), vulkanContext_.device(), config_.rawWidth, config_.rawHeight,
                 ringFrames);
+            const std::size_t ringBytes = multiframeFrameRing_->usedBytes();
             rawrcam::diagnostics::RuntimeTraceRecorder::instance().record(
                 rawrcam::diagnostics::RuntimeTraceStage::ZslRingReady, 0, 0, -1, 0, 0,
-                static_cast<uint32_t>(ringFrames), static_cast<int64_t>(multiframeFrameRing_->usedBytes()));
+                static_cast<uint32_t>(ringFrames), static_cast<int64_t>(ringBytes));
+            // The ring is the per-frame footprint the merge arena is sized against,
+            // and the trace only carries its bytes. Say what the process weighs with
+            // it, so a phone report pairs "what was asked" with "what it cost".
+            LOGI("MULTIFRAME_RING_READY frames=%zu ringMB=%.1f rssMB=%.1f hwmMB=%.1f", ringFrames,
+                 rawrcam::diagnostics::megabytes(ringBytes),
+                 rawrcam::diagnostics::megabytes(rawrcam::diagnostics::readRssBytes()),
+                 rawrcam::diagnostics::megabytes(rawrcam::diagnostics::readPeakRssBytes()));
         }
     } catch (...) {
         multiframeFrameRing_.reset();

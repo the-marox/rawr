@@ -1,9 +1,11 @@
 #pragma once
 
+#include <android/log.h>
 #include <rawr/raw_gpu_pipeline/AndroidBurstCoordinator.h>
 #include <vulkan/vulkan.h>
 
 #include "diagnostics/logging/RuntimeTraceRecorder.h"
+#include "diagnostics/memory/ProcessMemory.h"
 
 namespace rawrcam::capture::multiframe {
 
@@ -54,6 +56,16 @@ inline rawr::raw_gpu_pipeline::AndroidBurstCoordinator::StageSink makeTraceStage
             static_cast<uint32_t>(std::min<VkDeviceSize>(UINT32_MAX, (bufferBytes * 1000ull) / (1024ull * 1024ull)));
         const int64_t imageMiBX1000 = static_cast<int64_t>((imageBytes * 1000ull) / (1024ull * 1024ull));
         trace.record(traceStage, 0, 0, -1, 0, 0, bufferMiBX1000, imageMiBX1000);
+        // The arena is the one allocation that decides whether a burst survives;
+        // say what the process weighed before and after it, so a trace is not
+        // guessing from the estimated size alone. Vulkan memory is not in RSS
+        // (see dumpsys meminfo "Graphics"), so the pair is what tells them apart.
+        if (stage == B::Stage::ArenaInitializeBegin || stage == B::Stage::ArenaInitializeEnd) {
+            __android_log_print(ANDROID_LOG_INFO, "RawrCamNative", "MULTIFRAME_ARENA stage=%s rssMB=%.1f hwmMB=%.1f",
+                                stage == B::Stage::ArenaInitializeBegin ? "begin" : "end",
+                                rawrcam::diagnostics::megabytes(rawrcam::diagnostics::readRssBytes()),
+                                rawrcam::diagnostics::megabytes(rawrcam::diagnostics::readPeakRssBytes()));
+        }
     };
 }
 
