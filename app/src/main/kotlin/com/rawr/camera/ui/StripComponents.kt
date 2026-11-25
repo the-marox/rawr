@@ -328,6 +328,16 @@ internal fun StripNumericItem(
             valueColor = valueColor,
             labelText = shortLabel
         )
+        if (!shownDefault) {
+            // Rawr 17U fork: a dot on a changed value, so it shows in every theme (in Mono the changed colour is white).
+            Box(
+                Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 5.dp, end = 5.dp)
+                    .size(4.dp)
+                    .background(CaptureColors.AccentSoft, androidx.compose.foundation.shape.CircleShape)
+            )
+        }
     }
 }
 

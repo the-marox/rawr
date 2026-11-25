@@ -121,7 +121,8 @@ internal fun LensButtonFace(
                     bottom,
                     color = when {
                         filled -> CaptureColors.OnAccentSoft
-                        selected -> Color(0xFFFF8A96)
+                        // Rawr 17U fork: the theme's soft accent (was a fixed red, also in the Mono theme).
+                        selected -> CaptureColors.AccentSoft
                         else -> Color(0xFF8C8C8C)
                     }.copy(alpha = dim),
                     fontFamily = CaptureMono,

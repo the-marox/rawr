@@ -131,9 +131,14 @@ private fun CompactStripStack(
                 LookSheetState.open = filmOn
             }
         }
-        val lookLabel = if (filmOwner) filmQuick!!.activePresetName
-            else renderProfiles.options.firstOrNull { it.id == renderProfiles.selectedId }?.label ?: "RAWR NTRL"
-        val lookModified = if (filmOwner) filmQuick!!.modified else !renderProfiles.log && (state.renderExposureTenths != 0 ||
+        // Film with no preset in use ("Custom"): the stock's name. Changed: the preset's look edited, or any film
+        // value off its default (EV, push, ...).
+        val lookLabel = if (filmOwner) {
+            filmQuick!!.selectedPresetId?.let { filmQuick.activePresetName }
+                ?: com.rawr.camera.settings.model.FilmStocks.films.getOrNull(filmQuick.discretes["Film"]?.selectedIndex ?: -1)
+                ?: filmQuick.activePresetName
+        } else renderProfiles.options.firstOrNull { it.id == renderProfiles.selectedId }?.label ?: "RAWR NTRL"
+        val lookModified = if (filmOwner) filmQuick!!.modified || filmQuick.params.values.any { !it.isDefault } else !renderProfiles.log && (state.renderExposureTenths != 0 ||
             com.rawr.camera.model.TonemapCatalog.tone.any {
                 !com.rawr.camera.model.TonemapCatalog.isDefault(state, requireNotNull(it.param))
             } || renderProfiles.agx?.modified == true)
