@@ -608,12 +608,13 @@ internal fun LookSheetPanel(
             val subsection = section?.let { sec -> sec.subsections.firstOrNull { it.key == agxSubsection } ?: sec.subsections.firstOrNull() }
             BoxWithConstraints(Modifier.fillMaxWidth()) {
                 val widths = paramsCellWidths(maxWidth)
+                val cardWidth = maxWidth
                 Column(verticalArrangement = Arrangement.spacedBy(gap)) {
                     FilmAdvCard(
                         quick = agxQuick,
                         sectionKey = section?.key,
                         subsectionKey = subsection?.key,
-                        cardWidth = maxWidth,
+                        cardWidth = cardWidth,
                         onSection = {
                             agxSection = it
                             agxSubsection = null
