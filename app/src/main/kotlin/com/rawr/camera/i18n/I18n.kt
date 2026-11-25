@@ -29,6 +29,10 @@ object I18n {
     /** Base translations bundled in the APK (machine-made, corrected through import/export). */
     val bundled = listOf(
         Language("pt", "Português"),
+        Language("es", "Español"),
+        Language("fr", "Français"),
+        Language("de", "Deutsch"),
+        Language("it", "Italiano"),
         Language("ru", "Русский"),
     )
 
