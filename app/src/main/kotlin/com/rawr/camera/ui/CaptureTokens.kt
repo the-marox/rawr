@@ -26,7 +26,8 @@ internal object CaptureColors {
     val GlassBorderActive: Color get() = Accent.copy(alpha = .30f)
     /** Text/icons on a filled accent: black on light accents (MONO, SAGE), white on dark ones (LEICA red). */
     val OnAccent: Color get() = if (Accent.luminance() > .5f) Color.Black else Color.White
-    val OnAccentSoft: Color get() = if (Accent.luminance() > .5f) Color.Black.copy(alpha = .65f) else Color(0xFFFFD6DB)
+    // Rawr 17U fork: neutral on a dark accent (was a fixed pink, also on the Steel and Sage accents).
+    val OnAccentSoft: Color get() = if (Accent.luminance() > .5f) Color.Black.copy(alpha = .65f) else Color.White.copy(alpha = .78f)
     val ViewfinderPanel = Color(0xFF080808).copy(alpha = .66f)
 
     val Line = Color.White.copy(alpha = .085f)

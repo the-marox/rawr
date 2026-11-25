@@ -354,7 +354,7 @@ internal fun LensSelector(
                         if (bottom.isNotEmpty()) {
                             Text(
                                 bottom,
-                                color = (if (lensSelected) Color(0xFFFFD6DB) else Color(0xFF8C8C8C)).copy(alpha = dim),
+                                color = (if (lensSelected) CaptureColors.OnAccentSoft else Color(0xFF8C8C8C)).copy(alpha = dim),
                                 fontFamily = CaptureMono,
                                 fontSize = 9.sp,
                                 lineHeight = 11.sp,
