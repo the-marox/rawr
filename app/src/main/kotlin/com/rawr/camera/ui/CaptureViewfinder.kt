@@ -78,7 +78,8 @@ internal fun CaptureViewfinder(
         val focusOnly =
             state.focus.selectorOpen && !state.monitorPanelOpen &&
                 !state.whiteBalancePanelOpen
-        val modalOpen = state.monitorPanelOpen || state.whiteBalancePanelOpen
+        // Rawr 17U fork: the eye opens the top sheet on MONITOR (below), not a modal palette.
+        val modalOpen = state.whiteBalancePanelOpen
         // The rail shares the right edge with the compact scopes; keep it below them.
         val density = LocalDensity.current
         val railTopLimit = with(density) {
@@ -91,21 +92,41 @@ internal fun CaptureViewfinder(
         }
         val popupOpen = focusOnly || modalOpen
         var quickPanelOpen by remember { mutableStateOf(false) }
+        var sheetTab by remember { mutableStateOf(QuickSheetTab.Exposure) }
         val swipePx = with(LocalDensity.current) { 48.dp.toPx() }
+        // Rawr 17U fork: opening needs a longer swipe that starts in the top third, so a drag to frame or focus
+        // no longer opens the sheet by accident.
+        val openSwipePx = with(LocalDensity.current) { 96.dp.toPx() }
+        // The eye button: open the sheet on MONITOR (or close it if MONITOR is showing), then clear the flag.
+        LaunchedEffect(state.monitorPanelOpen) {
+            if (state.monitorPanelOpen) {
+                if (quickPanelOpen && sheetTab == QuickSheetTab.Monitor) {
+                    quickPanelOpen = false
+                } else {
+                    sheetTab = QuickSheetTab.Monitor
+                    quickPanelOpen = true
+                }
+                dispatch(ToggleMonitorPanel)
+            }
+        }
         Box(
             Modifier
                 .matchParentSize()
                 .onSizeChanged { viewfinderSize = it }
                 .then(
                     if (!popupOpen) {
-                        Modifier.pointerInput(swipePx) {
-                            // Swipe down opens the quick panel (MTR / AE / HL), swipe up closes it.
+                        Modifier.pointerInput(swipePx, openSwipePx) {
+                            // Swipe down from the top third opens the top sheet, swipe up closes it.
                             var travel = 0f
+                            var fromTop = false
                             detectVerticalDragGestures(
-                                onDragStart = { travel = 0f },
+                                onDragStart = { start ->
+                                    travel = 0f
+                                    fromTop = start.y < size.height / 3f
+                                },
                                 onVerticalDrag = { change, dy ->
                                     travel += dy
-                                    if (travel > swipePx && !quickPanelOpen) {
+                                    if (fromTop && travel > openSwipePx && !quickPanelOpen) {
                                         quickPanelOpen = true
                                         haptics.selection()
                                     } else if (travel < -swipePx && quickPanelOpen) {
@@ -246,9 +267,24 @@ internal fun CaptureViewfinder(
                 visible = quickPanelOpen && !popupOpen,
                 enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.slideInVertically { -it / 3 },
                 exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.slideOutVertically { -it / 3 },
-                modifier = Modifier.align(Alignment.TopStart).padding(start = 8.dp, top = 8.dp)
+                modifier = Modifier.align(Alignment.TopStart).padding(start = 6.dp, top = 6.dp, end = 6.dp)
             ) {
-                ViewfinderQuickPanel(quick, state.spotAe.active, onQuickEvent, Modifier.uprightInLandscape(state.orientation))
+                // Portrait: full width, short of the compact scopes on the right when they are on.
+                val frameWidth = slotFrame?.width ?: with(density) { viewfinderSize.width.toDp() }
+                val sheetWidth = if (state.orientation == Orientation.Landscape) 340.dp
+                else (frameWidth - 12.dp - if (state.activeScopes.isNotEmpty()) CaptureDimens.ScopeCompactWidth + 16.dp else 0.dp)
+                    .coerceAtLeast(200.dp)
+                ViewfinderQuickPanel(
+                    quick = quick,
+                    spotActive = state.spotAe.active,
+                    onEvent = onQuickEvent,
+                    state = state,
+                    dispatch = dispatch,
+                    tab = sheetTab,
+                    onTab = { sheetTab = it },
+                    onClose = { quickPanelOpen = false },
+                    modifier = Modifier.uprightInLandscape(state.orientation).width(sheetWidth)
+                )
             }
             if (quick.lightMeterEnabled && !(quickPanelOpen && !popupOpen)) {
                 // While a video records, the REC/DROP readout takes the top line: sit below it.

@@ -67,7 +67,7 @@ internal fun DisplayControlsSettings(state: SettingsUiState, dispatch: SettingsD
             SettingsSwitchRow(
                 title = "Eye button shows/hides these",
                 checked = state.values.vfEyeControls,
-                supportingText = "Adds VF CONTROLS to the MONITORING panel (eye) to toggle them while shooting.",
+                supportingText = "Adds a VF tab to the viewfinder top sheet (eye button or swipe down from the top) to toggle them while shooting.",
                 testTag = SettingsTestTags.row("DisplayControls", "vf_eye_controls")
             ) { dispatch.invoke(SetEyeControlsViewfinder(it)) }
             SettingDivider()

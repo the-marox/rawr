@@ -1,6 +1,8 @@
 package com.rawr.camera.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -261,201 +263,358 @@ private const val HELP_HL_MODE =
     "Highlight mode: OFF, PROP (propagation from neighbours) or OPP (opposed channels). " +
         "OPP adds THR (where clipping starts) and CMP (highlight compression)."
 
+/** Tabs of the viewfinder top sheet, in order. LENS is photo only; VF follows the "eye controls" setting. */
+internal enum class QuickSheetTab(val label: String) {
+    Exposure("EXPO"), Highlights("HIGHL"), Detail("DETAIL"), Lens("LENS"), Monitor("MONITOR"), Scopes("SCOPES"), Vf("VF")
+}
+
 /**
- * Quick panel: a translucent card at the top-left of the viewfinder (clear of the scopes), opened with a swipe
- * down and closed with a swipe up or a tap outside. Fixed groups, each led by its main switch so nothing moves:
- * EXPOSURE (AE, MTR), HIGHLIGHTS (HL, THR, CMP - the sliders dim outside OPP) and LENS (FR, OWN MF, OWN LOOK).
+ * Rawr 17U fork: the viewfinder top sheet. One card docked at the top of the viewfinder, styled like the FILM and
+ * LOOK sheets: a row of tabs (✕ first) and one row of chips for the tab. It holds what the swipe-down quick panel
+ * and the eye (MONITORING / VF CONTROLS) panels held: EXPO (AE, MTR, SHUT, RESET), HIGHL (HL, THR, CMP),
+ * DETAIL (SHARP, NR), LENS (FR, OWN MF, OWN LOOK), MONITOR (overlays), SCOPES and VF. A swipe down from the top third
+ * of the viewfinder opens it on the last tab, the eye button on MONITOR; ✕, a swipe up or a tap outside close it.
  */
 @Composable
 internal fun ViewfinderQuickPanel(
     quick: ViewfinderQuickState,
     spotActive: Boolean,
     onEvent: (CaptureQuickEvent) -> Unit,
+    state: com.rawr.camera.model.CaptureUiState,
+    dispatch: com.rawr.camera.architecture.CaptureDispatch,
+    tab: QuickSheetTab,
+    onTab: (QuickSheetTab) -> Unit,
+    onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val enabled = !quick.locked
     val highlight = quick.highlight
     val chipWidth = 72.dp
     val gap = CaptureDimens.ControlGap
-    val rowArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(gap)
+    val tabs = QuickSheetTab.entries.filter {
+        (it != QuickSheetTab.Lens || !quick.isVideo) && (it != QuickSheetTab.Vf || quick.eyeControls)
+    }
+    val shown = if (tab in tabs) tab else tabs.first()
     androidx.compose.foundation.layout.Column(
         modifier
-            .background(Color.Black.copy(alpha = .62f), androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
+            .background(Color.Black.copy(alpha = .66f), androidx.compose.foundation.shape.RoundedCornerShape(14.dp))
             .pointerInput(Unit) { detectTapGestures(onTap = {}) }  // taps inside never focus the viewfinder
-            .padding(horizontal = 10.dp, vertical = 8.dp),
-        verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(4.dp),
-        horizontalAlignment = Alignment.Start
+            .testTag("quick_sheet")
+            .padding(8.dp),
+        verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(7.dp)
     ) {
-        PanelSection("EXPOSURE")
-        androidx.compose.foundation.layout.Row(horizontalArrangement = rowArrangement) {
-            RailChip(
-                value = if (quick.rawrAeEnabled) "RAWR" else "DEVICE",
-                label = "AE",
-                active = quick.rawrAeEnabled,
-                enabled = enabled,
-                description = "Auto exposure ${if (quick.rawrAeEnabled) "Rawr" else "Device"}. Tap to switch.",
-                tag = CaptureTestTags.RAIL_AE,
-                width = chipWidth,
-                help = HELP_AE
-            ) { onEvent(CaptureQuickEvent.ToggleRawrAe) }
-            // MTR depends on Rawr AE: dimmed and inert with Device AE, but it never moves.
-            val next = RawrMetering.entries[(quick.metering.ordinal + 1) % RawrMetering.entries.size]
-            RailChip(
-                value = if (spotActive) "SPOT" else quick.metering.railLabel(),
-                label = "MTR",
-                active = spotActive && quick.rawrAeEnabled,
-                enabled = enabled && quick.rawrAeEnabled,
-                description = if (quick.rawrAeEnabled) "Metering ${quick.metering.label}" +
-                    (if (spotActive) ", overridden by spot" else "") + ". Tap for ${next.label}."
-                else "Metering applies to Rawr AE only.",
-                tag = CaptureTestTags.RAIL_METERING,
-                width = chipWidth,
-                help = HELP_METERING
-            ) { onEvent(CaptureQuickEvent.SetMetering(next)) }
-            // SHUT: Rawr AE's slowest auto shutter (photo); dimmed with Device AE or in video.
-            val shutEnabled = enabled && quick.rawrAeEnabled && !quick.isVideo
-            val nextShutter = RawrMaxShutter.entries[(quick.maxShutter.ordinal + 1) % RawrMaxShutter.entries.size]
-            RailChip(
-                value = quick.maxShutter.railLabel(),
-                label = "SHUT",
-                active = quick.maxShutter != RawrMaxShutter.Auto && shutEnabled,
-                enabled = shutEnabled,
-                description = "Slowest auto shutter ${quick.maxShutter.label}. Tap for ${nextShutter.label}.",
-                tag = "quick_panel_max_shutter",
-                width = chipWidth,
-                help = HELP_SHUT
-            ) { onEvent(CaptureQuickEvent.SetMaxShutter(nextShutter)) }
+        androidx.compose.foundation.layout.Row(
+            Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(5.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            SheetTabChip("✕", active = false, tag = "quick_sheet_close", onClick = onClose)
+            tabs.forEach { t ->
+                SheetTabChip(t.label, active = t == shown, tag = "quick_sheet_tab_${t.name.lowercase()}") { onTab(t) }
+            }
         }
-        PanelSection("HIGHLIGHTS")
-        androidx.compose.foundation.layout.Row(horizontalArrangement = rowArrangement) {
-            val nextMode = HighlightQuickMode.entries[(highlight.mode.ordinal + 1) % HighlightQuickMode.entries.size]
-            RailChip(
-                value = highlight.mode.railLabel(),
-                label = "HL",
-                active = highlight.mode != HighlightQuickMode.Off,
-                enabled = enabled,
-                description = "Highlight reconstruction ${highlight.mode.name}. Tap for ${nextMode.name}.",
-                tag = CaptureTestTags.RAIL_HIGHLIGHT,
-                width = chipWidth,
-                help = HELP_HL
-            ) { onEvent(CaptureQuickEvent.SetHighlightMode(nextMode)) }
-            val opp = enabled && highlight.mode == HighlightQuickMode.Opposed
-            StripNumericItem(
-                key = "panel_highlight_threshold",
-                shortLabel = "THR",
-                value = highlight.threshold,
-                display = "%.2f".format(java.util.Locale.US, highlight.threshold),
-                isDefault = highlight.threshold == HIGHLIGHT_THRESHOLD_DEFAULT,
-                defaultValue = HIGHLIGHT_THRESHOLD_DEFAULT,
-                min = .5f, max = 2f, step = .05f, decimals = 2,
-                onScrub = { if (opp) onEvent(CaptureQuickEvent.SetHighlightThreshold(it)) },
-                onReset = { if (opp) onEvent(CaptureQuickEvent.SetHighlightThreshold(HIGHLIGHT_THRESHOLD_DEFAULT)) },
-                modifier = Modifier.width(chipWidth).alpha(if (opp) 1f else .35f),
-                testTag = CaptureTestTags.RAIL_HIGHLIGHT_THRESHOLD,
-                help = HELP_THR
-            )
-            StripNumericItem(
-                key = "panel_highlight_compression",
-                shortLabel = "CMP",
-                value = highlight.compression,
-                display = highlight.compression.toInt().toString(),
-                isDefault = highlight.compression == highlight.compressionDefault,
-                defaultValue = highlight.compressionDefault,
-                min = 0f, max = 300f, step = 5f, decimals = 0,
-                onScrub = { if (opp) onEvent(CaptureQuickEvent.SetHighlightCompression(it)) },
-                onReset = { if (opp) onEvent(CaptureQuickEvent.SetHighlightCompression(highlight.compressionDefault)) },
-                modifier = Modifier.width(chipWidth).alpha(if (opp) 1f else .35f),
-                testTag = CaptureTestTags.RAIL_HIGHLIGHT_COMPRESSION,
-                help = HELP_CMP
-            )
-        }
-        PanelSection("DETAIL")
-        androidx.compose.foundation.layout.Row(horizontalArrangement = rowArrangement) {
-            if (!quick.isVideo) {
-                // OFF → LOW → MED → SHARP → MAX → OFF
-                val levels = CaptureSharpeningLevel.entries
-                val (nextOn, nextLevel) = when {
-                    !quick.sharpeningEnabled -> true to levels.first()
-                    quick.sharpeningLevel == levels.last() -> false to quick.sharpeningLevel
-                    else -> true to levels[quick.sharpeningLevel.ordinal + 1]
+        androidx.compose.runtime.key(shown) {
+            androidx.compose.foundation.layout.Row(
+                Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(gap)
+            ) {
+                when (shown) {
+                    QuickSheetTab.Exposure -> {
+                        RailChip(
+                            value = if (quick.rawrAeEnabled) "RAWR" else "DEVICE",
+                            label = "AE",
+                            active = quick.rawrAeEnabled,
+                            enabled = enabled,
+                            description = "Auto exposure ${if (quick.rawrAeEnabled) "Rawr" else "Device"}. Tap to switch.",
+                            tag = CaptureTestTags.RAIL_AE,
+                            width = chipWidth,
+                            help = HELP_AE
+                        ) { onEvent(CaptureQuickEvent.ToggleRawrAe) }
+                        // MTR depends on Rawr AE: dimmed and inert with Device AE, but it never moves.
+                        val next = RawrMetering.entries[(quick.metering.ordinal + 1) % RawrMetering.entries.size]
+                        RailChip(
+                            value = if (spotActive) "SPOT" else quick.metering.railLabel(),
+                            label = "MTR",
+                            active = spotActive && quick.rawrAeEnabled,
+                            enabled = enabled && quick.rawrAeEnabled,
+                            description = if (quick.rawrAeEnabled) "Metering ${quick.metering.label}" +
+                                (if (spotActive) ", overridden by spot" else "") + ". Tap for ${next.label}."
+                            else "Metering applies to Rawr AE only.",
+                            tag = CaptureTestTags.RAIL_METERING,
+                            width = chipWidth,
+                            help = HELP_METERING
+                        ) { onEvent(CaptureQuickEvent.SetMetering(next)) }
+                        // SHUT: Rawr AE's slowest auto shutter (photo); dimmed with Device AE or in video.
+                        val shutEnabled = enabled && quick.rawrAeEnabled && !quick.isVideo
+                        val nextShutter = RawrMaxShutter.entries[(quick.maxShutter.ordinal + 1) % RawrMaxShutter.entries.size]
+                        RailChip(
+                            value = quick.maxShutter.railLabel(),
+                            label = "SHUT",
+                            active = quick.maxShutter != RawrMaxShutter.Auto && shutEnabled,
+                            enabled = shutEnabled,
+                            description = "Slowest auto shutter ${quick.maxShutter.label}. Tap for ${nextShutter.label}.",
+                            tag = "quick_panel_max_shutter",
+                            width = chipWidth,
+                            help = HELP_SHUT
+                        ) { onEvent(CaptureQuickEvent.SetMaxShutter(nextShutter)) }
+                        val maxFrames = if (quick.frameLimit > 0) quick.frameLimit else 30
+                        val defaultFrames = com.rawr.camera.settings.model.MultiframeTuning().maxFrames.coerceIn(1, maxFrames)
+                        ResetChip(
+                            lensId = quick.lensId.orEmpty(),
+                            enabled = enabled,
+                            width = chipWidth,
+                            onEvent = onEvent,
+                            resetFrames = if (quick.multiframeEnabled && !quick.isVideo) defaultFrames else null
+                        )
+                    }
+                    QuickSheetTab.Highlights -> {
+                        val nextMode = HighlightQuickMode.entries[(highlight.mode.ordinal + 1) % HighlightQuickMode.entries.size]
+                        RailChip(
+                            value = highlight.mode.railLabel(),
+                            label = "HL",
+                            active = highlight.mode != HighlightQuickMode.Off,
+                            enabled = enabled,
+                            description = "Highlight reconstruction ${highlight.mode.name}. Tap for ${nextMode.name}.",
+                            tag = CaptureTestTags.RAIL_HIGHLIGHT,
+                            width = chipWidth,
+                            help = HELP_HL
+                        ) { onEvent(CaptureQuickEvent.SetHighlightMode(nextMode)) }
+                        val opp = enabled && highlight.mode == HighlightQuickMode.Opposed
+                        StripNumericItem(
+                            key = "panel_highlight_threshold",
+                            shortLabel = "THR",
+                            value = highlight.threshold,
+                            display = "%.2f".format(java.util.Locale.US, highlight.threshold),
+                            isDefault = highlight.threshold == HIGHLIGHT_THRESHOLD_DEFAULT,
+                            defaultValue = HIGHLIGHT_THRESHOLD_DEFAULT,
+                            min = .5f, max = 2f, step = .05f, decimals = 2,
+                            onScrub = { if (opp) onEvent(CaptureQuickEvent.SetHighlightThreshold(it)) },
+                            onReset = { if (opp) onEvent(CaptureQuickEvent.SetHighlightThreshold(HIGHLIGHT_THRESHOLD_DEFAULT)) },
+                            modifier = Modifier.width(chipWidth).alpha(if (opp) 1f else .35f),
+                            testTag = CaptureTestTags.RAIL_HIGHLIGHT_THRESHOLD,
+                            help = HELP_THR
+                        )
+                        StripNumericItem(
+                            key = "panel_highlight_compression",
+                            shortLabel = "CMP",
+                            value = highlight.compression,
+                            display = highlight.compression.toInt().toString(),
+                            isDefault = highlight.compression == highlight.compressionDefault,
+                            defaultValue = highlight.compressionDefault,
+                            min = 0f, max = 300f, step = 5f, decimals = 0,
+                            onScrub = { if (opp) onEvent(CaptureQuickEvent.SetHighlightCompression(it)) },
+                            onReset = { if (opp) onEvent(CaptureQuickEvent.SetHighlightCompression(highlight.compressionDefault)) },
+                            modifier = Modifier.width(chipWidth).alpha(if (opp) 1f else .35f),
+                            testTag = CaptureTestTags.RAIL_HIGHLIGHT_COMPRESSION,
+                            help = HELP_CMP
+                        )
+                    }
+                    QuickSheetTab.Detail -> {
+                        if (!quick.isVideo) {
+                            // OFF → LOW → MED → SHARP → MAX → OFF
+                            val levels = CaptureSharpeningLevel.entries
+                            val (nextOn, nextLevel) = when {
+                                !quick.sharpeningEnabled -> true to levels.first()
+                                quick.sharpeningLevel == levels.last() -> false to quick.sharpeningLevel
+                                else -> true to levels[quick.sharpeningLevel.ordinal + 1]
+                            }
+                            RailChip(
+                                value = if (quick.sharpeningEnabled) quick.sharpeningLevel.railLabel() else "OFF",
+                                label = "SHARP",
+                                active = quick.sharpeningEnabled,
+                                enabled = enabled,
+                                description = "Sharpening ${if (quick.sharpeningEnabled) quick.sharpeningLevel.label else "off"}. " +
+                                    "Tap for ${if (nextOn) nextLevel.label else "off"}.",
+                                tag = "quick_panel_sharpening",
+                                width = chipWidth,
+                                help = HELP_SHARP
+                            ) { onEvent(CaptureQuickEvent.SetSharpening(nextOn, nextLevel)) }
+                        }
+                        RailChip(
+                            value = if (quick.denoiseEnabled) "ON" else "OFF",
+                            label = "NR",
+                            active = quick.denoiseEnabled,
+                            enabled = enabled,
+                            description = "Noise reduction ${if (quick.denoiseEnabled) "on" else "off"}. Tap to switch.",
+                            tag = "quick_panel_denoise",
+                            width = chipWidth,
+                            help = HELP_NR
+                        ) { onEvent(CaptureQuickEvent.ToggleDenoise) }
+                    }
+                    QuickSheetTab.Lens -> {
+                        // Frames for the lens in use, capped by its profile limit (a 1-frame lens has nothing to pick).
+                        val maxFrames = if (quick.frameLimit > 0) quick.frameLimit else 30
+                        val framesEnabled = enabled && quick.multiframeEnabled && maxFrames > 1
+                        val frames = quick.frames.coerceIn(1, maxFrames)
+                        val defaultFrames = com.rawr.camera.settings.model.MultiframeTuning().maxFrames.coerceIn(1, maxFrames)
+                        FrameStepper(
+                            frames = frames,
+                            min = 1,
+                            max = maxFrames,
+                            enabled = framesEnabled,
+                            width = chipWidth,
+                            onChange = { onEvent(CaptureQuickEvent.SetMultiframeFrames(it)) },
+                            onReset = { onEvent(CaptureQuickEvent.SetMultiframeFrames(defaultFrames)) }
+                        )
+                        RailChip(
+                            value = if (quick.ownMultiframe) "ON" else "OFF",
+                            label = "OWN MF",
+                            active = quick.ownMultiframe,
+                            enabled = enabled && quick.multiframeEnabled,
+                            description = "Own multiframe settings for this lens: ${if (quick.ownMultiframe) "on" else "off"}. Tap to switch.",
+                            tag = "quick_panel_own_mf",
+                            width = chipWidth,
+                            help = HELP_OWN_MF
+                        ) { onEvent(CaptureQuickEvent.ToggleOwnMultiframe) }
+                        RailChip(
+                            value = if (quick.ownLook) "ON" else "OFF",
+                            label = "OWN LOOK",
+                            active = quick.ownLook,
+                            enabled = enabled,
+                            description = "Own look for this lens: ${if (quick.ownLook) "on" else "off"}. Tap to switch.",
+                            tag = "quick_panel_own_look",
+                            width = chipWidth,
+                            help = HELP_OWN_LOOK
+                        ) { onEvent(CaptureQuickEvent.ToggleOwnLook) }
+                    }
+                    QuickSheetTab.Monitor -> {
+                        // Same actions as Ed's MONITORING panel (MonitorPanel.kt), as chips.
+                        listOf(
+                            Triple("PEAKING", com.rawr.camera.model.OverlayMode.Peaking, HELP_PEAKING),
+                            Triple("RAW HIGHL", com.rawr.camera.model.OverlayMode.RawHighlights, HELP_RAW_HL),
+                            Triple("TONEMAP S", com.rawr.camera.model.OverlayMode.TonemapShadows, HELP_TONEMAP_S)
+                        ).forEach { (label, overlay, help) ->
+                            val on = overlay in state.armedOverlays
+                            RailChip(
+                                value = if (on) "ON" else "OFF",
+                                label = label,
+                                active = on,
+                                enabled = true,
+                                description = "$label overlay ${if (on) "armed" else "off"}. Tap to switch.",
+                                tag = CaptureTestTags.monitorArm(overlay.name.lowercase()),
+                                width = chipWidth,
+                                help = help
+                            ) { dispatch(com.rawr.camera.architecture.ToggleOverlayArmed(overlay)) }
+                        }
+                        RailChip(
+                            value = if (state.falseColorManual) "ON" else "OFF",
+                            label = "FALSE COL",
+                            active = state.falseColorManual,
+                            enabled = true,
+                            description = "False colour ${if (state.falseColorManual) "on" else "off"}. Tap to switch.",
+                            tag = CaptureTestTags.monitorArm("false_color"),
+                            width = chipWidth,
+                            help = HELP_FALSE_COLOR
+                        ) { dispatch(com.rawr.camera.architecture.ToggleFalseColor) }
+                    }
+                    QuickSheetTab.Scopes -> {
+                        listOf(
+                            com.rawr.camera.model.ScopeType.Waveform to "WAVE",
+                            com.rawr.camera.model.ScopeType.Vectorscope to "VECTOR"
+                        ).forEach { (scope, label) ->
+                            val on = scope in state.activeScopes
+                            RailChip(
+                                value = if (on) "ON" else "OFF",
+                                label = label,
+                                active = on,
+                                enabled = true,
+                                description = "$label scope ${if (on) "on" else "off"}. Tap to switch.",
+                                tag = CaptureTestTags.scope(scope.name),
+                                width = chipWidth,
+                                help = HELP_SCOPES
+                            ) { dispatch(com.rawr.camera.architecture.ToggleScope(scope)) }
+                        }
+                        val waveOn = com.rawr.camera.model.ScopeType.Waveform in state.activeScopes
+                        RailChip(
+                            value = when (state.waveformMode) {
+                                com.rawr.camera.model.WaveformMode.Luma -> "LUMA"
+                                com.rawr.camera.model.WaveformMode.RgbOverlay -> "RGB"
+                                com.rawr.camera.model.WaveformMode.RgbParade -> "PARADE"
+                            },
+                            label = "WAVE MODE",
+                            active = false,
+                            enabled = waveOn,
+                            description = "Waveform mode ${state.waveformMode.name}. Tap to cycle.",
+                            tag = "quick_sheet_wave_mode",
+                            width = chipWidth,
+                            help = HELP_SCOPES
+                        ) { dispatch(com.rawr.camera.architecture.ToggleWaveformMode) }
+                    }
+                    QuickSheetTab.Vf -> {
+                        listOf(
+                            Triple(com.rawr.camera.settings.model.VfControl.Exposure, "EXPO", quick.showExposure),
+                            Triple(com.rawr.camera.settings.model.VfControl.InfoBar, "INFO", quick.showInfoBar)
+                        ).forEach { (control, label, on) ->
+                            RailChip(
+                                value = if (on) "SHOW" else "HIDE",
+                                label = label,
+                                active = on,
+                                enabled = true,
+                                description = "$label controls ${if (on) "shown" else "hidden"}. Tap to switch.",
+                                tag = "vf_controls_${control.name.lowercase()}",
+                                width = chipWidth,
+                                help = HELP_VF
+                            ) { onEvent(CaptureQuickEvent.SetVfControlVisible(control, !on)) }
+                        }
+                        val groupings = com.rawr.camera.settings.model.LensBarGrouping.entries
+                        val nextGrouping = groupings[(quick.lensBarGrouping.ordinal + 1) % groupings.size]
+                        RailChip(
+                            value = when (quick.lensBarGrouping) {
+                                com.rawr.camera.settings.model.LensBarGrouping.Auto -> "AUTO"
+                                com.rawr.camera.settings.model.LensBarGrouping.Grouped -> "GROUPED"
+                                com.rawr.camera.settings.model.LensBarGrouping.Flat -> "ALL"
+                            },
+                            label = "LENS BAR",
+                            active = false,
+                            enabled = true,
+                            description = "Lens bar ${quick.lensBarGrouping.name}. Tap to cycle.",
+                            tag = "lens_bar_grouping_cycle",
+                            width = chipWidth,
+                            help = HELP_VF
+                        ) { onEvent(CaptureQuickEvent.SetLensBarGrouping(nextGrouping)) }
+                        val sizes = com.rawr.camera.settings.model.LensBarSize.entries
+                        val nextSize = sizes[(quick.lensBarSize.ordinal + 1) % sizes.size]
+                        RailChip(
+                            value = quick.lensBarSize.label.uppercase(),
+                            label = "BTN SIZE",
+                            active = false,
+                            enabled = true,
+                            description = "Lens button size ${quick.lensBarSize.label}. Tap to cycle.",
+                            tag = "lens_bar_size_cycle",
+                            width = chipWidth,
+                            help = HELP_VF
+                        ) { onEvent(CaptureQuickEvent.SetLensBarSize(nextSize)) }
+                    }
                 }
-                RailChip(
-                    value = if (quick.sharpeningEnabled) quick.sharpeningLevel.railLabel() else "OFF",
-                    label = "SHARP",
-                    active = quick.sharpeningEnabled,
-                    enabled = enabled,
-                    description = "Sharpening ${if (quick.sharpeningEnabled) quick.sharpeningLevel.label else "off"}. " +
-                        "Tap for ${if (nextOn) nextLevel.label else "off"}.",
-                    tag = "quick_panel_sharpening",
-                    width = chipWidth,
-                    help = HELP_SHARP
-                ) { onEvent(CaptureQuickEvent.SetSharpening(nextOn, nextLevel)) }
-            }
-            RailChip(
-                value = if (quick.denoiseEnabled) "ON" else "OFF",
-                label = "NR",
-                active = quick.denoiseEnabled,
-                enabled = enabled,
-                description = "Noise reduction ${if (quick.denoiseEnabled) "on" else "off"}. Tap to switch.",
-                tag = "quick_panel_denoise",
-                width = chipWidth,
-                help = HELP_NR
-            ) { onEvent(CaptureQuickEvent.ToggleDenoise) }
-        }
-        if (!quick.isVideo) {
-            PanelSection("LENS ${quick.lensId.orEmpty()}".trim())
-            androidx.compose.foundation.layout.Row(horizontalArrangement = rowArrangement) {
-                // Frames for the lens in use, capped by its profile limit (a 1-frame lens has nothing to pick).
-                val maxFrames = if (quick.frameLimit > 0) quick.frameLimit else 30
-                val framesEnabled = enabled && quick.multiframeEnabled && maxFrames > 1
-                val frames = quick.frames.coerceIn(1, maxFrames)
-                // Double-tap on FR / RESET: the default frame count, within this lens's limit.
-                val defaultFrames = com.rawr.camera.settings.model.MultiframeTuning().maxFrames.coerceIn(1, maxFrames)
-                FrameStepper(
-                    frames = frames,
-                    min = 1,
-                    max = maxFrames,
-                    enabled = framesEnabled,
-                    width = chipWidth,
-                    onChange = { onEvent(CaptureQuickEvent.SetMultiframeFrames(it)) },
-                    onReset = { onEvent(CaptureQuickEvent.SetMultiframeFrames(defaultFrames)) }
-                )
-                RailChip(
-                    value = if (quick.ownMultiframe) "ON" else "OFF",
-                    label = "OWN MF",
-                    active = quick.ownMultiframe,
-                    enabled = enabled && quick.multiframeEnabled,
-                    description = "Own multiframe settings for this lens: ${if (quick.ownMultiframe) "on" else "off"}. Tap to switch.",
-                    tag = "quick_panel_own_mf",
-                    width = chipWidth,
-                    help = HELP_OWN_MF
-                ) { onEvent(CaptureQuickEvent.ToggleOwnMultiframe) }
-                RailChip(
-                    value = if (quick.ownLook) "ON" else "OFF",
-                    label = "OWN LOOK",
-                    active = quick.ownLook,
-                    enabled = enabled,
-                    description = "Own look for this lens: ${if (quick.ownLook) "on" else "off"}. Tap to switch.",
-                    tag = "quick_panel_own_look",
-                    width = chipWidth,
-                    help = HELP_OWN_LOOK
-                ) { onEvent(CaptureQuickEvent.ToggleOwnLook) }
-                ResetChip(
-                    lensId = quick.lensId.orEmpty(),
-                    enabled = enabled,
-                    width = chipWidth,
-                    onEvent = onEvent,
-                    resetFrames = if (quick.multiframeEnabled) defaultFrames else null
-                )
             }
         }
-        androidx.compose.foundation.layout.Box(
-            Modifier
-                .align(Alignment.CenterHorizontally)
-                .padding(top = 4.dp)
-                .width(36.dp)
-                .height(4.dp)
-                .background(Color.White.copy(alpha = .55f), androidx.compose.foundation.shape.RoundedCornerShape(2.dp))
+    }
+}
+
+/** A tab of the top sheet, in the LOOK sheet's chip style. */
+@Composable
+private fun SheetTabChip(text: String, active: Boolean, tag: String, onClick: () -> Unit) {
+    val haptics = LocalCaptureHaptics.current
+    Box(
+        Modifier
+            .height(26.dp)
+            .viewfinderChip(active = active)
+            .captureClickable(shape = CaptureTextRippleShape, role = Role.Tab) {
+                haptics.selection()
+                onClick()
+            }
+            .padding(horizontal = if (text == "✕") 10.dp else 8.dp)
+            .testTag(tag),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text,
+            color = if (active) CaptureColors.Accent else Color.White.copy(alpha = .8f),
+            fontFamily = CaptureMono,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = if (text == "✕") 11.sp else 10.sp,
+            maxLines = 1,
+            style = ViewfinderTextStyle
         )
     }
 }
@@ -508,19 +667,6 @@ private fun ResetChip(
     ) {
         StripTwoLineItem(valueText = "↺ RESET", valueColor = CaptureColors.AccentSoft, labelText = "$lens → AUTO")
     }
-}
-
-@Composable
-private fun PanelSection(title: String) {
-    Text(
-        title,
-        color = Color.White.copy(alpha = .55f),
-        fontSize = 9.sp,
-        fontWeight = FontWeight.SemiBold,
-        letterSpacing = 1.sp,
-        style = ViewfinderTextStyle,
-        modifier = Modifier.padding(start = 2.dp, top = 2.dp)
-    )
 }
 
 /** FR: frames with − / + taps (long-press: help). */
@@ -589,6 +735,19 @@ private fun FrameStepper(
     }
 }
 
+private const val HELP_PEAKING =
+    "Peaking: outlines what is in focus. Shown while you focus (overlays arm and show on their own)."
+private const val HELP_RAW_HL =
+    "Raw highlights: marks the areas clipped in the RAW, before any tone mapping."
+private const val HELP_TONEMAP_S =
+    "Tonemap shadows: marks where the tone mapping crushes the shadows."
+private const val HELP_FALSE_COLOR =
+    "False colour: paints the image by exposure level, to judge exposure at a glance."
+private const val HELP_SCOPES =
+    "Scopes: waveform and vectorscope in the corner of the viewfinder. WAVE MODE cycles luma, RGB and parade."
+private const val HELP_VF =
+    "Viewfinder controls: which control groups show (EXPO, INFO), the lens bar layout and its button size. " +
+        "Also in Settings > Display."
 private const val HELP_OWN_MF =
     "Own multiframe: ON gives this lens its own merge settings and frame count (FR then changes only this " +
         "lens); OFF uses the shared ones. FR is capped by the lens limit (200 MP: 3)."
