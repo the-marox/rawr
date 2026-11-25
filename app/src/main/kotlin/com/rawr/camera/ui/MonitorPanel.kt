@@ -173,8 +173,8 @@ internal fun VfControlsPanel(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(CaptureDimens.TopBarPaletteInnerGap)
         ) {
+            // Rawr 17U fork: no LOOK here - the LOOK button sits next to the shutter and the viewfinder has no look chips.
             listOf(
-                Triple(com.rawr.camera.settings.model.VfControl.Look, "LOOK", quick.showLook),
                 Triple(com.rawr.camera.settings.model.VfControl.Exposure, "EXPO", quick.showExposure),
                 Triple(com.rawr.camera.settings.model.VfControl.InfoBar, "INFO", quick.showInfoBar)
             ).forEach { (control, label, shown) ->

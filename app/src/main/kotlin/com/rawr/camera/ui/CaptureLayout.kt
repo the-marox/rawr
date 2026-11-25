@@ -171,7 +171,8 @@ internal fun PhysicalCaptureLayout(
                     onFilmEvent = onFilmEvent,
                     quick = quick.copy(
                         locked = isVideo && videoLocked,
-                        showLook = quick.showLook && !cleanRecording,
+                        // Rawr 17U fork: the look sheet hides only for clean recording (no VF CONTROLS switch).
+                        showLook = !cleanRecording,
                         showExposure = quick.showExposure && !cleanRecording,
                         lightMeterEnabled = quick.lightMeterEnabled && !cleanRecording
                     ),

@@ -157,10 +157,10 @@ private fun CompactStripStack(
                 modifier = Modifier.fillMaxWidth(),
                 onApplyLook = { edit -> onFilmEvent(CaptureFilmEvent.ApplyLook(edit)) },
                 onHoldLook = { held -> onFilmEvent(CaptureFilmEvent.HoldLook(held?.edit, held?.mode ?: 0)) },
-                open = LookSheetState.open,
+                open = LookSheetState.open && quick.showLook,
                 onCloseSheet = { LookSheetState.open = false }
             )
-        } else if ((!state.filmSimEnabled || forceTonemapStrip) && LookSheetState.open) {
+        } else if ((!state.filmSimEnabled || forceTonemapStrip) && LookSheetState.open && quick.showLook) {
             LookSheetPanel(
                 profiles = renderProfiles,
                 state = state,

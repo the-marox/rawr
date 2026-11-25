@@ -51,13 +51,6 @@ internal fun DisplayControlsSettings(state: SettingsUiState, dispatch: SettingsD
             ) { dispatch.invoke(SetShowDcpQuickSelect(it)) }
             SettingDivider()
             SettingsSwitchRow(
-                title = "Look · Params on viewfinder",
-                checked = state.values.vfShowLook,
-                supportingText = "LOOK / FILM and PARAMS buttons over the preview.",
-                testTag = SettingsTestTags.row("DisplayControls", "vf_show_look")
-            ) { dispatch.invoke(SetViewfinderControlVisible(VfControl.Look, it)) }
-            SettingDivider()
-            SettingsSwitchRow(
                 title = "Exposure row on viewfinder",
                 checked = state.values.vfShowExposure,
                 supportingText = "ISO, shutter, EV, WB and AF buttons over the preview.",

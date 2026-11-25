@@ -65,7 +65,8 @@ data class ViewfinderQuickState(
     val lensBarSize: com.rawr.camera.settings.model.LensBarSize =
         com.rawr.camera.settings.model.LensBarSize.Normal
 ) {
-    val anyVfControlHidden: Boolean get() = !showLook || !showExposure || !showInfoBar
+    // Rawr 17U fork: LOOK is no longer a viewfinder control (LookSheet.kt), so a saved hidden LOOK does not count.
+    val anyVfControlHidden: Boolean get() = !showExposure || !showInfoBar
 }
 
 internal const val HIGHLIGHT_THRESHOLD_DEFAULT = 1f
