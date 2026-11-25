@@ -41,14 +41,19 @@ class VideoOutput final {
     // after the tonemap, with the image in GENERAL layout.
     void recordYuvPack(VkCommandBuffer command, uint32_t imageIndex);
     uint64_t yuvNoBufferDrops() const noexcept { return yuvNoBuffer_.load(std::memory_order_relaxed); }
-    uint64_t yuvNoReadyDrops() const noexcept {
-        std::lock_guard<std::mutex> lock(yuvMutex_);
-        return yuvNoReady_;
-    }
-    uint64_t yuvNoImageDrops() const noexcept {
-        std::lock_guard<std::mutex> lock(yuvMutex_);
-        return yuvNoImage_;
-    }
+    struct YuvStats {
+        uint64_t noBuffer = 0;
+        uint64_t noReady = 0;
+        uint64_t noImage = 0;
+        uint64_t acquires = 0;
+        uint64_t dequeues = 0;
+        uint64_t queued = 0;
+        double dequeueMs = 0.0;
+        double dequeueMaxMs = 0.0;
+        double fenceMs = 0.0;
+        double fenceMaxMs = 0.0;
+    };
+    YuvStats yuvStats() const noexcept;
     VkExtent2D extent() const noexcept { return extent_; }
     VkFormat format() const noexcept { return outputFormat_; }
     VkFormat preferredFormat(uint32_t bitDepth) const;
@@ -60,7 +65,8 @@ class VideoOutput final {
         if (outputFormat_ == VK_FORMAT_R8G8B8A8_UNORM) return "rgba8";
         return outputFormat_ == VK_FORMAT_A2B10G10R10_UNORM_PACK32 ? "rgb10a2" : "rgba16f";
     }
-    bool acquire(uint32_t frameSlot, uint32_t* imageIndex);
+    bool acquire(uint32_t frameSlot, uint32_t* imageIndex, uint64_t frameOrdinal = 0,
+                 uint64_t timestampNs = 0);
     uint32_t encoderImageCount() const noexcept { return static_cast<uint32_t>(images_.size()); }
     // VK_NULL_HANDLE in YUV mode: the output image is free when acquire() returns.
     VkSemaphore available(uint32_t frameSlot) const { return yuv_ ? VK_NULL_HANDLE : available_[frameSlot]; }

@@ -20,6 +20,7 @@
 
 #include "video_yuv_pack_nv12.h"
 #include "video_yuv_pack_p010.h"
+#include "video/VideoAcquirePolicy.h"
 #include "vulkan/ImageResources.h"
 #include "vulkan/RawImportEvidence.h"
 #include "vulkan/VulkanContext.h"
@@ -41,11 +42,7 @@ uint32_t acquireWaitMs() noexcept {
     char setting[PROP_VALUE_MAX] = {};
     __system_property_get("ro.product.device", device);
     __system_property_get("debug.rawr.video_acquire_wait_ms", setting);
-    if (std::strcmp(device, "dada") != 0 || setting[0] == '\0') return 0;
-    char* end = nullptr;
-    const long value = std::strtol(setting, &end, 10);
-    if (end == setting || *end != '\0' || value <= 0) return 0;
-    return static_cast<uint32_t>(std::min<long>(value, 5));
+    return rawrcam::video::videoAcquireWaitMs(device, setting);
 }
 bool clearException(JNIEnv* env) {
     if (!env->ExceptionCheck()) return false;
@@ -220,7 +217,15 @@ void VideoOutput::stop() noexcept {
     extent_ = {};
     startedAtNs_ = 0;
 }
-bool VideoOutput::acquire(uint32_t frameSlot, uint32_t* imageIndex) {
+VideoOutput::YuvStats VideoOutput::yuvStats() const noexcept {
+    std::lock_guard<std::mutex> lock(yuvMutex_);
+    return {yuvNoBuffer_.load(std::memory_order_relaxed), yuvNoReady_, yuvNoImage_, yuvAcquires_,
+            yuvDequeues_, yuvQueued_, yuvDequeues_ ? yuvDequeueMs_ / double(yuvDequeues_) : 0.0,
+            yuvDequeueMaxMs_, yuvQueued_ ? yuvFenceMs_ / double(yuvQueued_) : 0.0, yuvFenceMaxMs_};
+}
+
+bool VideoOutput::acquire(uint32_t frameSlot, uint32_t* imageIndex, uint64_t frameOrdinal,
+                           uint64_t timestampNs) {
     if (!ready() || frameSlot >= available_.size()) return false;
     if (yuv_) {
         std::unique_lock<std::mutex> lock(yuvMutex_);
@@ -247,11 +252,15 @@ bool VideoOutput::acquire(uint32_t frameSlot, uint32_t* imageIndex) {
             yuvNoBuffer_.fetch_add(1, std::memory_order_relaxed);
             if (index == kYuvImages) {
                 ++yuvNoImage_;
-                YLOG("VIDEO_YUV_ACQUIRE_DROP reason=noImage waitMs=%u ready=%zu pending=%zu outstanding=%u",
+                YLOG("VIDEO_YUV_ACQUIRE_DROP reason=noImage frameOrdinal=%llu timestampNs=%llu waitMs=%u "
+                     "ready=%zu pending=%zu outstanding=%u",
+                     static_cast<unsigned long long>(frameOrdinal), static_cast<unsigned long long>(timestampNs),
                      waitMs, readyImages_.size(), pendingImages_.size(), outstandingImages_);
             } else {
                 ++yuvNoReady_;
-                YLOG("VIDEO_YUV_ACQUIRE_DROP reason=noReady waitMs=%u ready=%zu pending=%zu outstanding=%u",
+                YLOG("VIDEO_YUV_ACQUIRE_DROP reason=noReady frameOrdinal=%llu timestampNs=%llu waitMs=%u "
+                     "ready=%zu pending=%zu outstanding=%u",
+                     static_cast<unsigned long long>(frameOrdinal), static_cast<unsigned long long>(timestampNs),
                      waitMs, readyImages_.size(), pendingImages_.size(), outstandingImages_);
             }
             yuvCv_.notify_one();

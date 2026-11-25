@@ -5,7 +5,9 @@ The video path reports two separate YUV input starvation counters:
 - `encoderNoReady`: no imported encoder buffer was ready when a camera frame reached the video path.
 - `encoderNoImage`: all six GPU output images were still in flight.
 
-They are included in `videoStats()` and are also logged as `VIDEO_YUV_ACQUIRE_DROP` with `reason=noReady` or `reason=noImage`.
+They are included in `videoStats()` and are also logged as `VIDEO_YUV_ACQUIRE_DROP` with `reason=noReady` or `reason=noImage`. The drop log now includes `frameOrdinal` and `timestampNs`, so it can be matched to the Camera2 frame and the file-side `encodedFrameGaps` statistic.
+
+`videoStats()` also reports `encoderNoBuffer`, `encoderAcquires`, `encoderDequeues`, `encoderQueued`, `encoderDequeueMs`, `encoderDequeueMaxMs`, `encoderFenceMs` and `encoderFenceMaxMs`. These distinguish `ImageWriter`/encoder starvation from GPU fence latency.
 
 On the validated Xiaomi 15 (`ro.product.device=dada`), a short acquire wait can be enabled for diagnosis:
 
@@ -34,4 +36,5 @@ Interpretation:
 
 - `encoderNoReady > 0` points to the Java `ImageWriter` feeder or encoder buffer availability.
 - `encoderNoImage > 0` points to GPU output images remaining in flight.
+- high `encoderDequeueMaxMs` points to the encoder holding its buffers; high `encoderFenceMaxMs` points to GPU completion latency.
 - both zero with a file-side PTS gap means the loss is later in `present()`/encoder output and should be correlated with `VIDEO_PRESENT_FAIL` and native recorder statistics.
