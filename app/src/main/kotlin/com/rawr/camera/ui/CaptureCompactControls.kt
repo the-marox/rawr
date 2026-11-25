@@ -140,6 +140,7 @@ private fun CompactStripStack(
         SideEffect {
             LookSheetState.label = lookLabel
             LookSheetState.modified = lookModified
+            LookSheetState.film = filmOwner
         }
         if (filmOwner) {
             FilmStrip(
