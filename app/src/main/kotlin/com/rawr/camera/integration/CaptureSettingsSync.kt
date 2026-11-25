@@ -5,7 +5,9 @@ import com.rawr.camera.architecture.SetControlSurfaceStyle
 import com.rawr.camera.architecture.SyncToneControls
 import com.rawr.camera.model.CaptureMode
 import com.rawr.camera.settings.model.*
+import com.rawr.camera.video.VideoFrameSize
 import com.rawr.camera.video.VideoResolutionMode
+import com.rawr.camera.video.encoderSetup
 import com.rawr.camera.video.toVideoImageSettings
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
@@ -194,6 +196,29 @@ internal class CaptureSettingsSync(
             VideoResolutionMode.OPEN_GATE -> 0 to 0
         }
         previewCoordinator.prewarmVideo(width, height, latestSettings().effectiveVideoBitDepth())
+        prewarmVideoEncoder(resolution)
+    }
+
+    /**
+     * Prepares the next recording's HEVC encoder with the same spec the recording will
+     * build. The record window comes from the camera geometry and changes with lens and
+     * aspect, so it is resolved exactly as the recording does; when the snapshot is not
+     * available yet the prewarm falls back to the nominal size and lets the recorder
+     * report the real error.
+     */
+    private fun prewarmVideoEncoder(resolution: VideoResolutionMode) {
+        val state = controller.state.value
+        val settings = latestSettings()
+        val frameSize = runCatching {
+            resolution.resolve(org.json.JSONObject(previewCoordinator.cameraControlSnapshot()), state.videoAspect)
+        }.getOrNull() ?: when (resolution) {
+            VideoResolutionMode.HD1080 -> VideoFrameSize(1920, 1080)
+            VideoResolutionMode.UHD4K -> VideoFrameSize(3840, 2160)
+            // Open Gate records the image area: without the RAW geometry there is nothing to prepare.
+            VideoResolutionMode.OPEN_GATE -> return
+        }
+        previewCoordinator.prewarmVideoEncoder(settings.videoEncoder.sanitized().encoderSetup(
+            resolution, frameSize, state.videoFps, settings.effectiveVideoBitDepth()))
     }
 
     private fun applyTonemapState(tone: com.rawr.camera.model.ImageToneState) {
