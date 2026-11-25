@@ -85,8 +85,7 @@ object SettingsReducer {
                 )
         }
 
-        SettingsSection.Ois, SettingsSection.Multiframe,
-        SettingsSection.Exposure, SettingsSection.Lens -> {
+        SettingsSection.Ois, SettingsSection.Multiframe, SettingsSection.Exposure -> {
             SettingsDestination.Section(SettingsSection.Capture)
         }
 
@@ -94,16 +93,23 @@ object SettingsReducer {
             SettingsDestination.Section(SettingsSection.ImageTone)
         }
 
-        SettingsSection.ImageTone, SettingsSection.DynamicRange, SettingsSection.Demosaic, SettingsSection.HighlightReconstruction,
-        SettingsSection.Defringe, SettingsSection.Denoise, SettingsSection.FilmSim,
-        SettingsSection.LensShading, SettingsSection.Distortion -> {
-            SettingsDestination.Section(
-                SettingsSection.Image
-            )
+        // Rawr 17U fork: parents follow the settings home's hubs (Photo, Look, RAW development, System). Used when
+        // Back has no history, e.g. a page opened straight from the camera.
+        SettingsSection.Capture, SettingsSection.Jpeg, SettingsSection.Dng, SettingsSection.Storage -> {
+            SettingsDestination.Section(SettingsSection.PhotoHub)
         }
 
-        SettingsSection.Jpeg -> {
-            SettingsDestination.Home
+        SettingsSection.ImageTone, SettingsSection.DynamicRange, SettingsSection.FilmSim -> {
+            SettingsDestination.Section(SettingsSection.LookHub)
+        }
+
+        SettingsSection.Demosaic, SettingsSection.HighlightReconstruction, SettingsSection.Defringe, SettingsSection.Denoise,
+        SettingsSection.LensShading, SettingsSection.Distortion -> {
+            SettingsDestination.Section(SettingsSection.RawHub)
+        }
+
+        SettingsSection.Experimental, SettingsSection.Debug, SettingsSection.Renderer, SettingsSection.About -> {
+            SettingsDestination.Section(SettingsSection.SystemHub)
         }
 
         SettingsSection.Monitoring, SettingsSection.ControlStyle -> {

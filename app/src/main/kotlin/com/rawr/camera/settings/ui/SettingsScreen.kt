@@ -129,7 +129,7 @@ fun SettingsScreen(
             ) {
             when (val destination = state.presentation.destination) {
                 SettingsDestination.Home -> {
-                    SettingsHome(dispatch, searchQuery) { searchQuery = it }
+                    SettingsHome(dispatch, searchQuery, hasChosenLut = state.values.selectedLutProfile() != null) { searchQuery = it }
                 }
 
                 is SettingsDestination.Section -> {
@@ -189,7 +189,12 @@ private fun destinationTitle(destination: SettingsDestination): String = when (d
 }
 
 @Composable
-private fun SettingsHome(dispatch: SettingsDispatch, searchQuery: String, onSearchQueryChange: (String) -> Unit) {
+private fun SettingsHome(
+    dispatch: SettingsDispatch,
+    searchQuery: String,
+    hasChosenLut: Boolean,
+    onSearchQueryChange: (String) -> Unit
+) {
     // Rawr 17U fork: grouped by what the user wants to do. Photo, Look, RAW development and System are hubs
     // (SettingsHubs.kt) linking to Ed's pages; Video, Viewfinder & controls and Lenses open their page directly.
     val entries =
@@ -205,7 +210,7 @@ private fun SettingsHome(dispatch: SettingsDispatch, searchQuery: String, onSear
     SettingsPageContainer(testTag = SettingsTestTags.SCREEN_HOME) {
         SettingsSearchField(searchQuery, onSearchQueryChange)
         if (searchQuery.isNotBlank()) {
-            SettingsSearchResults(searchQuery, dispatch)
+            SettingsSearchResults(searchQuery, dispatch, hasChosenLut)
             return@SettingsPageContainer
         }
         SettingsGroup {

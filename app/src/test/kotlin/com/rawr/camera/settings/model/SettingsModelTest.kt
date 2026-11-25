@@ -349,7 +349,7 @@ class SettingsModelTest {
                     )
             )
         assertEquals(
-            SettingsDestination.Section(SettingsSection.Image),
+            SettingsDestination.Section(SettingsSection.LookHub),
             SettingsReducer.reduce(filmSim, NavigateBack).presentation.destination
         )
         val exposure =

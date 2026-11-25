@@ -99,7 +99,7 @@ internal fun SettingsSearchField(query: String, onQueryChange: (String) -> Unit)
 }
 
 @Composable
-internal fun SettingsSearchResults(query: String, dispatch: SettingsDispatch) {
+internal fun SettingsSearchResults(query: String, dispatch: SettingsDispatch, hasChosenLut: Boolean = true) {
     val highlight = LocalSettingsHighlight.current
     val results = searchSettings(query)
     Column {
@@ -117,8 +117,10 @@ internal fun SettingsSearchResults(query: String, dispatch: SettingsDispatch) {
                         value = entry.path.ifEmpty { "Settings" },
                         testTag = SettingsTestTags.row("Search", "result_$index"),
                         onClick = {
-                            highlight?.title = if (entry.isPage) null else entry.title
-                            dispatch.invoke(OpenSection(entry.section))
+                            // The LUT Profile page edits the LUT chosen in Tone & Color; with none chosen, open that.
+                            val toLuts = entry.section == SettingsSection.LutProfile && !hasChosenLut
+                            highlight?.title = if (entry.isPage || toLuts) null else entry.title
+                            dispatch.invoke(OpenSection(if (toLuts) SettingsSection.ImageTone else entry.section))
                         }
                     )
                     if (index != results.lastIndex) SettingDivider()
