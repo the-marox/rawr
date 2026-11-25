@@ -1,5 +1,6 @@
 package com.rawr.camera.settings.ui
 
+import com.rawr.camera.i18n.tr
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -276,10 +277,10 @@ private fun ThemeColorRow(color: com.rawr.camera.ui.ThemeColor) {
                         parsed?.let { palette.setColor(color, it) }
                         editing = false
                     }
-                ) { Text("OK") }
+                ) { Text(tr("OK")) }
             },
             dismissButton = {
-                androidx.compose.material3.TextButton(onClick = { editing = false }) { Text("Cancel") }
+                androidx.compose.material3.TextButton(onClick = { editing = false }) { Text(tr("Cancel")) }
             }
         )
     }

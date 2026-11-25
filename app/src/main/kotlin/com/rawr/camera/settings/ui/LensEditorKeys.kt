@@ -1,5 +1,6 @@
 package com.rawr.camera.settings.ui
 
+import com.rawr.camera.i18n.tr
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.clickable
@@ -237,18 +238,18 @@ internal fun VendorKeyDialog(
                 OutlinedTextField(
                     value = tag,
                     onValueChange = { tag = it.trim() },
-                    label = { Text("Key name or tag") },
-                    placeholder = { Text("vendor.section.key or 0x80020000") },
+                    label = { Text(tr("Key name or tag")) },
+                    placeholder = { Text(tr("vendor.section.key or 0x80020000")) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
-                TextButton(onClick = { browsing = true }) { Text("Browse camera keys") }
+                TextButton(onClick = { browsing = true }) { Text(tr("Browse camera keys")) }
                 Text(
                     keyDetectionText(info, catalog, tag),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                Text("Applied", style = MaterialTheme.typography.labelLarge)
+                Text(tr("Applied"), style = MaterialTheme.typography.labelLarge)
                 CompactChoiceRow(offered, scope, { it.label }) { scope = it }
                 Text(
                     when (scope) {
@@ -273,26 +274,26 @@ internal fun VendorKeyDialog(
                 OutlinedTextField(
                     value = valuesText,
                     onValueChange = { valuesText = it },
-                    label = { Text("Value(s)") },
-                    supportingText = { Text("Comma-separated for arrays") },
+                    label = { Text(tr("Value(s)")) },
+                    supportingText = { Text(tr("Comma-separated for arrays")) },
                     singleLine = true,
                     isError = values == null,
                     modifier = Modifier.fillMaxWidth()
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Enabled", Modifier.weight(1f))
+                    Text(tr("Enabled"), Modifier.weight(1f))
                     Switch(checked = enabled, onCheckedChange = { enabled = it })
                 }
                 if (problem != null && tag.isNotBlank()) {
                     Text(problem, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                 }
                 if (onDelete != null) {
-                    TextButton(onClick = onDelete) { Text("Delete key", color = MaterialTheme.colorScheme.error) }
+                    TextButton(onClick = onDelete) { Text(tr("Delete key"), color = MaterialTheme.colorScheme.error) }
                 }
             }
         },
-        confirmButton = { TextButton(enabled = problem == null, onClick = { onSave(key) }) { Text("Done") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        confirmButton = { TextButton(enabled = problem == null, onClick = { onSave(key) }) { Text(tr("Done")) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(tr("Cancel")) } }
     )
 
     if (browsing) {
@@ -331,7 +332,7 @@ internal fun KeyPickerDialog(catalog: CameraKeyCatalog?, onDismiss: () -> Unit, 
         OutlinedTextField(
             value = query,
             onValueChange = { query = it },
-            label = { Text("Search") },
+            label = { Text(tr("Search")) },
             singleLine = true,
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)
         )

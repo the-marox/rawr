@@ -1,5 +1,6 @@
 package com.rawr.camera.settings.ui
 
+import com.rawr.camera.i18n.tr
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.net.Uri
@@ -102,9 +103,9 @@ internal fun LookNameDialog(title: String, initial: String, confirm: String, onD
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
-        text = { OutlinedTextField(value = name, onValueChange = { name = it }, singleLine = true, label = { Text("Name") }) },
+        text = { OutlinedTextField(value = name, onValueChange = { name = it }, singleLine = true, label = { Text(tr("Name")) }) },
         confirmButton = { TextButton(onClick = { onConfirm(name); onDismiss() }, enabled = name.isNotBlank()) { Text(confirm) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        dismissButton = { TextButton(onClick = onDismiss) { Text(tr("Cancel")) } }
     )
 }
 
@@ -116,7 +117,7 @@ internal fun LookConfirmDialog(title: String, text: String, confirm: String, onD
         title = { Text(title) },
         text = { Text(text) },
         confirmButton = { TextButton(onClick = { onConfirm(); onDismiss() }) { Text(confirm) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        dismissButton = { TextButton(onClick = onDismiss) { Text(tr("Cancel")) } }
     )
 }
 

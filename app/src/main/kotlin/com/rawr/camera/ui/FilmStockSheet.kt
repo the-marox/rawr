@@ -1,5 +1,6 @@
 package com.rawr.camera.ui
 
+import com.rawr.camera.i18n.tr
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -384,7 +385,7 @@ internal fun FilmStockSheet(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        if (undo != null) "UNDO" else "RESET",
+                        tr(if (undo != null) "UNDO" else "RESET"),
                         color = if (undo != null) CaptureColors.Accent else Color.White.copy(alpha = .8f),
                         fontFamily = CaptureMono,
                         fontWeight = FontWeight.SemiBold,
@@ -414,7 +415,7 @@ internal fun FilmStockSheet(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        t.label,
+                        tr(t.label),
                         color = if (on) CaptureColors.Accent else Color.White.copy(alpha = .8f),
                         fontFamily = CaptureMono,
                         fontWeight = FontWeight.SemiBold,

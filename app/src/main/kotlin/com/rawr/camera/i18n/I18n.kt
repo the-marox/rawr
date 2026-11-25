@@ -60,7 +60,8 @@ object I18n {
     fun displayName(context: Context, code: String): String = when (code) {
         SYSTEM -> "System"
         ENGLISH -> "English"
-        CUSTOM -> customName(context) ?: "Imported file"
+        // The imported file's own name could repeat a bundled one ("Русский"): mark it as imported.
+        CUSTOM -> customName(context)?.let { "$it · ${tr("Imported")}" } ?: tr("Imported file")
         else -> bundled.firstOrNull { it.code == code }?.name ?: code
     }
 
@@ -74,6 +75,17 @@ object I18n {
         t[text]?.let { return it }
         // Capture-strip labels are the settings labels in capitals: "SHADOWS" uses the "Shadows" entry.
         if (text.any { it.isLetter() } && text == text.uppercase(Locale.ROOT)) upper[text]?.let { return it }
+        // Sentences joined at run time: a known first sentence and a translatable rest.
+        var cut = text.indexOf(". ")
+        while (cut > 0) {
+            val head = t[text.substring(0, cut + 1)]
+            if (head != null) {
+                val tail = text.substring(cut + 2)
+                val rest = tr(tail).takeIf { it != tail } ?: t[" $tail"]?.trimStart()
+                if (rest != null || tail.none { it.isLetter() }) return "$head ${rest ?: tail}"
+            }
+            cut = text.indexOf(". ", cut + 1)
+        }
         // Joined values ("Photo · DNG", "Look › Film") translate piece by piece.
         for (separator in SEPARATORS) {
             if (separator in text) {

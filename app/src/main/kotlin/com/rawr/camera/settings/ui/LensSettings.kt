@@ -1,5 +1,6 @@
 package com.rawr.camera.settings.ui
 
+import com.rawr.camera.i18n.tr
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.clickable
@@ -159,15 +160,15 @@ internal fun LensSettings(state: SettingsUiState, dispatch: SettingsDispatch) {
                 TextButton(enabled = !lastEnabled, onClick = {
                     dispatch.invoke(SetLensProfiles(lenses.removeLens(target.name)))
                     deleteTarget = null
-                }) { Text("Delete") }
+                }) { Text(tr("Delete")) }
             },
-            dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text("Cancel") } }
+            dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text(tr("Cancel")) } }
         )
     }
     if (showProfiles) {
         AlertDialog(
             onDismissRequest = { showProfiles = false },
-            title = { Text("Load device profile") },
+            title = { Text(tr("Load device profile")) },
             text = {
                 Column(Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState())) {
                     hardware.deviceProfiles.forEach { profile ->
@@ -186,7 +187,7 @@ internal fun LensSettings(state: SettingsUiState, dispatch: SettingsDispatch) {
             confirmButton = {},
             dismissButton = {
                 TextButton(onClick = { showProfiles = false },
-                    modifier = Modifier.testTag(SettingsTestTags.row("Lens", "profile_cancel"))) { Text("Cancel") }
+                    modifier = Modifier.testTag(SettingsTestTags.row("Lens", "profile_cancel"))) { Text(tr("Cancel")) }
             }
         )
     }
@@ -200,11 +201,11 @@ internal fun LensSettings(state: SettingsUiState, dispatch: SettingsDispatch) {
                 TextButton(onClick = {
                     dispatch.invoke(SetLensProfiles(if (profile.isDefault) null else profile.lenses))
                     profileTarget = null
-                }, modifier = Modifier.testTag(SettingsTestTags.row("Lens", "profile_confirm"))) { Text("Load") }
+                }, modifier = Modifier.testTag(SettingsTestTags.row("Lens", "profile_confirm"))) { Text(tr("Load")) }
             },
             dismissButton = {
                 TextButton(onClick = { profileTarget = null },
-                    modifier = Modifier.testTag(SettingsTestTags.row("Lens", "profile_load_cancel"))) { Text("Cancel") }
+                    modifier = Modifier.testTag(SettingsTestTags.row("Lens", "profile_load_cancel"))) { Text(tr("Cancel")) }
             }
         )
     }
@@ -212,8 +213,8 @@ internal fun LensSettings(state: SettingsUiState, dispatch: SettingsDispatch) {
         val context = androidx.compose.ui.platform.LocalContext.current
         AlertDialog(
             onDismissRequest = { confirmReset = false },
-            title = { Text("Reset lenses?") },
-            text = { Text("Your lens list is replaced with this phone's built-in lenses.") },
+            title = { Text(tr("Reset lenses?")) },
+            text = { Text(tr("Your lens list is replaced with this phone's built-in lenses.")) },
             confirmButton = {
                 TextButton(onClick = {
                     dispatch.invoke(SetLensProfiles(null))
@@ -221,9 +222,9 @@ internal fun LensSettings(state: SettingsUiState, dispatch: SettingsDispatch) {
                     context.getSharedPreferences("rawr_lens_groups", android.content.Context.MODE_PRIVATE)
                         .edit().clear().apply()
                     confirmReset = false
-                }) { Text("Reset") }
+                }) { Text(tr("Reset")) }
             },
-            dismissButton = { TextButton(onClick = { confirmReset = false }) { Text("Cancel") } }
+            dismissButton = { TextButton(onClick = { confirmReset = false }) { Text(tr("Cancel")) } }
         )
     }
 }
@@ -302,7 +303,7 @@ private fun CopyLensDialog(
             OutlinedTextField(
                 value = name,
                 onValueChange = { name = it },
-                label = { Text("Name") },
+                label = { Text(tr("Name")) },
                 singleLine = true,
                 isError = name.isNotEmpty() && problem != null,
                 supportingText = {
@@ -313,9 +314,9 @@ private fun CopyLensDialog(
             )
         },
         confirmButton = {
-            TextButton(enabled = problem == null, onClick = { onCopy(duplicate) }) { Text("Copy") }
+            TextButton(enabled = problem == null, onClick = { onCopy(duplicate) }) { Text(tr("Copy")) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        dismissButton = { TextButton(onClick = onDismiss) { Text(tr("Cancel")) } }
     )
 }
 

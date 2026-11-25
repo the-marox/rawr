@@ -1,5 +1,6 @@
 package com.rawr.camera.settings.ui
 
+import com.rawr.camera.i18n.tr
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -380,7 +381,7 @@ internal fun LutProfileSettings(
             ) {
                 Icon(Icons.Rounded.DeleteOutline, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
-                Text("Delete LUT profile")
+                Text(tr("Delete LUT profile"))
             }
         }
         item { Spacer(Modifier.height(20.dp)) }
@@ -388,24 +389,24 @@ internal fun LutProfileSettings(
 
     if (renaming) {
         var name by remember(selected.id) { mutableStateOf(selected.name) }
-        AlertDialog(onDismissRequest = { renaming = false }, title = { Text("Rename LUT Profile") }, text = {
+        AlertDialog(onDismissRequest = { renaming = false }, title = { Text(tr("Rename LUT Profile")) }, text = {
             OutlinedTextField(value = name, onValueChange = {
                 name =
                     it
-            }, singleLine = true, label = { Text("Name") })
+            }, singleLine = true, label = { Text(tr("Name")) })
         }, confirmButton = {
             TextButton(onClick = {
                 dispatch.invoke(RenameUserLutProfile(selected.id, name))
                 renaming =
                     false
-            }) { Text("Save") }
-        }, dismissButton = { TextButton(onClick = { renaming = false }) { Text("Cancel") } })
+            }) { Text(tr("Save")) }
+        }, dismissButton = { TextButton(onClick = { renaming = false }) { Text(tr("Cancel")) } })
     }
     if (deleting) {
         AlertDialog(onDismissRequest = {
             deleting = false
         }, title = {
-            Text("Delete LUT Profile?")
+            Text(tr("Delete LUT Profile?"))
         }, text = {
             Text(
                 "Delete ‘${selected.name}’? LUT files that are no longer referenced by another profile will also be removed."
@@ -416,12 +417,12 @@ internal fun LutProfileSettings(
                 deleting =
                     false
                 dispatch.invoke(NavigateBack)
-            }) { Text("Delete") }
+            }) { Text(tr("Delete")) }
         }, dismissButton = {
             TextButton(onClick = {
                 deleting =
                     false
-            }) { Text("Cancel") }
+            }) { Text(tr("Cancel")) }
         })
     }
 }

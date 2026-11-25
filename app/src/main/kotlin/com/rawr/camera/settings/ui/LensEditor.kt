@@ -1,5 +1,6 @@
 package com.rawr.camera.settings.ui
 
+import com.rawr.camera.i18n.tr
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.clickable
@@ -212,7 +213,7 @@ internal fun LensEditorScreen(state: SettingsUiState, lensName: String?, dispatc
                 horizontalArrangement = Arrangement.End
             ) {
                 Button(onClick = { showAdvanced = false }, modifier = Modifier.testTag(lensEditorTag("advanced_done"))) {
-                    Text("Done")
+                    Text(tr("Done"))
                 }
             }
         }
@@ -284,15 +285,15 @@ internal fun LensEditorScreen(state: SettingsUiState, lensName: String?, dispatc
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (original != null) {
-                TextButton(onClick = { confirmDelete = true }) { Text("Delete") }
+                TextButton(onClick = { confirmDelete = true }) { Text(tr("Delete")) }
                 Box(Modifier.weight(1f))
             }
-            OutlinedButton(onClick = requestBack) { Text("Cancel") }
+            OutlinedButton(onClick = requestBack) { Text(tr("Cancel")) }
             Button(
                 enabled = canSave,
                 modifier = Modifier.testTag(lensEditorTag("save")),
                 onClick = saveAndLeave
-            ) { Text("Save") }
+            ) { Text(tr("Save")) }
         }
     }
 
@@ -346,7 +347,7 @@ internal fun LensEditorScreen(state: SettingsUiState, lensName: String?, dispatc
     if (confirmDiscard) {
         AlertDialog(
             onDismissRequest = { confirmDiscard = false },
-            title = { Text("Save changes?") },
+            title = { Text(tr("Save changes?")) },
             text = {
                 Text(when {
                     importingDcp -> "Wait for the profile import to finish before saving, or discard your edits."
@@ -358,15 +359,15 @@ internal fun LensEditorScreen(state: SettingsUiState, lensName: String?, dispatc
                 TextButton(enabled = canSave, onClick = {
                     confirmDiscard = false
                     saveAndLeave()
-                }) { Text("Save") }
+                }) { Text(tr("Save")) }
             },
             dismissButton = {
                 Row {
-                    TextButton(onClick = { confirmDiscard = false }) { Text("Keep editing") }
+                    TextButton(onClick = { confirmDiscard = false }) { Text(tr("Keep editing")) }
                     TextButton(onClick = {
                         confirmDiscard = false
                         dispatch.invoke(NavigateBack)
-                    }) { Text("Discard") }
+                    }) { Text(tr("Discard")) }
                 }
             }
         )
@@ -384,9 +385,9 @@ internal fun LensEditorScreen(state: SettingsUiState, lensName: String?, dispatc
                     confirmDelete = false
                     dispatch.invoke(SetLensProfiles(lenses.removeLens(original.name)))
                     dispatch.invoke(NavigateBack)
-                }) { Text("Delete") }
+                }) { Text(tr("Delete")) }
             },
-            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } }
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text(tr("Cancel")) } }
         )
     }
 }
@@ -396,7 +397,7 @@ internal fun LensNameField(name: String, onChange: (String) -> Unit) {
     OutlinedTextField(
         value = name,
         onValueChange = { onChange(it.replace("\n", "").take(LENS_NAME_MAX_LENGTH)) },
-        label = { Text("Name") },
+        label = { Text(tr("Name")) },
         supportingText = { Text("Capture-screen label, up to $LENS_NAME_MAX_LENGTH characters (e.g. 35, UW, 3x)") },
         singleLine = true,
         modifier =

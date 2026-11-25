@@ -182,7 +182,7 @@ internal fun DynamicRangeSettings(state: SettingsUiState, dispatch: SettingsDisp
                     ChoiceSummary("Conservative ranges. Strong combinations can still exaggerate edges; leave contrast boost off for a softer look.")
                     androidx.compose.material3.TextButton(onClick = {
                         dispatch.invoke(SetLocalTone(shadowsEv = LocalToneLimits.DEFAULT_SHADOWS_EV, tuning = LocalToneTuning()))
-                    }) { Text("Reset local tone") }
+                    }) { Text(tr("Reset local tone")) }
                 }
                 DynamicRangeMethod.Global -> {
                     SettingDivider()

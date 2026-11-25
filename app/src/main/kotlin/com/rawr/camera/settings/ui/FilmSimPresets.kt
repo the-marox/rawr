@@ -1,5 +1,6 @@
 package com.rawr.camera.settings.ui
 
+import com.rawr.camera.i18n.tr
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -40,7 +41,7 @@ internal fun FilmSimSettings(state: SettingsUiState, dispatch: SettingsDispatch)
                 trailing = if (modified) {
                     {
                         androidx.compose.material3.TextButton(onClick = { dispatch.invoke(RevertFilmPreset) }) {
-                            androidx.compose.material3.Text("Revert")
+                            androidx.compose.material3.Text(tr("Revert"))
                         }
                     }
                 } else {
@@ -334,24 +335,24 @@ internal fun FilmSimPresetGroup(state: SettingsUiState, dispatch: SettingsDispat
     if (saving) {
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { saving = false },
-            title = { androidx.compose.material3.Text("Save film preset") },
+            title = { androidx.compose.material3.Text(tr("Save film preset")) },
             text = {
                 androidx.compose.material3.OutlinedTextField(
                     value = saveName,
                     onValueChange = { saveName = it },
                     singleLine = true,
-                    label = { androidx.compose.material3.Text("Name") }
+                    label = { androidx.compose.material3.Text(tr("Name")) }
                 )
             },
             confirmButton = {
                 androidx.compose.material3.TextButton(onClick = {
                     dispatch.invoke(SaveFilmPreset(saveName))
                     saving = false
-                }) { androidx.compose.material3.Text("Save") }
+                }) { androidx.compose.material3.Text(tr("Save")) }
             },
             dismissButton = {
                 androidx.compose.material3.TextButton(onClick = { saving = false }) {
-                    androidx.compose.material3.Text("Cancel")
+                    androidx.compose.material3.Text(tr("Cancel"))
                 }
             }
         )
@@ -359,24 +360,24 @@ internal fun FilmSimPresetGroup(state: SettingsUiState, dispatch: SettingsDispat
     renameTarget?.let { target ->
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { renameTarget = null },
-            title = { androidx.compose.material3.Text("Rename preset") },
+            title = { androidx.compose.material3.Text(tr("Rename preset")) },
             text = {
                 androidx.compose.material3.OutlinedTextField(
                     value = renameName,
                     onValueChange = { renameName = it },
                     singleLine = true,
-                    label = { androidx.compose.material3.Text("Name") }
+                    label = { androidx.compose.material3.Text(tr("Name")) }
                 )
             },
             confirmButton = {
                 androidx.compose.material3.TextButton(onClick = {
                     dispatch.invoke(RenameFilmPreset(target.id, renameName))
                     renameTarget = null
-                }) { androidx.compose.material3.Text("Save") }
+                }) { androidx.compose.material3.Text(tr("Save")) }
             },
             dismissButton = {
                 androidx.compose.material3.TextButton(onClick = { renameTarget = null }) {
-                    androidx.compose.material3.Text("Cancel")
+                    androidx.compose.material3.Text(tr("Cancel"))
                 }
             }
         )
@@ -384,17 +385,17 @@ internal fun FilmSimPresetGroup(state: SettingsUiState, dispatch: SettingsDispat
     deleteTarget?.let { target ->
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { deleteTarget = null },
-            title = { androidx.compose.material3.Text("Delete preset?") },
+            title = { androidx.compose.material3.Text(tr("Delete preset?")) },
             text = { androidx.compose.material3.Text("Delete '${target.name}'? The current look is kept.") },
             confirmButton = {
                 androidx.compose.material3.TextButton(onClick = {
                     dispatch.invoke(DeleteFilmPreset(target.id))
                     deleteTarget = null
-                }) { androidx.compose.material3.Text("Delete") }
+                }) { androidx.compose.material3.Text(tr("Delete")) }
             },
             dismissButton = {
                 androidx.compose.material3.TextButton(onClick = { deleteTarget = null }) {
-                    androidx.compose.material3.Text("Cancel")
+                    androidx.compose.material3.Text(tr("Cancel"))
                 }
             }
         )
@@ -402,17 +403,17 @@ internal fun FilmSimPresetGroup(state: SettingsUiState, dispatch: SettingsDispat
     updateTarget?.let { target ->
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { updateTarget = null },
-            title = { androidx.compose.material3.Text("Update preset?") },
+            title = { androidx.compose.material3.Text(tr("Update preset?")) },
             text = { androidx.compose.material3.Text("Overwrite '${target.name}' with the current look?") },
             confirmButton = {
                 androidx.compose.material3.TextButton(onClick = {
                     dispatch.invoke(UpdateFilmPreset(target.id))
                     updateTarget = null
-                }) { androidx.compose.material3.Text("Update") }
+                }) { androidx.compose.material3.Text(tr("Update")) }
             },
             dismissButton = {
                 androidx.compose.material3.TextButton(onClick = { updateTarget = null }) {
-                    androidx.compose.material3.Text("Cancel")
+                    androidx.compose.material3.Text(tr("Cancel"))
                 }
             }
         )

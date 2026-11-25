@@ -1,5 +1,6 @@
 package com.rawr.camera.settings.ui
 
+import com.rawr.camera.i18n.tr
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
@@ -77,7 +78,7 @@ internal fun LicensesDialog(onDismiss: () -> Unit) {
                             .padding(horizontal = 16.dp)
                 ) {
                     Text(text = text, style = MaterialTheme.typography.bodySmall)
-                    TextButton(onClick = onDismiss) { Text("Close") }
+                    TextButton(onClick = onDismiss) { Text(tr("Close")) }
                 }
             }
         }

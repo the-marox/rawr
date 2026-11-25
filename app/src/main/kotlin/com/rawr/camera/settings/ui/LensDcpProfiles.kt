@@ -1,5 +1,6 @@
 package com.rawr.camera.settings.ui
 
+import com.rawr.camera.i18n.tr
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -55,11 +56,11 @@ internal fun LensDcpProfiles(
             onDismissRequest = { open = false },
             title = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("DCP profiles", modifier = Modifier.weight(1f))
+                    Text(tr("DCP profiles"), modifier = Modifier.weight(1f))
                     Box {
                         var sorting by remember { mutableStateOf(false) }
                         TextButton(onClick = { sorting = true }, enabled = image.availableDcps.size > 1,
-                            modifier = Modifier.testTag(lensEditorTag("dcpSort"))) { Text("Sort") }
+                            modifier = Modifier.testTag(lensEditorTag("dcpSort"))) { Text(tr("Sort")) }
                         DropdownMenu(expanded = sorting, onDismissRequest = { sorting = false }) {
                             listOf(false to "Name (A–Z)", true to "Name (Z–A)").forEach { (descending, label) ->
                                 DropdownMenuItem(text = { Text(label) }, onClick = { sorting = false; onSort(descending) },
@@ -109,12 +110,12 @@ internal fun LensDcpProfiles(
             },
             confirmButton = {
                 TextButton(onClick = { open = false }, modifier = Modifier.testTag(lensEditorTag("dcpDone"))) {
-                    Text("Done")
+                    Text(tr("Done"))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { open = false; onImport() },
-                    modifier = Modifier.testTag(lensEditorTag("dcpImport"))) { Text("Import DCP") }
+                    modifier = Modifier.testTag(lensEditorTag("dcpImport"))) { Text(tr("Import DCP")) }
             }
         )
     }

@@ -524,11 +524,11 @@ internal fun StandaloneNumericSliderRow(
                 TextButton(
                     enabled = parsed != null,
                     onClick = { parsed?.let { onValueChange(snapped(it)) }; entry = null }
-                ) { Text("Set") }
+                ) { Text(tr("Set")) }
             },
             dismissButton = {
                 if (defaultValue != null) {
-                    TextButton(onClick = { onValueChange(defaultValue); entry = null }) { Text("Reset") }
+                    TextButton(onClick = { onValueChange(defaultValue); entry = null }) { Text(tr("Reset")) }
                 }
             }
         )

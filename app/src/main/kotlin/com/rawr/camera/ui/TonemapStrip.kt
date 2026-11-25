@@ -1,5 +1,6 @@
 package com.rawr.camera.ui
 
+import com.rawr.camera.i18n.tr
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.ui.draw.clip
@@ -821,7 +822,7 @@ private fun LookSheetChip(
         contentAlignment = Alignment.Center
     ) {
         Text(
-            text,
+            tr(text),
             color = if (active) CaptureColors.Accent else Color.White.copy(alpha = .8f),
             fontFamily = CaptureMono,
             fontWeight = FontWeight.SemiBold,

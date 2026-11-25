@@ -1,5 +1,6 @@
 package com.rawr.camera.ui
 
+import com.rawr.camera.i18n.tr
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -622,7 +623,7 @@ internal fun SheetTabChip(text: String, active: Boolean, tag: String, modifier: 
         contentAlignment = Alignment.Center
     ) {
         Text(
-            text,
+            tr(text),
             color = if (active) CaptureColors.Accent else Color.White.copy(alpha = .8f),
             fontFamily = CaptureMono,
             fontWeight = FontWeight.SemiBold,
