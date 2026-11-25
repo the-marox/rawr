@@ -14,6 +14,7 @@ namespace rawrcam::video {
 namespace {
 constexpr char kTag[] = "RawrNativeVideo";
 constexpr char kPrewarmProperty[] = "debug.rawr.video_encoder_prewarm";
+constexpr char kDeviceProperty[] = "ro.product.device";
 
 int64_t bootNs() noexcept {
     timespec ts{};
@@ -72,8 +73,10 @@ VideoEncoderPrewarm& VideoEncoderPrewarm::instance() {
 
 bool VideoEncoderPrewarm::enabled() const {
     char value[PROP_VALUE_MAX] = {};
-    const int length = __system_property_get(kPrewarmProperty, value);
-    return length > 0 && value[0] == '1' && value[1] == '\0';
+    char device[PROP_VALUE_MAX] = {};
+    __system_property_get(kPrewarmProperty, value);
+    __system_property_get(kDeviceProperty, device);
+    return prewarmEnabled(value, device);
 }
 
 PreparedEncoder VideoEncoderPrewarm::held() const noexcept {

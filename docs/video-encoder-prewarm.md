@@ -31,15 +31,20 @@ itself (that is `VideoSession`'s prewarm), the muxer, and the audio input.
 
 ## Gate
 
-Off by default. Nothing is created, pooled, or freed unless the property is set:
+On by default where it was measured (`ro.product.device=dada`), off everywhere else until
+that device repeats the A/B. The property overrides the default both ways, so it doubles
+as the kill switch in the field:
 
 ```sh
-adb shell setprop debug.rawr.video_encoder_prewarm 1   # enable
-adb shell setprop debug.rawr.video_encoder_prewarm 0   # disable (or unset)
+adb shell setprop debug.rawr.video_encoder_prewarm 1     # force on
+adb shell setprop debug.rawr.video_encoder_prewarm 0     # kill switch
+adb shell setprop debug.rawr.video_encoder_prewarm ''    # back to the device default
 ```
 
-The property is read on every call, so it can be flipped between recordings without
-restarting the app. With the gate off, an existing entry is dropped on the next
+`1`/`true`/`on` and `0`/`false`/`off` are the recognized values; anything else (including
+unset) falls back to the device default. The property is read on every call, so it can be
+flipped between recordings without restarting the app — but only the log line changes
+immediately: with the gate off, an existing entry is dropped on the next
 `take()`/`release()`, and the recorder reports `"encoderPrewarm":"off"` in its stats.
 
 ## How it behaves
@@ -84,11 +89,12 @@ The A/B is a pair of 4K24 Open Gate clips from the same session, gate off and on
 `encoderPrewarm` in the journal stats, plus the usual startup evidence
 (`VIDEO_YUV_STATS`, `VIDEO_YUV_FLOW`, `currentFps`, `encodedFrameGaps`, drop counts)
 unchanged. The prewarm is only worth keeping if `reused` appears, `startMs` is small,
-and the first-frame time or drop counts improve; otherwise it stays behind the gate.
+and the first-frame time or drop counts improve; otherwise it goes back behind the gate
+(`setprop debug.rawr.video_encoder_prewarm 0`).
 
 ## Dependency
 
-The policy (`VideoEncoderPrewarmPolicy.h`) is host-tested by
+The policy (`VideoEncoderPrewarmPolicy.h`, gate included) is host-tested by
 `tests/native/video_encoder_prewarm_policy_test.cpp`. If PR #7 ("Video: diagnose and
 cushion YUV encoder drops") is not merged yet, this change stacks on its branch: both
 touch the video startup path and the host-test registration in `tests/CMakeLists.txt`.

@@ -88,4 +88,16 @@ enum class PrewarmTake : int { Reused, Empty, Mismatch, Expired };
     return prewarmTake(requested, prepared) != PrewarmTake::Reused;
 }
 
+// The pool was measured on one device, so there it is on by default and everywhere else
+// it stays off until the same A/B is repeated. The property overrides the default both
+// ways: it is the kill switch when the pool misbehaves in the field, and the switch to
+// trial it on the next device.
+inline constexpr char kPrewarmDefaultOnDevice[] = "dada";
+
+[[nodiscard]] inline bool prewarmEnabled(const std::string& property, const std::string& device) noexcept {
+    if (property == "1" || property == "true" || property == "on") return true;
+    if (property == "0" || property == "false" || property == "off") return false;
+    return device == kPrewarmDefaultOnDevice;
+}
+
 }  // namespace rawrcam::video

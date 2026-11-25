@@ -22,7 +22,7 @@ class VideoEncoderPrewarm final {
 public:
     [[nodiscard]] static VideoEncoderPrewarm& instance();
 
-    // debug.rawr.video_encoder_prewarm=1 enables it; off by default until measured on device.
+    // On by default where it was measured (dada); the property overrides either way.
     [[nodiscard]] bool enabled() const;
 
     // Prepares the encoder for [spec], replacing one that no longer matches. Never

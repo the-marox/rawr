@@ -11,6 +11,7 @@ using rawrcam::video::HevcVideoEncoderSpec;
 using rawrcam::video::kHevcPrewarmTtlNs;
 using rawrcam::video::PreparedEncoder;
 using rawrcam::video::PrewarmTake;
+using rawrcam::video::prewarmEnabled;
 using rawrcam::video::prewarmNeeded;
 using rawrcam::video::prewarmTake;
 using rawrcam::video::prewarmTakeText;
@@ -187,6 +188,24 @@ void specText() {
     // The log line still has to fit one logcat entry next to the codec name.
     assert(text.size() < 96);
 }
+
+void gateDecisions() {
+    // On where the A/B was run, off everywhere else: the pool holds a hardware session
+    // and an unmeasured device has no evidence it is worth it.
+    assert(prewarmEnabled("", "dada"));
+    assert(!prewarmEnabled("", "blazer"));
+
+    // The property overrides the default both ways: kill switch in the field, and the
+    // way to trial the pool on the next device.
+    assert(!prewarmEnabled("0", "dada"));
+    assert(prewarmEnabled("1", "blazer"));
+    assert(prewarmEnabled("true", "blazer"));
+    assert(!prewarmEnabled("false", "dada"));
+
+    // An unrecognized value never flips it on somewhere unmeasured.
+    assert(!prewarmEnabled("yes", "blazer"));
+    assert(prewarmEnabled("yes", "dada"));
+}
 }  // namespace
 
 int main() {
@@ -194,6 +213,7 @@ int main() {
     specIdentity();
     takeDecisions();
     warmDecisions();
+    gateDecisions();
     specText();
     std::cout << "VIDEO_ENCODER_PREWARM_POLICY_PASS\n";
 }
