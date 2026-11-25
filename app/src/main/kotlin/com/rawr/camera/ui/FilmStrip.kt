@@ -1,5 +1,6 @@
 package com.rawr.camera.ui
 
+import com.rawr.camera.i18n.tr
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -385,7 +386,7 @@ internal fun FilmQuickCard(
 @Composable
 internal fun FilmCardTitle(title: String) {
     Text(
-        title,
+        tr(title),
         color = Color.White.copy(alpha = .55f),
         fontSize = 9.sp,
         fontWeight = FontWeight.SemiBold,

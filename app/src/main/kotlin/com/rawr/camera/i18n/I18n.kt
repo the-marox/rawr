@@ -161,7 +161,16 @@ object I18n {
         language = code
         val map = when (code) {
             ENGLISH -> emptyMap()
-            CUSTOM -> customFile(app).takeIf { it.isFile }?.let { runCatching { parse(it.readText()) }.getOrNull() } ?: emptyMap()
+            // An imported file sits on top of the bundled translation of its @code, so texts added to the app
+            // after the file was exported still come out translated instead of in English.
+            CUSTOM -> customFile(app).takeIf { it.isFile }?.let { file ->
+                runCatching {
+                    val json = file.readText()
+                    val code = JSONObject(json).optString("@code")
+                    val base = if (bundled.any { it.code == code }) asset(app, code) else emptyMap()
+                    base + parse(json)
+                }.getOrNull()
+            } ?: emptyMap()
             SYSTEM -> systemCode().let { lang -> if (bundled.any { it.code == lang }) asset(app, lang) else emptyMap() }
             else -> asset(app, code)
         }
