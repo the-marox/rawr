@@ -19,7 +19,9 @@ internal fun calculateScopeGeometry(
     scopeCount: Int,
     index: Int,
     expanded: Boolean,
-    deviceRotationDegrees: Int
+    deviceRotationDegrees: Int,
+    /** Rawr 17U fork: room left at the top in portrait (the viewfinder top sheet, when it is open). */
+    topInset: androidx.compose.ui.unit.Dp = 0.dp
 ): ScopeGeometry {
     val availablePhysicalWidth = maxWidth - 32.dp
     val availablePhysicalHeight = maxHeight - 80.dp
@@ -78,7 +80,7 @@ internal fun calculateScopeGeometry(
         } else if (landscape) {
             compactSideInset + if (index == 2) physicalHeight + compactGap else 0.dp
         } else {
-            compactSideInset + if (index == 2) physicalHeight + compactGap else 0.dp
+            topInset + compactSideInset + if (index == 2) physicalHeight + compactGap else 0.dp
         }
     return ScopeGeometry(
         logicalWidth = safeLogicalWidth,

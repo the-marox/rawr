@@ -24,7 +24,13 @@ import com.rawr.camera.architecture.ToggleScopeExpanded
 import com.rawr.camera.model.*
 
 @Composable
-internal fun ScopeLayer(state: CaptureUiState, dispatch: CaptureDispatch, preview: CapturePreview) {
+internal fun ScopeLayer(
+    state: CaptureUiState,
+    dispatch: CaptureDispatch,
+    preview: CapturePreview,
+    // Rawr 17U fork: the compact scopes move down below the viewfinder top sheet while it is open.
+    topInset: androidx.compose.ui.unit.Dp = 0.dp
+) {
     val haptics = LocalCaptureHaptics.current
     // Rawr 17U fork: hidden while a film-sheet card is held - the scopes would mix the two halves of the split
     // (or show the grain loupe) and their card covers the right half's name.
@@ -32,7 +38,7 @@ internal fun ScopeLayer(state: CaptureUiState, dispatch: CaptureDispatch, previe
     BoxWithConstraints(Modifier.fillMaxSize()) {
         fun geometry(index: Int, expanded: Boolean): ScopeGeometry = calculateScopeGeometry(
             maxWidth, maxHeight, state.orientation == Orientation.Landscape,
-            activeScopes.size, index, expanded, preview.deviceRotationDegrees
+            activeScopes.size, index, expanded, preview.deviceRotationDegrees, topInset
         )
         val geometries = activeScopes.mapIndexed { index, scope -> geometry(index, state.expandedScope == scope) }
         val presentation = activeScopes.take(3).mapIndexed { index, scope ->

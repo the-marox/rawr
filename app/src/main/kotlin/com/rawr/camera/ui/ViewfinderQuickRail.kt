@@ -21,6 +21,8 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.layout.ParentDataModifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Density
@@ -303,14 +305,26 @@ internal fun ViewfinderQuickPanel(
             .padding(8.dp),
         verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(7.dp)
     ) {
+        // The chosen tab is scrolled into view (the eye opens on MONITOR, past the first tabs).
+        val tabScroll = rememberScrollState()
+        var shownTabX by remember { mutableStateOf(-1) }
+        val tabMarginPx = with(androidx.compose.ui.platform.LocalDensity.current) { 40.dp.roundToPx() }
+        androidx.compose.runtime.LaunchedEffect(shown, shownTabX) {
+            if (shownTabX >= 0) tabScroll.animateScrollTo((shownTabX - tabMarginPx).coerceAtLeast(0))
+        }
         androidx.compose.foundation.layout.Row(
-            Modifier.horizontalScroll(rememberScrollState()),
+            Modifier.horizontalScroll(tabScroll),
             horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(5.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             SheetTabChip("✕", active = false, tag = "quick_sheet_close", onClick = onClose)
             tabs.forEach { t ->
-                SheetTabChip(t.label, active = t == shown, tag = "quick_sheet_tab_${t.name.lowercase()}") { onTab(t) }
+                SheetTabChip(
+                    t.label,
+                    active = t == shown,
+                    tag = "quick_sheet_tab_${t.name.lowercase()}",
+                    modifier = if (t == shown) Modifier.onGloballyPositioned { shownTabX = it.positionInParent().x.toInt() } else Modifier
+                ) { onTab(t) }
             }
         }
         androidx.compose.runtime.key(shown) {
@@ -593,10 +607,10 @@ internal fun ViewfinderQuickPanel(
 
 /** A tab of the top sheet, in the LOOK sheet's chip style. */
 @Composable
-private fun SheetTabChip(text: String, active: Boolean, tag: String, onClick: () -> Unit) {
+private fun SheetTabChip(text: String, active: Boolean, tag: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val haptics = LocalCaptureHaptics.current
     Box(
-        Modifier
+        modifier
             .height(26.dp)
             .viewfinderChip(active = active)
             .captureClickable(shape = CaptureTextRippleShape, role = Role.Tab) {

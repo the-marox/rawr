@@ -93,6 +93,7 @@ internal fun CaptureViewfinder(
         val popupOpen = focusOnly || modalOpen
         var quickPanelOpen by remember { mutableStateOf(false) }
         var sheetTab by remember { mutableStateOf(QuickSheetTab.Exposure) }
+        var sheetHeightPx by remember { mutableStateOf(0) }
         val swipePx = with(LocalDensity.current) { 48.dp.toPx() }
         // Rawr 17U fork: opening needs a longer swipe that starts in the top third, so a drag to frame or focus
         // no longer opens the sheet by accident.
@@ -165,7 +166,11 @@ internal fun CaptureViewfinder(
                 )
         )
 
-        ScopeLayer(state, dispatch, preview)
+        val scopeTopInset =
+            if (quickPanelOpen && !popupOpen && state.orientation != Orientation.Landscape && sheetHeightPx > 0)
+                with(density) { sheetHeightPx.toDp() } + 6.dp
+            else 0.dp
+        ScopeLayer(state, dispatch, preview, scopeTopInset)
         if (state.whiteBalancePickArmed) {
             androidx.compose.material3.Text(
                 text = "Tap something truly white or grey (not a cream wall)",
@@ -269,11 +274,10 @@ internal fun CaptureViewfinder(
                 exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.slideOutVertically { -it / 3 },
                 modifier = Modifier.align(Alignment.TopStart).padding(start = 6.dp, top = 6.dp, end = 6.dp)
             ) {
-                // Portrait: full width, short of the compact scopes on the right when they are on.
+                // Portrait: full width; the compact scopes move down below it (scopeTopInset).
                 val frameWidth = slotFrame?.width ?: with(density) { viewfinderSize.width.toDp() }
                 val sheetWidth = if (state.orientation == Orientation.Landscape) 340.dp
-                else (frameWidth - 12.dp - if (state.activeScopes.isNotEmpty()) CaptureDimens.ScopeCompactWidth + 16.dp else 0.dp)
-                    .coerceAtLeast(200.dp)
+                else (frameWidth - 12.dp).coerceAtLeast(200.dp)
                 ViewfinderQuickPanel(
                     quick = quick,
                     spotActive = state.spotAe.active,
@@ -284,6 +288,7 @@ internal fun CaptureViewfinder(
                     onTab = { sheetTab = it },
                     onClose = { quickPanelOpen = false },
                     modifier = Modifier.uprightInLandscape(state.orientation).width(sheetWidth)
+                        .onSizeChanged { sheetHeightPx = it.height }
                 )
             }
             if (quick.lightMeterEnabled && !(quickPanelOpen && !popupOpen)) {
