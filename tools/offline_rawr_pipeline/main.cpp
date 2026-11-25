@@ -4,6 +4,7 @@
 
 #include <dual/Dual.hpp>
 #include <rcd/Rcd.hpp>
+#include <raw_demosaic/EmbeddedShaders.hpp>
 #include <quadfix/Pipeline.hpp>
 #include <gainmap/GainmapCompute.h>
 #include <spektrafilm/SpektraFilm.h>
@@ -46,6 +47,10 @@ struct CaptureConfig {
     float defringeStrength = 0.0f;
     float defringeEdgeThreshold = 0.02f;
     float defringeLumaFloor = 0.08f;
+    // Wavelet denoise (rawr::post::DenoiseRequest); denoiseStrength 0 = off. The app's multiframe Chroma Denoise:
+    // strength 1, detail 1, forceY 0, maxScale 7, edgeK 0.2, wbColourAxes 1, noiseThresholdUv 0.75, garrote 1,
+    // noiseA / noiseB = the burst's green noise fit / merged frames.
+    rawr::post::DenoiseRequest denoise{};
     bool dualAutoContrast = true;
     float dualContrastPercent = 20.0f;
     float exposureEV = 0.0f;
@@ -62,6 +67,7 @@ struct Arguments {
     bool demosaicedRgb = false;
     bool dumpDemosaic = false;
     bool rcdOnly = false;
+    bool amaze = false;  // --amaze: the app's AMaZE (embedded shaders) instead of Dual RCD+VNG4
     uint32_t benchmarkPost = 0;
     std::filesystem::path config;
     std::filesystem::path outputDir;
@@ -202,6 +208,16 @@ CaptureConfig loadConfig(const std::filesystem::path& path) {
     if (values.count("dualAutoContrast")) c.dualAutoContrast = std::stoul(values.at("dualAutoContrast")) != 0u;
     if (values.count("dualContrastPercent")) c.dualContrastPercent = std::stof(values.at("dualContrastPercent"));
     if (values.count("exposureEV")) c.exposureEV = std::stof(values.at("exposureEV"));
+    if (values.count("denoiseStrength")) c.denoise.strength = std::stof(values.at("denoiseStrength"));
+    if (values.count("denoiseDetail")) c.denoise.detail = std::stof(values.at("denoiseDetail"));
+    if (values.count("denoiseForceY")) c.denoise.forceY = std::stof(values.at("denoiseForceY"));
+    if (values.count("denoiseMaxScale")) c.denoise.maxScale = std::stoi(values.at("denoiseMaxScale"));
+    if (values.count("denoiseEdgeK")) c.denoise.edgeK = std::stof(values.at("denoiseEdgeK"));
+    if (values.count("denoiseWbColourAxes")) c.denoise.wbColourAxes = std::stoi(values.at("denoiseWbColourAxes")) != 0;
+    if (values.count("denoiseNoiseThresholdUv")) c.denoise.noiseThresholdUv = std::stof(values.at("denoiseNoiseThresholdUv"));
+    if (values.count("denoiseGarrote")) c.denoise.garrote = std::stoi(values.at("denoiseGarrote")) != 0;
+    if (values.count("denoiseNoiseA")) c.denoise.noiseA = std::stof(values.at("denoiseNoiseA"));
+    if (values.count("denoiseNoiseB")) c.denoise.noiseB = std::stof(values.at("denoiseNoiseB"));
     if (values.count("wbRgb")) c.wbRgb = parseFloatArray<3>(values.at("wbRgb"), "wbRgb");
     if (values.count("cameraToWorkingColumnMajor")) {
         c.cameraToWorking = parseFloatArray<9>(values.at("cameraToWorkingColumnMajor"), "cameraToWorkingColumnMajor");
@@ -222,6 +238,7 @@ Arguments parseArguments(int argc, char** argv) {
         else if (value == "--demosaiced-rgb") args.demosaicedRgb = true;
         else if (value == "--dump-demosaic") args.dumpDemosaic = true;
         else if (value == "--rcd") args.rcdOnly = true;
+        else if (value == "--amaze") args.amaze = true;
         else if (value == "--benchmark-post" && i + 1 < argc) args.benchmarkPost = std::stoul(argv[++i]);
         else if (value == "--config" && i + 1 < argc) args.config = argv[++i];
         else if (value == "--output-dir" && i + 1 < argc) args.outputDir = argv[++i];
@@ -623,7 +640,20 @@ int main(int argc, char** argv) {
             rcdDemosaic = std::make_unique<rcd::RcdPipeline>(
                 rcd::VulkanContext{context.pd, context.dev, context.qf, nullptr}, shaderProvider, cfg);
         }
-        if (!args.rcdOnly && !args.linearRgb && !args.demosaicedRgb) demosaic = std::make_unique<dual::DualDemosaicPipeline>(
+        std::unique_ptr<::amaze::AmazePipeline> amazeDemosaic;
+        if (args.amaze) {
+            if (args.rcdOnly || args.quadfix || args.linearRgb || args.demosaicedRgb)
+                throw std::runtime_error("--amaze requires packed CFA input without --rcd / quadfix");
+            ::amaze::PipelineConfig cfg{};
+            cfg.width = config.width;
+            cfg.height = config.height;
+            cfg.pattern = static_cast<::amaze::BayerPattern>(config.cfa);
+            cfg.inputMode = ::amaze::InputMode::PackedCfaRgba16fImage;
+            amazeDemosaic = std::make_unique<::amaze::AmazePipeline>(
+                ::amaze::VulkanContext{context.pd, context.dev, context.qf, nullptr, VK_NULL_HANDLE},
+                raw_demosaic::embeddedAmazeShaders(), cfg);
+        }
+        if (!args.rcdOnly && !args.amaze && !args.linearRgb && !args.demosaicedRgb) demosaic = std::make_unique<dual::DualDemosaicPipeline>(
             dual::VulkanContext{context.pd, context.dev, context.qf, nullptr}, shaderProvider, dualConfig);
 
         if (!args.technicalLutDwg.empty() && args.film)
@@ -755,7 +785,7 @@ int main(int argc, char** argv) {
                  << "gpu=" << context.prop.deviceName << "\n"
                  << "width=" << config.width << "\nheight=" << config.height << "\n"
                  << "cfa=" << config.cfa << "\n"
-                 << "demosaic=" << (args.rcdOnly ? "production_rcd" : "production_dual_rcd_vng4") << "\n"
+                 << "demosaic=" << (args.amaze ? "production_amaze" : args.rcdOnly ? "production_rcd" : "production_dual_rcd_vng4") << "\n"
                  << "quadfix=" << (args.quadfix ? (args.quadfixFastMedian ? "fast" : "exact") : "off") << "\n"
                  << "post=production_wb_highlight_fcc\n"
                  << "tonemap=" << (args.technicalLutDwg.empty() ? "production_rawr_base" : "technical_lut_dwg_direct") << "\n"
@@ -887,6 +917,15 @@ int main(int argc, char** argv) {
                     dual::NormalizedBayerBufferView normalized{
                         {quadFiltered.b,0,rawBytes},config.width,config.height,bayerPattern(config.cfa)};
                     demosaic->record(command,normalized,demosaicOutput);
+                } else if (amazeDemosaic) {
+                    ::amaze::PackedCfaImageView amazeInput{
+                        packedImage.i, packedImage.v, VK_FORMAT_R16G16B16A16_SFLOAT,
+                        VK_IMAGE_LAYOUT_GENERAL, config.width / 2u, config.height / 2u,
+                        config.width, config.height, static_cast<::amaze::BayerPattern>(config.cfa)};
+                    ::amaze::LinearRgbImage amazeOutput{source.i, source.v, VK_FORMAT_R16G16B16A16_SFLOAT,
+                                                        VK_IMAGE_LAYOUT_GENERAL, config.width, config.height};
+                    amazeDemosaic->record(command, amazeInput, amazeOutput,
+                                          {config.wbRgb[0] / config.wbRgb[1], 1.0f, config.wbRgb[2] / config.wbRgb[1]});
                 } else if (rcdDemosaic) {
                     rcd::PackedCfaImageView rcdInput{
                         packedImage.i, packedImage.v, VK_FORMAT_R16G16B16A16_SFLOAT,
@@ -957,7 +996,7 @@ int main(int argc, char** argv) {
                 post.record(command, source.i, source.v, clipImage.i, clipImage.v,
                             config.wbRgb, recovery, {}, VK_NULL_HANDLE, args.preserveReconstructedHighlights,
                             args.appColoropp ? 1u : 0u, args.appColoroppThreshold,
-                            args.appColoroppCompression, args.postGain * std::exp2(config.exposureEV), {}, config.cfa, {}, {}, cameraToSrgb.data());
+                            args.appColoroppCompression, args.postGain * std::exp2(config.exposureEV), {}, config.cfa, config.denoise, {}, cameraToSrgb.data());
 
                 auto postReady = imageBarrier(post.sdrOutputImage(), VK_ACCESS_SHADER_WRITE_BIT,
                                               VK_ACCESS_SHADER_READ_BIT,
@@ -1287,7 +1326,7 @@ int main(int argc, char** argv) {
                                     config.wbRgb, recovery, {}, VK_NULL_HANDLE,
                                     args.preserveReconstructedHighlights, args.appColoropp ? 1u : 0u,
                                     args.appColoroppThreshold, args.appColoroppCompression,
-                                    args.postGain * std::exp2(config.exposureEV), {}, config.cfa, {}, {}, cameraToSrgb.data());
+                                    args.postGain * std::exp2(config.exposureEV), {}, config.cfa, config.denoise, {}, cameraToSrgb.data());
                         vkCmdWriteTimestamp(command, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, queries, 1);
                         submitAndWait(context, command);
                         uint64_t timestamps[2]{};
