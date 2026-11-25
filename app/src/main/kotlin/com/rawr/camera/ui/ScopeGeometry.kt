@@ -21,7 +21,9 @@ internal fun calculateScopeGeometry(
     expanded: Boolean,
     deviceRotationDegrees: Int,
     /** Rawr 17U fork: room left at the top in portrait (the viewfinder top sheet, when it is open). */
-    topInset: androidx.compose.ui.unit.Dp = 0.dp
+    topInset: androidx.compose.ui.unit.Dp = 0.dp,
+    /** Rawr 17U fork: landscape, room taken at the bottom of the screen (the bottom controls and an open sheet). */
+    bottomInset: androidx.compose.ui.unit.Dp = 0.dp
 ): ScopeGeometry {
     val availablePhysicalWidth = maxWidth - 32.dp
     val availablePhysicalHeight = maxHeight - 80.dp
@@ -80,7 +82,9 @@ internal fun calculateScopeGeometry(
         } else if (landscape) {
             // Rawr 17U fork: the top-right corner as the phone is held (screen right edge, low end, above the
             // bottom controls), like portrait; the top sheet runs along the same edge from the other end.
-            maxHeight - 80.dp - physicalHeight - if (index == 2) physicalHeight + compactGap else 0.dp
+            // It slides along that edge to stay clear of an open FILM / LOOK sheet (bottomInset).
+            (maxHeight - maxOf(80.dp, bottomInset) - physicalHeight -
+                if (index == 2) physicalHeight + compactGap else 0.dp).coerceAtLeast(compactSideInset)
         } else {
             topInset + compactSideInset + if (index == 2) physicalHeight + compactGap else 0.dp
         }

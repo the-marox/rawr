@@ -95,6 +95,7 @@ internal fun CaptureViewfinder(
         var quickPanelOpen by remember { mutableStateOf(false) }
         var sheetTab by remember { mutableStateOf(QuickSheetTab.Exposure) }
         var sheetHeightPx by remember { mutableStateOf(0) }
+        var bottomStackPx by remember { mutableStateOf(0) }
         val swipePx = with(LocalDensity.current) { 48.dp.toPx() }
         // Rawr 17U fork: opening needs a longer swipe that starts in the top third, so a drag to frame or focus
         // no longer opens the sheet by accident.
@@ -182,7 +183,13 @@ internal fun CaptureViewfinder(
             if (quickPanelOpen && !popupOpen && state.orientation != Orientation.Landscape && sheetHeightPx > 0)
                 with(density) { sheetHeightPx.toDp() } + 6.dp
             else 0.dp
-        ScopeLayer(state, dispatch, preview, scopeTopInset)
+        // Landscape: the compact scope slides up its edge to stay above the bottom controls and an open sheet.
+        val scopeBottomInset = with(density) {
+            val frameHeight = slotFrame?.height ?: viewfinderSize.height.toDp()
+            // bottomStackPx already includes the slot's bottom padding.
+            (viewfinderSize.height.toDp() - frameHeight).coerceAtLeast(0.dp) + bottomStackPx.toDp() + 6.dp
+        }
+        ScopeLayer(state, dispatch, preview, scopeTopInset, scopeBottomInset)
         if (state.whiteBalancePickArmed) {
             androidx.compose.material3.Text(
                 text = "Tap something truly white or grey (not a cream wall)",
@@ -217,6 +224,7 @@ internal fun CaptureViewfinder(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
+                    .onSizeChanged { bottomStackPx = it.height }
                     .padding(
                         start = CaptureDimens.ViewfinderHorizontalPadding,
                         end = CaptureDimens.ViewfinderHorizontalPadding,

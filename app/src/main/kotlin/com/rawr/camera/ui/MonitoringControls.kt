@@ -29,7 +29,8 @@ internal fun ScopeLayer(
     dispatch: CaptureDispatch,
     preview: CapturePreview,
     // Rawr 17U fork: the compact scopes move down below the viewfinder top sheet while it is open.
-    topInset: androidx.compose.ui.unit.Dp = 0.dp
+    topInset: androidx.compose.ui.unit.Dp = 0.dp,
+    bottomInset: androidx.compose.ui.unit.Dp = 0.dp
 ) {
     val haptics = LocalCaptureHaptics.current
     // Rawr 17U fork: hidden while a film-sheet card is held - the scopes would mix the two halves of the split
@@ -38,7 +39,7 @@ internal fun ScopeLayer(
     BoxWithConstraints(Modifier.fillMaxSize()) {
         fun geometry(index: Int, expanded: Boolean): ScopeGeometry = calculateScopeGeometry(
             maxWidth, maxHeight, state.orientation == Orientation.Landscape,
-            activeScopes.size, index, expanded, preview.deviceRotationDegrees, topInset
+            activeScopes.size, index, expanded, preview.deviceRotationDegrees, topInset, bottomInset
         )
         val geometries = activeScopes.mapIndexed { index, scope -> geometry(index, state.expandedScope == scope) }
         val presentation = activeScopes.take(3).mapIndexed { index, scope ->
