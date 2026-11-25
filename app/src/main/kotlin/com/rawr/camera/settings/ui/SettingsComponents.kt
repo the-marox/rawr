@@ -889,11 +889,14 @@ internal fun <T> DropdownChoiceRow(
             // Menu anchors to the value, so it opens under the arrow at the row's end.
             Box {
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Rawr 17U fork: capped, so a long (translated) value never squeezes the row title to a column.
                     Text(
                         tr(label(selected)),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (enabled) 1f else .45f),
-                        maxLines = 1
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.widthIn(max = 150.dp)
                     )
                     Icon(
                         Icons.Rounded.ArrowDropDown,

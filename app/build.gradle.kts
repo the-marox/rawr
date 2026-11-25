@@ -405,6 +405,7 @@ val i18nTemplate = tasks.register<I18nTemplateTask>("generateI18nTemplate") {
     sourceDirectories.from(
         layout.projectDirectory.dir("src/main/kotlin/com/rawr/camera/settings"),
         layout.projectDirectory.dir("src/main/kotlin/com/rawr/camera/ui"),
+        layout.projectDirectory.dir("src/main/kotlin/com/rawr/camera/model"),
         layout.projectDirectory.dir("src/main/kotlin/com/rawr/camera/i18n")
     )
     outputDirectory.set(layout.buildDirectory.dir("generated/i18nTemplate"))

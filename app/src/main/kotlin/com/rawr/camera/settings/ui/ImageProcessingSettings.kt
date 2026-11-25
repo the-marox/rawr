@@ -1,5 +1,6 @@
 package com.rawr.camera.settings.ui
 
+import com.rawr.camera.i18n.tr
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -224,7 +225,7 @@ internal fun DynamicRangeSettings(state: SettingsUiState, dispatch: SettingsDisp
 @Composable
 private fun ChoiceLabel(text: String) {
     Text(
-        text,
+        tr(text), // Rawr 17U fork: UI language
         style = MaterialTheme.typography.bodyLarge,
         modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp)
     )
@@ -233,7 +234,7 @@ private fun ChoiceLabel(text: String) {
 @Composable
 private fun ChoiceSummary(text: String) {
     Text(
-        text,
+        tr(text), // Rawr 17U fork: UI language
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp)
