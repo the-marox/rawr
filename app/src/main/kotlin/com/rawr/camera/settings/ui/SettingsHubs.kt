@@ -40,7 +40,15 @@ internal fun LookHubSettings(state: SettingsUiState, dispatch: SettingsDispatch)
             SettingDivider()
             HubRow("Dynamic Range", dynamicRangeSummary(v), SettingsSection.DynamicRange, dispatch)
             SettingDivider()
-            HubRow("LUT Profile", "Imported LUTs and render transform", SettingsSection.LutProfile, dispatch)
+            // The LUT Profile page edits the LUT chosen in Tone & Color (Ed's flow); with none chosen it is empty, so
+            // the row opens Tone & Color, where LUTs are imported and chosen.
+            val lut = v.selectedLutProfile()
+            HubRow(
+                "LUT Profile",
+                lut?.name ?: if (v.userLutProfiles.isEmpty()) "None imported · import in Tone & Color" else "None chosen · choose in Tone & Color",
+                if (lut != null) SettingsSection.LutProfile else SettingsSection.ImageTone,
+                dispatch
+            )
         }
     }
 }
