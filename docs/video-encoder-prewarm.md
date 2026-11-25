@@ -55,6 +55,10 @@ restarting the app. With the gate off, an existing entry is dropped on the next
 - **90 s TTL.** An entry older than that is discarded rather than handed over: the
   device may have reclaimed the session, and the user may have moved on.
 - **Never during a recording.** While a recording owns an encoder nothing is warmed.
+- **Waits for the record window.** Open Gate sizes the encoder from the RAW geometry in the
+  camera snapshot. A session that boots straight into Video has not published it yet, so
+  the prewarm polls the snapshot (250 ms, up to ~6 s) instead of leaving the first take
+  cold; leaving Video cancels the wait together with the pool.
 - **Refill after a stop.** A successful recording posts a new warm for its own
   settings, so a back-to-back take reuses the encoder instead of paying setup again.
 - **Released on leaving Video mode**, together with the rest of the prewarmed
