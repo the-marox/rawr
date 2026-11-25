@@ -273,7 +273,7 @@ internal fun LensEditorScreen(state: SettingsUiState, lensName: String?, dispatc
         }
         if (problems.isNotEmpty()) {
             Text(
-                problems.joinToString("\n"),
+                problems.joinToString("\n") { tr(it) },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error,
                 modifier = Modifier.padding(horizontal = SettingsRowHorizontalPadding)
@@ -349,11 +349,11 @@ internal fun LensEditorScreen(state: SettingsUiState, lensName: String?, dispatc
             onDismissRequest = { confirmDiscard = false },
             title = { Text(tr("Save changes?")) },
             text = {
-                Text(when {
+                Text(tr(when {
                     importingDcp -> "Wait for the profile import to finish before saving, or discard your edits."
                     problems.isNotEmpty() -> "Fix the lens settings before saving, or discard your edits."
                     else -> "Your edits to this lens are not saved."
-                })
+                }))
             },
             confirmButton = {
                 TextButton(enabled = canSave, onClick = {
@@ -398,7 +398,7 @@ internal fun LensNameField(name: String, onChange: (String) -> Unit) {
         value = name,
         onValueChange = { onChange(it.replace("\n", "").take(LENS_NAME_MAX_LENGTH)) },
         label = { Text(tr("Name")) },
-        supportingText = { Text("Capture-screen label, up to $LENS_NAME_MAX_LENGTH characters (e.g. 35, UW, 3x)") },
+        supportingText = { Text(tr("Capture-screen label, up to $LENS_NAME_MAX_LENGTH characters (e.g. 35, UW, 3x)")) },
         singleLine = true,
         modifier =
             Modifier

@@ -1490,5 +1490,6 @@
  "‹ QUICK": "‹ БЫСТРО",
  "↺ RESET": "↺ СБРОС",
  "✓ Photo": "✓ Фото",
- "✓ Video": "✓ Видео"
+ "✓ Video": "✓ Видео",
+ "Capture-screen label, up to 12 characters (e.g. 35, UW, 3x)": "Подпись на экране съёмки, до 12 символов (напр. 35, UW, 3x)"
 }

@@ -81,6 +81,15 @@ internal fun CaptureViewfinder(
                 !state.whiteBalancePanelOpen
         // Rawr 17U fork: the eye opens the top sheet on MONITOR (below), not a modal palette.
         val modalOpen = state.whiteBalancePanelOpen
+        // Rawr 17U fork: the WB strip and the FILM/LOOK sheet share the space above the exposure row, so the one
+        // opened last closes the other (the LOOK button sits below the dismiss scrim and never closed WB).
+        val lookSheetOpen = LookSheetState.open
+        androidx.compose.runtime.LaunchedEffect(lookSheetOpen) {
+            if (lookSheetOpen && state.whiteBalancePanelOpen) dispatch(ToggleWhiteBalancePanel)
+        }
+        androidx.compose.runtime.LaunchedEffect(state.whiteBalancePanelOpen) {
+            if (state.whiteBalancePanelOpen) LookSheetState.open = false
+        }
         // The rail shares the right edge with the compact scopes; keep it below them.
         val density = LocalDensity.current
         val railTopLimit = with(density) {
