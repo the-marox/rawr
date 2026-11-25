@@ -167,7 +167,7 @@ internal fun CaptureViewfinder(
         )
 
         val scopeTopInset =
-            if (quickPanelOpen && !popupOpen && state.orientation != Orientation.Landscape && sheetHeightPx > 0)
+            if (quickPanelOpen && !popupOpen && sheetHeightPx > 0)
                 with(density) { sheetHeightPx.toDp() } + 6.dp
             else 0.dp
         ScopeLayer(state, dispatch, preview, scopeTopInset)
@@ -272,7 +272,10 @@ internal fun CaptureViewfinder(
                 visible = quickPanelOpen && !popupOpen,
                 enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.slideInVertically { -it / 3 },
                 exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.slideOutVertically { -it / 3 },
-                modifier = Modifier.align(Alignment.TopStart).padding(start = 6.dp, top = 6.dp, end = 6.dp)
+                // Landscape: turned a quarter, along the right edge (the top as the phone is held), from the top.
+                modifier = if (state.orientation == Orientation.Landscape)
+                    Modifier.align(Alignment.TopEnd).padding(end = 6.dp, top = 6.dp)
+                else Modifier.align(Alignment.TopStart).padding(start = 6.dp, top = 6.dp, end = 6.dp)
             ) {
                 // Portrait: full width; the compact scopes move down below it (scopeTopInset).
                 val frameWidth = slotFrame?.width ?: with(density) { viewfinderSize.width.toDp() }
@@ -287,8 +290,9 @@ internal fun CaptureViewfinder(
                     tab = sheetTab,
                     onTab = { sheetTab = it },
                     onClose = { quickPanelOpen = false },
-                    modifier = Modifier.uprightInLandscape(state.orientation).width(sheetWidth)
-                        .onSizeChanged { sheetHeightPx = it.height }
+                    // Measured after the turn: in landscape its height on screen is the sheet's width.
+                    modifier = Modifier.onSizeChanged { sheetHeightPx = it.height }
+                        .uprightPanelInLandscape(state.orientation).width(sheetWidth)
                 )
             }
             if (quick.lightMeterEnabled && !(quickPanelOpen && !popupOpen)) {
