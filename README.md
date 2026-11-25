@@ -35,7 +35,7 @@
 
 Everything the fork adds, kept here also once Ed has taken it into Rawr: those items say *(Already in
 Rawr: Ed's #N)*, with the pull request it came in. Entry by entry, with how each was checked:
-[CHANGELOG.md](CHANGELOG.md). Synced with Ed's main up to #158 (25 Nov 2026).
+[CHANGELOG.md](CHANGELOG.md). Synced with Ed's main up to #160 (25 Nov 2026).
 
 **Photo: 50 and 200 MP**
 - **50 MP RAW** on the main, tele and ultra-wide cameras: the viewfinder streams the binned 4:3 RAW at 30 fps
@@ -72,9 +72,12 @@ Rawr: Ed's #N)*, with the pull request it came in. Entry by entry, with how each
 - Each lens can keep its own frame count, look, tone and film.
 - Manual ISO shows the standard numbers on the third stops (80, 160, 320, 640, 1250 instead of 79, 159,
   317, 635, 1270).
-- Swipe-down quick panel (AE / metering, highlights, frames per lens, per-lens look), exposure row with
-  tap-to-set slider bar, VF controls show/hide, RESET and UNDO; camera controls persist across restarts.
-- AgX quick card with advanced grids, long-press help on controls.
+- **Top sheet:** the quick panel (AE / metering, highlights, detail, frames per lens) and the eye panels
+  (MONITORING, VF CONTROLS) as one sheet docked at the top of the viewfinder, with tabs and one row of chips;
+  a swipe down from the top third or the eye button opens it, and the scopes move out of its way (portrait and
+  landscape). Exposure row with tap-to-set slider bar, RESET and UNDO; camera controls persist across restarts.
+- AgX quick card with advanced grids, long-press help on controls; a dot marks a changed value on the film,
+  AgX and tone cards.
 
 **Film**
 - **Film sheet:** turning FILM on opens the stocks as cards in tabs (presets, negative, cinema, slide, print
@@ -102,11 +105,19 @@ Rawr: Ed's #N)*, with the pull request it came in. Entry by entry, with how each
   Advanced.
 
 **White balance**
+- **WB strip** (portrait): PICK, AUTO, MANUAL, the camera's presets, SENSOR and the TEMP / TINT rails in a
+  strip just above the exposure row, instead of a panel over the middle of the viewfinder.
 - **Pick neutral** (WB panel > PICK NEUTRAL, then tap something truly white or grey): Rawr measures that
   area and switches to Manual with the temperature and tint that make it neutral; warm picks correct about
   halfway, keeping some of the light's warmth.
 - **Manual WB renders with the requested gains as white**, so the JPEG matches the DNG (it took the HAL's
   own neutral before, a magenta cast). *(Already in Rawr: Ed's #142.)*
+
+**Language**
+- The interface in **Portuguese, Spanish, French, German, Italian and Russian** (machine-made, following the
+  phone or chosen in Settings > System > Language), with **Export / Import language file** (JSON, English as
+  the key) to correct a translation or add a language without a new build. The list of texts is generated
+  from the sources at build time.
 
 **Video**
 - **4K60 10-bit without dropped frames:** a fast path that demosaics, shades, white-balances, applies the

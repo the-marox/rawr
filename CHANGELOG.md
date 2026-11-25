@@ -4,6 +4,70 @@ Fork of [Rawr](https://github.com/adityawarmanfw/rawr) for the Xiaomi 17 Ultra.
 Releases follow Ed's version: `0.5.1-17u.N`. Test work lands on `yuv-probe`
 first and moves to `xiaomi-17u` once verified.
 
+## 0.5.1-17u.13
+
+The interface in six languages (with a language file to export, fix and import), the quick and eye panels as
+one sheet at the top of the viewfinder, a white balance strip, and Ed's #159 and #160, checked on the Xiaomi 17
+Ultra.
+
+### Language
+
+- The interface follows the phone's language when a translation is bundled, or the one chosen in Settings →
+  System → Language. Bundled: Portuguese, Spanish, French, German, Italian and Russian, machine-made; anything
+  without a translation stays in English (mostly the longer help texts, chip values and abbreviations).
+- Export language file writes every text of the app (English as the key) with the current translation; fix or
+  fill it and Import language file loads it, so corrections and new languages need no new build. An imported
+  file sits on top of the bundled one of the same language (its `@code`), so a correction only needs the texts
+  that change; it shows as "name · imported" in the menu. The list of texts is generated from the sources at
+  build time, so texts Ed or the fork add later show up in the export by themselves.
+- Covers the settings (rows, menus, subtitles, help, dialogs, lens editor), the search (it also finds by the
+  translated name), the viewfinder's control help, the FILM / LOOK / top sheet chips and the PHOTO / VIDEO
+  capsule.
+- Checked on the 17U in Portuguese, Russian, German, Spanish and Italian (settings, lens editor, dialogs, sheets,
+  import and export); no crash.
+
+### Viewfinder top sheet
+
+- The swipe-down quick panel and the eye panels (MONITORING, VF CONTROLS) are now one sheet docked at the top of
+  the viewfinder, in the FILM / LOOK sheets' format: tabs (✕, EXPO, HIGHL, DETAIL, LENS, MONITOR, SCOPES, VF) and
+  one row of chips. It takes about two rows instead of half the viewfinder.
+- A swipe down opens it only when it starts in the top third of the viewfinder and travels 96 dp (it was 48 dp
+  anywhere, so framing or focusing opened it by accident). It opens on the last tab used; the eye button opens it
+  on MONITOR. ✕, a swipe up or a tap outside close it.
+- In portrait the compact scopes move down below the sheet while it is open. In landscape the sheet runs along
+  the right edge (the top as the phone is held), the swipe works from that edge, and the compact scope sits in
+  the top-right corner as the phone is held; when a FILM / LOOK sheet opens there, the scope slides to just
+  above it.
+- White balance (portrait): a strip in the same format just above the exposure row - ✕, PICK, AUTO, MANUAL, the
+  camera's presets, SENSOR, and the TEMP / TINT rails (Ed's rails) - instead of the panel in the middle of the
+  viewfinder. The strip and the FILM / LOOK sheet never open together: the one opened last closes the other.
+  Landscape keeps Ed's panel.
+- Checked on the 17U in portrait and landscape (swipe, eye button, scopes, WB strip with the sheets); no crash.
+
+### Viewfinder
+
+- A changed value in the film, AgX and tone cards shows a small dot in the corner, so it shows in every theme
+  (in Mono the colour of a changed value is white, like the others).
+- Lens buttons follow the theme: the variant picker marks the variant in use with the theme's soft accent, and
+  the selected lens button's second line ("50MP", "Normal") is neutral on the theme colour (both were a fixed
+  red / pink, also in the Mono, Steel and Sage themes).
+- LOOK button with Film on and no preset in use: the stock's name (e.g. Gold 200) instead of "Custom", and the
+  dot as soon as a film value is off its default (EV, push, ...).
+
+### Synced with Ed's main up to #160
+
+- Ed's #159: the burst noise fit no longer reads low, and HDR+ Quality's Wiener merge takes its noise from the
+  burst noise model. Checked on the 17U: 17-frame merges in 2.7-3.0 s, the burst noise fit in use; at 100% a
+  dark wall stays clean (no colour blotches) and moving people on a TV screen show no ghosts.
+- Ed's #160: faster lens start after a device error, RAW-only lenses remembered across launches; OPPO X9U 2x, 6x
+  and 20x in-sensor crop lenses. Checked on the 17U: every lens opens in 170-280 ms, no errors.
+
+### Docs
+
+- docs/aux-sensors.md: the rawr XMP fields (ambient light, ToF distance) go in the DNG; an Ultra HDR JPEG keeps
+  only the EXIF, so it does not have them. Flicker is released after 16 readings (about two seconds), as the code
+  does.
+
 ## 0.5.1-17u.12
 
 A clean viewfinder (LOOK next to the shutter), restyled scopes, the settings grouped with a search, and Ed's

@@ -68,7 +68,7 @@ ToF [0]: 218 mm against a wall at about 20 cm, 529 mm and 3384 mm at farther sur
 on its back.
 
 Flicker is confirmed after three readings in a row within one bin of 100 or 120 Hz and released after
-five readings in a row that are not (`FlickerClassifier`).
+16 readings in a row that are not, about two seconds (`FlickerClassifier`).
 
 To check another phone: `adb shell dumpsys sensorservice | grep -iE "flicker|cct|lux|tof"`. If its sensors use
 other string types or layouts, add them to `LIGHT_SOURCES` / `FLICKER_TYPE` in `AuxLightSensors`.
