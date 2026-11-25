@@ -607,7 +607,7 @@ internal fun ViewfinderQuickPanel(
 
 /** A tab of the top sheet, in the LOOK sheet's chip style. */
 @Composable
-private fun SheetTabChip(text: String, active: Boolean, tag: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+internal fun SheetTabChip(text: String, active: Boolean, tag: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val haptics = LocalCaptureHaptics.current
     Box(
         modifier

@@ -2,6 +2,7 @@ package com.rawr.camera.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -116,17 +117,18 @@ internal fun CaptureViewfinder(
                 .onSizeChanged { viewfinderSize = it }
                 .then(
                     if (!popupOpen) {
-                        Modifier.pointerInput(swipePx, openSwipePx) {
-                            // Swipe down from the top third opens the top sheet, swipe up closes it.
+                        Modifier.pointerInput(swipePx, openSwipePx, state.orientation) {
+                            // Swipe down from the top third opens the top sheet, swipe up closes it. In landscape
+                            // "down" as the phone is held runs from the screen's right edge to the left.
+                            val landscape = state.orientation == Orientation.Landscape
                             var travel = 0f
                             var fromTop = false
-                            detectVerticalDragGestures(
-                                onDragStart = { start ->
-                                    travel = 0f
-                                    fromTop = start.y < size.height / 3f
-                                },
-                                onVerticalDrag = { change, dy ->
-                                    travel += dy
+                            val onStart = { start: Offset ->
+                                travel = 0f
+                                fromTop = if (landscape) start.x > size.width * 2f / 3f else start.y < size.height / 3f
+                            }
+                            val onDrag = { change: androidx.compose.ui.input.pointer.PointerInputChange, d: Float ->
+                                    travel += d
                                     if (fromTop && travel > openSwipePx && !quickPanelOpen) {
                                         quickPanelOpen = true
                                         haptics.selection()
@@ -135,8 +137,18 @@ internal fun CaptureViewfinder(
                                         haptics.selection()
                                     }
                                     change.consume()
-                                }
-                            )
+                            }
+                            if (landscape) {
+                                detectHorizontalDragGestures(
+                                    onDragStart = onStart,
+                                    onHorizontalDrag = { change, dx -> onDrag(change, -dx) }
+                                )
+                            } else {
+                                detectVerticalDragGestures(
+                                    onDragStart = onStart,
+                                    onVerticalDrag = { change, dy -> onDrag(change, dy) }
+                                )
+                            }
                         }.pointerInput(state.orientation, state.exposureControl.mode, state.whiteBalancePickArmed) {
                             detectTapGestures(
                                 onTap = { offset ->
@@ -167,7 +179,7 @@ internal fun CaptureViewfinder(
         )
 
         val scopeTopInset =
-            if (quickPanelOpen && !popupOpen && sheetHeightPx > 0)
+            if (quickPanelOpen && !popupOpen && state.orientation != Orientation.Landscape && sheetHeightPx > 0)
                 with(density) { sheetHeightPx.toDp() } + 6.dp
             else 0.dp
         ScopeLayer(state, dispatch, preview, scopeTopInset)
@@ -262,7 +274,24 @@ internal fun CaptureViewfinder(
                     }
                 }
                 if (state.whiteBalancePanelOpen) {
-                    WhiteBalancePanel(state, dispatch, paletteModifier)
+                    if (state.orientation == Orientation.Landscape) {
+                        WhiteBalancePanel(state, dispatch, paletteModifier)
+                    } else {
+                        // Rawr 17U fork: portrait WB as a strip just above the exposure row (WhiteBalanceSheet.kt).
+                        WhiteBalanceSheet(
+                            state,
+                            dispatch,
+                            Modifier
+                                .align(Alignment.BottomCenter)
+                                .fillMaxWidth()
+                                .padding(
+                                    start = CaptureDimens.ViewfinderHorizontalPadding,
+                                    end = CaptureDimens.ViewfinderHorizontalPadding,
+                                    bottom = CaptureDimens.ViewfinderBottomPadding + StripDimens.ParamRowHeight +
+                                        CaptureDimens.ControlGap
+                                )
+                        )
+                    }
                 }
             }
         }
@@ -279,7 +308,7 @@ internal fun CaptureViewfinder(
             ) {
                 // Portrait: full width; the compact scopes move down below it (scopeTopInset).
                 val frameWidth = slotFrame?.width ?: with(density) { viewfinderSize.width.toDp() }
-                val sheetWidth = if (state.orientation == Orientation.Landscape) 340.dp
+                val sheetWidth = if (state.orientation == Orientation.Landscape) 320.dp
                 else (frameWidth - 12.dp).coerceAtLeast(200.dp)
                 ViewfinderQuickPanel(
                     quick = quick,

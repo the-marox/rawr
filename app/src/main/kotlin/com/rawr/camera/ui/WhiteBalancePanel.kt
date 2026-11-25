@@ -239,7 +239,7 @@ internal fun WhiteBalancePanel(state: CaptureUiState, dispatch: CaptureDispatch,
     )
 }
 
-private fun formatTint(tint: Int): String = if (tint >= 0) "+$tint" else "$tint"
+internal fun formatTint(tint: Int): String = if (tint >= 0) "+$tint" else "$tint"
 
 /**
  * Manual WB temperature for the light sensor's colour temperature: on the TEMP rail's 25 K steps and
@@ -251,16 +251,16 @@ internal fun sensorWhiteBalanceK(cctK: Float?): Int? {
     return stepped.coerceIn(WhiteBalanceMode.TEMP_MIN_K, WhiteBalanceMode.TEMP_MAX_K)
 }
 
-private fun previousTempText(tempK: Int): String =
+internal fun previousTempText(tempK: Int): String =
     (tempK - 500).takeIf { it >= WhiteBalanceMode.TEMP_MIN_K }?.let { "${it}K" } ?: ""
 
-private fun nextTempText(tempK: Int): String =
+internal fun nextTempText(tempK: Int): String =
     (tempK + 500).takeIf { it <= WhiteBalanceMode.TEMP_MAX_K }?.let { "${it}K" } ?: ""
 
-private fun previousTintText(tint: Int): String =
+internal fun previousTintText(tint: Int): String =
     (tint - 5).takeIf { it >= WhiteBalanceMode.TINT_MIN }?.let { formatTint(it) } ?: ""
 
-private fun nextTintText(tint: Int): String =
+internal fun nextTintText(tint: Int): String =
     (tint + 5).takeIf { it <= WhiteBalanceMode.TINT_MAX }?.let { formatTint(it) } ?: ""
 
 /**
@@ -269,8 +269,9 @@ private fun nextTintText(tint: Int): String =
  * labels. Drag-anywhere relative gesture, quantized steps, detent haptics,
  * elastic end-stops — no jump-to-finger.
  */
+// Rawr 17U fork: internal, also used by the portrait WB sheet (WhiteBalanceSheet.kt).
 @Composable
-private fun WbRail(
+internal fun WbRail(
     title: String,
     current: String,
     previous: String,
