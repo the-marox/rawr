@@ -460,10 +460,10 @@ bool VideoOutput::startYuv(JNIEnv* env, jobject surface, uint32_t width, uint32_
     nextYuvIndex_ = 0;
     yuvNoBuffer_.store(0, std::memory_order_relaxed);
     // Have encoder buffers in hand (and their imports done) before the first frame.
-    char device[PROP_VALUE_MAX] = {}, readySetting[PROP_VALUE_MAX] = {};
-    __system_property_get("ro.product.device", device);
+    char productDevice[PROP_VALUE_MAX] = {}, readySetting[PROP_VALUE_MAX] = {};
+    __system_property_get("ro.product.device", productDevice);
     __system_property_get("debug.rawr.video_yuv_ready", readySetting);
-    yuvReadyTarget_ = videoReadyBufferCount(device, readySetting);
+    yuvReadyTarget_ = videoReadyBufferCount(productDevice, readySetting);
     for (uint32_t i = 0; i < yuvReadyTarget_; ++i) {
         if (!dequeueEncoderImage(env)) throw std::runtime_error("first encoder buffer");
         ++outstandingImages_;
