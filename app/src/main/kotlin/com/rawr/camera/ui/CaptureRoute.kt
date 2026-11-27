@@ -102,7 +102,10 @@ fun CaptureRoute(
             deviceRotationDegrees = it
         }
     )
-    androidx.compose.runtime.CompositionLocalProvider(LocalAuxSensors provides auxSensors) {
+    androidx.compose.runtime.CompositionLocalProvider(
+        LocalAuxSensors provides auxSensors,
+        LocalCaptureDeviceRotation provides deviceRotationDegrees
+    ) {
         CaptureScreen(
             state = state,
             dispatch = controller::dispatch,

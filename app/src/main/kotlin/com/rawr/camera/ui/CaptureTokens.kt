@@ -39,8 +39,17 @@ internal object CaptureDimens {
     val TopBarHeight = 48.dp
     val MonitorHeight = 22.dp
     val VideoControlsClassicHeight = 174.dp
-    // Lens 30 + compact shutter row 78 + video record row 62.
-    val CompactVideoControlsMinimumHeight = 170.dp
+    val CompactLensTopPadding = 10.dp
+    val CompactShutterTopPadding = 12.dp
+    val CompactShutterBottomPadding = 8.dp
+    val ModeSelectorChipHeight = 28.dp
+    val ModeSelectorInset = 3.dp
+    val CompactModeBottomPadding = 6.dp
+
+    fun compactControlsHeight(lensScale: Float) =
+        CompactLensTopPadding + maxOf(32.dp, 44.dp * lensScale) + CompactShutterTopPadding +
+            ShutterOuter + CompactShutterBottomPadding + ModeSelectorChipHeight +
+            ModeSelectorInset * 2 + CompactModeBottomPadding
     val VideoRecordRowHeight = 62.dp
     val VideoMonitorBottomInset = 6.dp
     val QuickRowHeight = 38.dp

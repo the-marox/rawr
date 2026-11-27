@@ -120,10 +120,12 @@ internal fun CaptureControls(
                 dispatch = dispatch,
                 onOpenLensSettings = onOpenLensSettings,
                 enabled = !recordingLock,
-                modifier = Modifier.padding(top = 10.dp).graphicsLayer { alpha = selectorsAlpha }
+                modifier = Modifier.padding(top = CaptureDimens.CompactLensTopPadding).graphicsLayer { alpha = selectorsAlpha }
             )
             Row(
-                Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 8.dp),
+                Modifier.fillMaxWidth().padding(
+                    top = CaptureDimens.CompactShutterTopPadding, bottom = CaptureDimens.CompactShutterBottomPadding
+                ),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
@@ -173,7 +175,7 @@ internal fun CaptureControls(
                 state = state,
                 dispatch = dispatch,
                 enabled = !recordingLock,
-                modifier = Modifier.padding(bottom = 6.dp).graphicsLayer { alpha = selectorsAlpha }
+                modifier = Modifier.padding(bottom = CaptureDimens.CompactModeBottomPadding).graphicsLayer { alpha = selectorsAlpha }
             )
         }
         return
@@ -406,7 +408,7 @@ internal fun ModeSelectorStrip(
         modifier
             .testTag(CaptureTestTags.MODE_SELECTOR)
             .background(Color(0xFF1A1A1A), RoundedCornerShape(50))
-            .padding(3.dp),
+            .padding(CaptureDimens.ModeSelectorInset),
         horizontalArrangement = Arrangement.spacedBy(0.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -415,7 +417,7 @@ internal fun ModeSelectorStrip(
             val label = tr(if (mode == CaptureMode.Photo) "PHOTO" else "VIDEO")
             Box(
                 Modifier
-                    .height(28.dp)
+                    .height(CaptureDimens.ModeSelectorChipHeight)
                     .then(
                         if (isSelected) {
                             Modifier.background(

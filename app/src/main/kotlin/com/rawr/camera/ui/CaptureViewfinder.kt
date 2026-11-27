@@ -355,9 +355,12 @@ internal fun CaptureViewfinder(
                         } != null
                     },
                     modifier = if (state.orientation == Orientation.Landscape) {
-                        Modifier.align(Alignment.CenterEnd).padding(end = 8.dp)
+                        if (railTopLimit > 0.dp) {
+                            Modifier.align(Alignment.TopEnd).padding(top = railTopLimit, end = 8.dp)
+                        } else Modifier.align(Alignment.CenterEnd).padding(end = 8.dp)
                     } else {
-                        Modifier.align(Alignment.TopCenter).padding(top = if (recording) 36.dp else 8.dp)
+                        Modifier.align(Alignment.TopCenter)
+                            .padding(top = maxOf(railTopLimit, if (recording) 36.dp else 8.dp))
                     }
                 )
             }

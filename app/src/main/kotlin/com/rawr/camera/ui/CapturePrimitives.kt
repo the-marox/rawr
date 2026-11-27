@@ -122,8 +122,13 @@ internal fun CompactTopBarPalette(
     }
 }
 
+internal val LocalCaptureDeviceRotation = androidx.compose.runtime.staticCompositionLocalOf { 90 }
+
+@Composable
 internal fun Modifier.uprightInLandscape(orientation: Orientation): Modifier =
-    if (orientation == Orientation.Landscape) graphicsLayer(rotationZ = 90f) else this
+    if (orientation == Orientation.Landscape) {
+        graphicsLayer(rotationZ = if (LocalCaptureDeviceRotation.current == 270) -90f else 90f)
+    } else this
 
 /**
  * As uprightInLandscape, but the turned size is what the parent reserves. graphicsLayer alone only

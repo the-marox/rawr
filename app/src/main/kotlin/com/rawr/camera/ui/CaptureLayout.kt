@@ -107,8 +107,8 @@ internal fun PhysicalCaptureLayout(
     BoxWithConstraints(modifier) {
         // Reserve the shutter/record area and both monitors before sizing the
         // 3:4 viewfinder. A short display must not push the readout below nav.
-        val controlsHeight = if (state.captureLayout == CaptureControlLayout.Compact) {
-            CaptureDimens.CompactVideoControlsMinimumHeight
+        val controlsHeight = if (compactControls) {
+            CaptureDimens.compactControlsHeight(state.lensBarSize.scale)
         } else {
             CaptureDimens.VideoControlsClassicHeight
         }
